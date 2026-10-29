@@ -1,142 +1,267 @@
-# Riemann 設計仕様書（草案 v0.1）
+# Riemann 設計仕様書（草案 v0.6）
 
-Riemann は、QuantLib と finmath-lib を参考に、Rust で一から作る金融計算ライブラリーである。
-R からも呼べるようにする。本書は実装前の設計仕様の草案であり、コードはまだない。
+Riemann は、Rust で一から作る金融計算ライブラリーである。主な利用言語は **R と TypeScript** とし、同じ中核をほかの言語からも使えるようにする。
 
-- 比較の根拠：[library_comparison.md](library_comparison.md)（QuantLib `70f240f`、finmath-lib `9bd054f`）
-- 現在動いている GaussQuant・LagrangeFinance・Curie は変更しない。照合の基準（オラクル）としてだけ使う。
+主題は、既存の金融ライブラリーを支えてきた二つの仕組みからの脱却と、Rust の性質を活かした作りである。
 
-## 1. 基本方針
+1. **オブジェクト指向からの脱却**：継承、仮想関数、状態を持つオブジェクト、オブザーバーをやめ、**値（データ）と関数**だけで組み立てる。
+2. **テンプレートからの脱却**：利用者が選ぶ金融上の選択肢（補間方式、日数計算、評価手法など）を、型の引数（C++ のテンプレート、型によるメタプログラミング）で表すのをやめ、**実行時の値として渡す**。Rust のジェネリクスを全面的に禁止するものではなく、自動微分など内部の数値計算に必要な型の抽象化は使える（R6）。
+3. **Rust の高速性とスレッド安全性を活かす**：ネイティブの速度で計算し、言語が保証するスレッド安全性（所有権と `Send`／`Sync`）の上で並列に評価する。計算の中核を一つにして、**R と TypeScript（Node.js とブラウザー）から、計算ごとに定めた許容誤差の範囲で同じ結果が得られる**ようにする（7.3）。Python などは、同じ決まりで後から足せる形にしておく。
 
-1. **関数型で作る**：C++／Java の継承とオブザーバーによるオブジェクト指向はやめる。
-   - データ（日付、規約、市場データ、商品）は、作ったあと書き換えない値とする。
-   - 種類の違いは継承ではなく、`enum`（代数的データ型）と `match` で表す。
-   - 計算は、入力をすべて引数で受け取って結果を返す、副作用のない関数とする。
-2. **グローバル状態を持たない**：評価日、Fixing、設定は、すべて評価コンテキストとして明示的に渡す。
-3. **独自実装**：QuantLib を FFI で呼ばない。QuantLib は、GaussQuant（R バインディング）経由で照合の基準値を作るためにだけ使う。
-4. **小さく作って照合する**：GaussQuant・LagrangeFinance で答えが分かっている計算から順に作り、数値の一致を確かめながら広げる。全商品を一度に移植しない。
-5. **R から使える**：計算の中核は R に依存させず、R 用の薄い入口を別の crate にする。
+1 と 2 で作った「書き換えない値と、副作用のない関数」は、3 の並列化と多言語対応の土台にもなる。共有するデータを誰も書き換えないので、スレッド間で安全に共有でき、言語の境界もデータの受け渡しだけで済む。ただし、土台があることと、計算が正しく再現できることは別であり、後者はテストで確かめる（6.3）。
 
-## 2. 設計項目ごとの採用案
+本書は実装前の仕様の草案であり、コードはまだない。
 
-### 2.1 引き継ぎたい設計
+## 1. 何から脱却するのか
 
-| 機能・設計項目 | QuantLib | finmath-lib | Rust での採用案と理由 |
+参考にした QuantLib（C++）と finmath-lib（Java）は、どちらも優れたライブラリーだが、設計の骨格はオブジェクト指向とテンプレートにある。数は本体のソースから数えた（QuantLib `70f240f`、finmath-lib `9bd054f`）。
+
+| 仕組み | QuantLib | finmath-lib | 問題 |
 |---|---|---|---|
-| 日付 | 独自の `Date`（シリアル値） | `java.time.LocalDate` と、年単位の浮動小数の時刻 | 独自の `Date`（日のシリアル値を持つ newtype）。日付の計算は整数で行い、年数（`YearFraction`）は日数計算の結果としてだけ作る。浮動小数の時刻を日付の代わりに使わない |
-| カレンダー | `Calendar` の派生クラス56種。休日を規則のコードで持つ | TARGET・ロンドン・NY・週末・指定休日のみ。東京はない | `enum Calendar { Japan, Target, UnitedStatesSofr, UnitedKingdomSettlement, Joint(..), Custom(..) }`。休日は規則の関数と、追加・削除の日付表の組み合わせで表す。東京を最初から持つ（finmath にはない） |
-| 日数計算 | `DayCounter` の派生クラス13種 | `DayCountConvention_*` を多数 | `enum DayCount { Act360, Act365Fixed, Thirty360BondBasis, ActActIsda, .. }` と純粋関数 `year_fraction(dc, start, end)` |
-| スケジュール | `Schedule`、`MakeSchedule`（前進・後退、月末、各種規約） | `ScheduleGenerator` と、仕様を持つ `SchedulePrototype` | スケジュールの仕様 `ScheduleSpec`（値）から日付列を作る純粋関数 `generate(&ScheduleSpec) -> Result<Schedule>`。finmath と同じく、仕様と生成結果を分ける |
-| 市場データ・カーブ・モデル・商品・エンジンの分離 | `Instrument` と `PricingEngine` を分け、エンジンを付け替える | 商品が `getValue(evaluationTime, model)` で自分を評価する。商品の記述から実装を作る `ProductFactory` もある | 商品は記述だけの値（`enum Instrument`）、市場データは別の値（`MarketSnapshot`）、評価手法も値（`enum Method`）とし、評価は関数 `price(ctx, market, instrument, method)` にする。QuantLib の「手法を差し替えられる」と finmath の「記述と実装を分ける」を、どちらも状態なしで実現できる |
-| キャッシュフローとレグ | `Leg = vector<shared_ptr<CashFlow>>`。クーポンとプライサーを分ける | `SwapLeg` がスケジュールと金額の配列を持つ | `enum CashFlow { Fixed{..}, OvernightCompounded{..}, Notional{..} }` の `Vec` をレグとする。レグを作る関数と、評価する関数を分ける。OIS の日次複利（lookback・lockout・observation shift）は QuantLib の `OvernightIndexedCoupon` を仕様の参考にする |
-| カーブ | `PiecewiseYieldCurve` の逐次ブートストラップ。`Handle` で付け替え | `CalibratedCurves` で複数カーブを同時に解く。カーブを名前で参照 | `enum Curve` は節点と補間方式を持つ値とする。構築は `bootstrap(&CurveSpec, &Quotes, &ctx) -> Result<(Curve, Diagnostics)>`。最初は逐次ブートストラップで作り、通貨ベーシスなど相互依存がある段階で同時解法を加える。カーブは名前（`CurveId`）で参照する（finmath 方式） |
-| キャリブレーション | `CalibrationHelper` と `CalibratedModel`、最適化手法 | 最適化手法の工場、AD を使う LM | 「パラメーター → 誤差ベクトル」の純粋関数と、汎用のソルバーに分ける。結果には残差と反復回数を必ず付ける |
-| 乱数 | MT19937、Sobol、Halton、xoshiro256** など | MT、Sobol、Halton など | 乱数の生成器は状態を値として渡し、種（seed）を必ず明示させる。並列でも同じ結果になるよう、カウンター型（Philox など）か、パスごとに種を分ける方式にする |
-| グリークス | エンジンの結果としての解析グリークス。数値差分は `SimpleQuote` を動かす | 解析式、変更した複製による差分、pathwise・尤度比、AAD | 数値差分は「シナリオ関数で新しい市場スナップショットを作り、評価し直す」形にする。解析グリークスは手法ごとに返す。MC 感応度は後の段階で入れる |
-| 自動微分 | 中核にはない。実数型を `QL_REAL` で差し替えられる | 前進型・後退型の AD を MC の確率変数に組み込む | 数値計算の関数を、実数の型について総称的（ジェネリック）に書く（`T: Real`）。最初は `f64` だけで使い、次に前進型の双対数で差し替えられるようにする。後退型（AAD）は MC の段階で検討する |
+| 継承 | `class X : public Y` が 1,384 か所、`virtual` が 961 か所（`ql/` のヘッダー） | `extends` が 446 か所、抽象クラスが 61、インターフェースが 164 | 振る舞いがクラス階層に散らばり、ある計算がどこで行われるかを追いにくい |
+| テンプレート | `template <` が 1,715 か所（253 本のヘッダー） | ジェネリクスは補助的 | 選択肢が型に埋め込まれ、実行時やR から選べない。エラー表示が読みにくく、組み合わせごとにコードが生成される |
+| 型で選ぶカーブ | `PiecewiseYieldCurve<Traits, Interpolator, Bootstrap>`：割引係数かゼロ金利か、補間方式、解き方を型の引数で決める | `DiscountCurveInterpolation extends CurveInterpolation implements DiscountCurve` | 「対数線形の割引係数」という設定が、データではなく型になっている |
+| CRTP・ビジター | `ql/patterns/curiouslyrecurring.hpp`、`ql/patterns/visitor.hpp` | — | 型の仕組みで分岐を表すため、分岐の全体が見えない |
+| 状態を持つオブジェクト | `Handle`／`RelinkableHandle` の付け替え、`Observer`／`Observable`、`LazyObject` | 変更した複製を返す（`addCurve`、`getCloneWithModifiedData`） | QuantLib では、値を変えると見えないところで再計算が走る |
+| グローバル状態 | `Settings` シングルトンの評価日、`IndexManager` の Fixing | なし（評価時点は引数） | 同じ関数呼び出しでも、評価日の設定によって結果が変わる |
+| 工場（Factory） | `MakeOIS`、`MakeSchedule` などのビルダー | Factory クラスが 33 | オブジェクトを組み立てるための仕組みが、計算と別に必要になる |
+| 手法ごとの商品クラス | 商品は一つで、エンジンを付け替える | `EuropeanOption` が MC・FD・フーリエ・ツリー・株式の 5 か所にある | 同じ商品が評価手法ごとに別の型になる |
 
-### 2.2 Rust で見直したい設計
+## 2. Riemann の原則
 
-| 機能・設計項目 | QuantLib | finmath-lib | Rust での採用案と理由 |
-|---|---|---|---|
-| 継承中心の構造 | `Instrument`・`PricingEngine`・`TermStructure` の派生クラス | インターフェースの実装と、手法ごとに別の商品クラス | 閉じた種類は `enum` と `match`（新しい種類を足したとき、対応漏れをコンパイラーが見つける）。外から拡張させたい部分だけ trait にする（補間方式、ソルバーなど）。継承はしない |
-| 評価日などのグローバル状態 | `Settings` シングルトンの `evaluationDate`、`IndexManager` の Fixing | ない（評価時点は引数） | `ValuationContext { valuation_date, fixings, settings }` を、すべての評価関数に引数で渡す。同じ入力からは常に同じ結果になり、異なる評価日の計算を同時に走らせられる |
-| 市場データの更新と再評価 | オブザーバーが変更を伝え、`LazyObject` が再計算する | 変更した複製を作る（`addCurve`、`getCloneWithModifiedData`） | 更新は「古いスナップショット → 新しいスナップショット」の関数にする（finmath 方式）。変更のないカーブは `Arc` で共有する。キャッシュが必要になったら、入力の内容から作るキーで外付けのメモ化を行い、オブザーバーは使わない |
-| 不変データの共有と並列評価 | `QL_ENABLE_SESSIONS` でシングルトンをスレッドごとに持つ | Java の並列ストリーム | `MarketSnapshot` を `Arc` で共有し、`Send + Sync` にする。並列化は rayon で「商品 × シナリオ」の独立な評価に限る。並列の集計は順序を固定して、結果が実行ごとに揺れないようにする |
-| 型と単位 | `Real`・`Rate`・`Time` は `double` の別名で、区別がない | `double` | newtype で区別する：`Rate`（小数）、`Bp`、`Price`（額面100当たり）、`Money { amount, currency }`、`DiscountFactor`、`YearFraction`、`Date`。`Rate` と `Bp` の変換は明示的な関数だけで行う。異なる通貨の金額は、そのままでは足し算できないようにする |
-| エラー処理 | 例外（`QL_REQUIRE`、`QL_FAIL`） | 例外 | ライブラリーでは panic しない。`Result<T, RiemannError>` を返し、エラーには「どの入力（気配の ID、日付など）が原因か」を持たせる |
-| 計算結果の再現性 | 評価日などの状態と、乱数の種に依存する | 乱数の種に依存する | 結果（`Valuation`）に、使った評価日、市場データの識別子、手法、乱数の種、ライブラリーのバージョンを記録する。浮動小数の集計順を固定する |
+| 番号 | 原則 | 内容 |
+|---|---|---|
+| R1 | データは値 | 日付、規約、気配、カーブ、商品、結果は `struct` と `enum` の値とする。作ったあと書き換えない |
+| R2 | 計算は関数 | すべての計算は「入力をすべて引数で受け取り、結果を返す」関数とする。隠れた入力（グローバル状態、オブジェクトの内部状態）を持たない |
+| R3 | 選択肢は値 | 補間方式、日数計算、評価手法などの選択肢は `enum` の値で表し、実行時に選ぶ。型の引数で選ばない |
+| R4 | 分岐は `match` | 種類による違いは `enum` と `match` で書く。新しい種類を足したとき、対応していない箇所をコンパイラーが見つける |
+| R5 | 継承しない | クラス階層、trait オブジェクトの階層、仮想関数による振る舞いの差し替えを使わない |
+| R6 | 選択肢を型にしない | 利用者が選ぶ金融上の選択肢（補間方式、日数計算、カレンダー、評価手法など）を、型の引数や trait の実装の差し替えで表さない。公開 API は値で受け取り、利用者がジェネリクスを意識せずに使えるようにする。一方、内部の数値計算では、自動微分のためのスカラー型の抽象化など、必要な型の抽象化を使ってよい。その場合は、使う理由と範囲をコードの説明に書き、公開 API の型には出さない（入口では `f64` などの具体的な型にする）。マクロで DSL は作らない |
+| R7 | 更新は新しい値 | 市場データの変更は「古い値から新しい値を作る関数」で表す。変わっていない部分は `Arc` で共有する。中核では `RefCell`・`Mutex` などの内部可変性を使わない |
+| R8 | 状態は引数で渡す | 評価日、Fixing、設定は `ValuationContext` として明示的に渡す |
+| R9 | エラーも値 | panic せず `Result` を返す。エラーには、原因になった入力（気配の ID、日付など）を持たせる |
+| R10 | 型は意味のために使う | 型は、単位と意味の取り違えを防ぐためだけに使う（`Rate`、`Bp`、`Price`、`Money`、`Date`）。振る舞いの組み替えには使わない |
+| R11 | すべて `Send + Sync` | 中核のすべての型を、スレッド間で安全に送受信・共有できる型にする。コンパイル時の確認をテストに置く。これはデータ競合を防ぐ土台であり、計算の正しさと再現性は別にテストで確かめる（6.3） |
+| R12 | 中核に `unsafe` を書かない | 中核の crate は `#![forbid(unsafe_code)]` とする。言語の入口でも、各言語の結び付け用 crate（extendr・PyO3・napi-rs・wasm-bindgen）が用意する安全な API だけを使う |
+| R13 | 中核は言語に依存しない | 中核は R・TypeScript などの API を知らない。各言語の入口は、データの変換とエラーの変換だけを行う薄い層にする |
+| R14 | 速さを測る | 主要な計算に性能測定（ベンチマーク）を付け、照合と同じく各段階で確かめる |
+| R15 | WebAssembly でも動く | 中核は `wasm32-unknown-unknown` 向けにもビルドできるようにする。ファイル操作・時刻の取得・OS の機能を中核で使わない。並列化は feature（`parallel`、既定で有効）で切り替え、WebAssembly では無効にできるようにする |
+| R16 | 一致は許容誤差で定める | 照合と言語間の一致は、完全一致を一律に求めず、計算ごとに許容誤差を定める（7.3）。ネイティブと WebAssembly は別の基準で扱う |
 
-## 3. 主な型と関数の形（案）
+## 3. 置き換えの対応表
+
+| 既存の仕組み | Riemann での置き換え |
+|---|---|
+| `Instrument` の派生クラス（QuantLib）、商品インターフェースの実装（finmath） | `enum Instrument { FixedRateBond(..), OvernightIndexedSwap(..), .. }` |
+| 商品に付け替える `PricingEngine` | 評価関数の引数として渡す値 `enum Method { Discounting, .. }` |
+| `PiecewiseYieldCurve<Traits, Interpolator, Bootstrap>` | 値 `CurveSpec { quantity: Discount, interpolation: LogLinear, solver: Sequential, .. }` を受け取る関数 `bootstrap` |
+| `Handle`／`RelinkableHandle` の付け替え | 新しい `MarketSnapshot` を作って、評価関数にもう一度渡す |
+| `Observer`／`LazyObject` による自動の再計算 | 呼び出し側が評価し直す。必要なら、入力の内容から作ったキーで結果をメモ化する |
+| `Settings` の評価日、`IndexManager` の Fixing | `ValuationContext { valuation_date, fixings, settings }` |
+| CRTP、ビジター、仮想関数による分岐 | `match` |
+| `MakeOIS`・`MakeSchedule` などのビルダー、Factory クラス | 仕様の値（`ScheduleSpec` など）と、それを受け取る関数。省略した項目は `Default` で埋める |
+| 抽象クラスの階層（`AbstractCurve`、`AbstractForwardCurve` など） | 一つの `struct Curve` と、それを読む関数（`discount`、`zero_rate`、`forward_rate`） |
+| 手法ごとの商品クラス（finmath の `EuropeanOption` ×5） | 商品は `Instrument::EuropeanOption` 一つ。手法は `Method` で選ぶ |
+
+## 4. データと関数の形（案）
 
 以下は形を示すための案で、実装ではない。
 
 ```rust
-// 日付と規約（すべて値）
+// 単位と意味を区別する型（R10）
 pub struct Date(i32);
-pub enum Calendar { Japan, Target, UnitedStatesSofr, UnitedKingdomSettlement, Joint(Vec<Calendar>) }
-pub enum DayCount { Act360, Act365Fixed, Thirty360BondBasis, ActActIsda }
-pub fn year_fraction(dc: DayCount, start: Date, end: Date) -> YearFraction;
-pub fn adjust(cal: &Calendar, date: Date, bdc: BusinessDayConvention) -> Date;
+pub struct Rate(f64);          // 小数（0.0425 = 4.25%）
+pub struct Bp(f64);
+pub struct Price(f64);         // 額面100当たり
+pub struct Money { pub amount: f64, pub currency: Currency }
 
-// 評価コンテキスト（グローバル状態の代わり）
+// 選択肢は値（R3）
+pub enum DayCount { Act360, Act365Fixed, Thirty360BondBasis, ActActIsda }
+pub enum Calendar { Japan, Target, UnitedStatesSofr, UnitedKingdomSettlement, Joint(Vec<Calendar>) }
+pub enum Interpolation { LogLinearDiscount, LogCubicDiscount, FlatForward }
+
+// 評価コンテキスト（R8）
 pub struct ValuationContext { pub valuation_date: Date, pub fixings: Arc<Fixings>, pub settings: Settings }
 
-// 市場データのスナップショット
-pub struct MarketSnapshot { pub id: SnapshotId, curves: Arc<BTreeMap<CurveId, Arc<Curve>>>, quotes: Arc<Quotes> }
-pub fn with_curve(m: &MarketSnapshot, id: CurveId, c: Curve) -> MarketSnapshot; // 新しい値を返す
+// カーブは値、構築は関数（R1・R2）
+pub struct CurveSpec { pub currency: Currency, pub index: OvernightIndex, pub interpolation: Interpolation, pub reference: Reference }
+pub struct Curve { pub spec: CurveSpec, pub reference_date: Date, pub nodes: Vec<(Date, f64)> }
+pub fn bootstrap(spec: &CurveSpec, quotes: &[Quote], ctx: &ValuationContext) -> Result<(Curve, Diagnostics), Error>;
+pub fn discount(curve: &Curve, date: Date) -> Result<f64, Error>;
 
-// カーブの構築
-pub fn bootstrap(spec: &CurveSpec, quotes: &Quotes, ctx: &ValuationContext) -> Result<(Curve, Diagnostics), RiemannError>;
+// 市場データの更新は新しい値（R7）
+pub fn with_curve(market: &MarketSnapshot, id: CurveId, curve: Curve) -> MarketSnapshot;
 
-// 商品と評価
-pub enum Instrument { FixedRateBond(FixedRateBond), OvernightIndexedSwap(Ois), OisAssetSwap(OisAssetSwap), /* .. */ }
-pub enum Method { Discounting, /* 後の段階で Analytic(..), MonteCarlo(..) */ }
-pub fn price(ctx: &ValuationContext, m: &MarketSnapshot, i: &Instrument, method: &Method) -> Result<Valuation, RiemannError>;
+// 商品と評価（R1・R2・R4）
+pub enum Instrument { FixedRateBond(FixedRateBond), OvernightIndexedSwap(Ois), OisAssetSwap(OisAssetSwap) }
+pub enum Method { Discounting }
+pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instrument, method: &Method) -> Result<Valuation, Error>;
 ```
 
-## 4. 独自実装と FFI の区別
+## 5. この設計で得られること
 
-| 方式 | 内容 | 採否 |
+- **読みやすさ**：ある計算は、一つの関数と一つの `match` を読めば分かる。クラス階層をたどる必要がない。
+- **R との相性**：選択肢が値なので、R から文字列やリストで渡せる（`interpolation = "log_cubic_discount"` など）。型の組み合わせを R 側で用意する必要がない。
+- **再現性**：同じ入力からは常に同じ結果になる。結果（`Valuation`）に、評価日、市場データの識別子、手法、乱数の種、ライブラリーのバージョンを記録する。
+- **並列評価**：書き換えない値を `Arc` で共有するので、異なる評価日・シナリオ・商品の計算を安全に同時に走らせられる。並列化は rayon で、独立な評価の単位に限る。集計の順序は固定する。
+- **シナリオとグリークス**：「市場データを変える関数」と「評価する関数」の組み合わせで、シナリオ計算と数値差分のグリークスがそのまま書ける。
+
+## 6. 高速性とスレッド安全性
+
+### 6.1 速さのための方針
+
+| 方針 | 内容 |
+|---|---|
+| 分岐は静的に | 種類の違いは `match` で分岐する。仮想関数の呼び出しやヒープ上のオブジェクトを経由しないので、コンパイラーが最適化しやすい |
+| データは連続した配列に | 節点、キャッシュフロー、MC のパスは `Vec` の連続した領域に置く。MC は「パスの配列」ではなく「時点ごとの配列」（列指向）で持ち、ベクトル演算にしやすくする |
+| 計算の中で確保しない | 繰り返しの内側でメモリーを確保しない。必要な作業領域は、関数の外から渡すか、最初に一度だけ確保する |
+| 余計な複製をしない | 大きな値は `Arc` で共有し、参照で渡す。新しい値を作るときも、変わらない部分は共有したままにする |
+| 測ってから最適化する | criterion でベンチマークを取り、GaussQuant（QuantLib）の同じ計算とも時間を比べる。SIMD などの手作業の最適化は、測定で必要と分かってから行う |
+
+### 6.2 スレッド安全な並列評価
+
+- **言語が保証する安全性**：中核の型はすべて `Send + Sync`（R11）で、共有されるデータは書き換えない値（R1・R7）である。データ競合はコンパイルの時点で防がれる。ただし、これで保証されるのはメモリーの安全性とデータ競合がないことだけである。計算の誤り、並列にしたことによる集計順の違い、乱数の割り当ての誤りは防げないので、6.3 のテストで確かめる。
+- **並列にする単位**：「商品 × シナリオ × 評価日」のように、互いに独立な評価を rayon で並列にする。カーブの構築や MC のパスなど、内部の並列化は測定で効果を確かめてから行う。
+- **結果はスレッド数に依存しない**：
+  - 乱数はパスごと・評価単位ごとに種を分ける（カウンター型の乱数、または種の導出規則を固定する）。
+  - 並列の集計は、決まった順序の木構造で足し合わせる。
+  - こうした決まりで、1 スレッドでも 32 スレッドでも同じ数値になることを目標とする。実際にそうなっているかは 6.3 のテストで確かめる。結果には、使った乱数の種と並列の設定を記録する。
+- **言語の側の制約と分ける**：R の API は一つのスレッドからしか呼べない。Python には GIL がある。Node.js の JavaScript は一つのスレッドで動く。そこで、並列化は中核の中だけで行い、言語の入口は計算の前後でデータを変換するだけにする。Python では計算中に GIL を解放し、Node.js では重い計算を非同期のタスクとして実行して、JavaScript のスレッドを止めない。ブラウザーの WebAssembly では、標準では1スレッドで計算する（R15）。
+
+### 6.3 正しさと再現性のテスト
+
+`Send + Sync` と不変データは土台にすぎない。並列化した計算については、次のテストを置く。
+
+| テスト | 内容 |
+|---|---|
+| 逐次と並列の一致 | 同じ入力を、並列化なし（1スレッド）と並列化あり（2・4・8 スレッドなど）で計算し、結果を比べる。集計順を固定した計算は完全一致、そうでない計算は 7.3 の許容誤差で比べる |
+| 繰り返しの一致 | 同じ入力・同じスレッド数で何度も実行し、毎回同じ結果になることを確かめる |
+| 分割の一致 | 評価の単位（商品・シナリオ・パス）の分け方や並び順を変えても、各単位の結果が変わらないことを確かめる |
+| 乱数の割り当て | 乱数の種の導出が、スレッド数や実行順に依存しないことを確かめる。同じ種から同じ乱数列が出ることも確かめる |
+| 性質のテスト | 割引係数が満期に対して正であること、入力気配の再現、価格とスプレッドの逆算の一致など、計算の性質をランダムな入力で確かめる（proptest など） |
+| 基準値との照合 | 並列化した計算も、GaussQuant・LagrangeFinance の基準値と 7.3 の許容誤差で照合する |
+
+## 7. 多言語からの利用
+
+### 7.1 構成
+
+```
+            ┌──────────────────────────────────────────┐
+            │ riemann（中核）                           │
+            │ 値と関数、Send + Sync、unsafe なし          │
+            └──────────────┬───────────────────────────┘
+       ┌─────────────┬─────┴───────┬──────────────────┐
+  riemann-r      riemann-node         riemann-wasm          riemann-py
+  R（extendr）   TypeScript／Node.js   TypeScript／ブラウザー  Python（PyO3）
+  【主】          （napi-rs）【主】     （wasm-bindgen）【主】  （必要になったら）
+```
+
+### 7.2 言語の境界での決まり
+
+| 項目 | 決まり |
+|---|---|
+| 受け渡しの形 | 表（気配、キャッシュフロー、結果）と、仕様の記録（規約、商品）だけを受け渡す。言語の側にオブジェクトの状態を持たせない |
+| 選択肢の名前 | `enum` は、全言語で共通の文字列名で受け渡す（例：`"act_365_fixed"`、`"log_cubic_discount"`）。名前の一覧は中核で一か所に定義する |
+| 仕様の記録 | 商品や規約は serde で直列化できるようにし、JSON などで言語間・ファイル間をやり取りできるようにする |
+| 大きな表 | 当面は各言語の標準の表（R の data.frame、Python の dict と配列、TypeScript のオブジェクトの配列と `Float64Array`）で受け渡す。大量のデータで必要になったら Apache Arrow を検討する |
+| エラー | 中核のエラー（原因の入力を含む）を、各言語の普通のエラー（R の condition、Python の例外、TypeScript の `Error`）に変換する |
+| 結果の一致 | 同じ入力なら、どの言語から呼んでも、7.3 で計算ごとに定めた許容誤差の範囲で同じ数値になる。各言語の入口に、同じ基準値を使ったテストを置く |
+| 型定義 | TypeScript の型定義（`.d.ts`）は napi-rs と wasm-bindgen で自動生成し、手で書かない。選択肢の名前は文字列リテラルの型（`"act_360"` と `"act_365_fixed"` の合併型など）として出す |
+| `unsafe` | 自分では書かない。各言語の結び付け用 crate の安全な API だけを使う（R12） |
+
+### 7.3 数値一致の許容誤差
+
+完全一致を一律に求めない。計算の種類ごとに許容誤差を定め、テストの基準値ファイルに、比べる値と許容誤差を一緒に記録する。下の値は初期案で、実際の値は各段階で、基準値との差の実測を見て決める。
+
+| 計算の種類 | 例 | 基準値（GaussQuant など）との照合 | 言語間・ネイティブ同士 | ネイティブと WebAssembly |
+|---|---|---|---|---|
+| 整数・日付・選択肢 | 日付列、営業日調整、スケジュール、カレンダーの判定 | 完全一致 | 完全一致 | 完全一致 |
+| 四則演算だけの計算 | 年数（日数計算）、固定のキャッシュフロー額 | 相対 1e-15 程度 | 完全一致（同じ計算順） | 完全一致を目標とし、差が出たら相対 1e-15 程度 |
+| 指数・対数などを含む計算 | 割引係数、ゼロ金利、債券価格 | 相対 1e-12 程度 | 完全一致（同じプラットフォーム・同じビルド） | 相対 1e-13 程度（数学関数の実装の違いで最下位の桁が変わりうる） |
+| 反復解法 | ブートストラップ、利回りの逆算、キャリブレーション | 解法の収束条件から決める（例：気配の再現誤差 1e-8bp 以内） | 同上 | 収束条件の範囲内。反復回数が変わることも許す |
+| 確率的な計算 | MC の価格と感応度 | 標準誤差の数倍の範囲 | 同じ種・同じ設定なら完全一致 | 同じ種なら、上の「指数・対数」と同じ基準 |
+
+- **ネイティブと WebAssembly を区別する理由**：`f64` の四則演算は IEEE 754 で同じ結果になるが、`exp`・`ln`・`powf` などの数学関数は、ネイティブではプラットフォームの数学ライブラリー、WebAssembly ではブラウザーや Rust の実装を使うため、最下位の桁が変わりうる。並列化の有無（WebAssembly は標準で1スレッド）による集計順の違いも、6.3 の決まりで抑えたうえで、この表の基準で比べる。
+- **基準値（GaussQuant／QuantLib）との違い**：QuantLib とは補間や反復の実装が異なるので、基準値との照合は、言語間の一致よりも緩い基準になることがある。
+
+## 8. 自動微分の扱い
+
+自動微分は、数値の型を抽象化して、通常の数値と微分を運ぶ数値（双対数やテープ）を差し替えるのが一般的である。R6 は、利用者が選ぶ選択肢を型で表すことを禁じるもので、この種の内部の型の抽象化は禁じない。
+
+- **第一候補**：数値計算の中核（割引、補間、ブートストラップの残差など）を、スカラー型について総称的に書く。公開 API では `f64` を受け取り、グリークスは「感応度を求める」という値（`Method` や設定）で選ばせる。利用者がジェネリクスを意識する必要はない。
+- **代替案**：計算の流れをデータ（式のグラフ）として作り、評価する関数と微分する関数を別に用意する。
+
+どちらにするかは、P2・P3 で数値計算の中核を書く前に決める（型の抽象化を後から入れると書き直しが大きいため）。
+
+## 9. 独自実装と FFI
+
+| 方式 | 採否 | 理由 |
 |---|---|---|
-| Rust による独自実装 | 仕様と数式から Rust で書く。QuantLib・finmath-lib のソースは設計と仕様の参考として読む | **採用**（Riemann の本体） |
-| 既存 C++ を FFI で呼ぶ | `cxx` などで QuantLib を Rust から呼ぶ | **採用しない**。QuantLib のグローバル状態とオブザーバーがそのまま入り、関数型の設計と合わない。C++ の中継コードとビルドの負担も大きい |
-| 照合用の基準値 | GaussQuant（QuantLib の R バインディング）と LagrangeFinance で基準値を作り、CSV に保存する | **採用**。FFI なしで、QuantLib の結果と照合できる |
+| Rust による独自実装 | 採用 | 本書の原則で作るため。既存のライブラリーは、数式・仕様・規約の参考として読む |
+| QuantLib を FFI で呼ぶ | 採用しない | 継承・テンプレート・グローバル状態をそのまま持ち込むことになり、本書の目的と反する。スレッド安全性も Rust の型で保証できなくなる |
+| 照合の基準値 | 採用 | GaussQuant（QuantLib の R バインディング）と LagrangeFinance で基準値を作り、CSV に保存する。FFI なしで照合できる |
 
-## 5. ライセンスと帰属表示
+## 10. 段階的な開発案
 
-| 元のコード | ライセンス | 移植するときの義務 |
-|---|---|---|
-| QuantLib | 修正 BSD（`LICENSE.TXT`） | 著作権表示・条件・免責をソースと配布物に残す。QuantLib Group や貢献者の名前を、宣伝や推奨に使わない |
-| finmath-lib | Apache License 2.0（`LICENSE.txt`、`NOTICE.txt`） | ライセンス文を同梱し、`NOTICE.txt` の帰属表示を引き継ぎ、変更したファイルに変更した旨を書く |
-
-- **方針**：コードは移植せず、数式・仕様・設計の考え方を参考にして独自に書く。それでも README に、参考にしたライブラリーとして両方の名前を挙げる。
-- やむを得ず移植するときは、そのファイルの先頭に元のファイル・コミット・ライセンスを書き、上の義務を守る。
-- Riemann 自体のライセンスは、MIT と Apache-2.0 の併用とする（2026-10-30 決定。`LICENSE-MIT`、`LICENSE-APACHE`）。
-- 上の整理は法的な助言ではない。
-
-## 6. 段階的な開発案
-
-各段階で、GaussQuant・LagrangeFinance の既存の計算を基準値として照合する。基準値は R のスクリプト（`tools/golden/`）で CSV に書き出し、Rust のテストで読む。
+各段階で、GaussQuant・LagrangeFinance の既存の計算を基準値として照合し、あわせて性能を測る。基準値は R のスクリプト（`tools/golden/`）で CSV に書き出し、Rust のテストで読む。現在動いている GaussQuant・LagrangeFinance・Curie は変更しない。
 
 | 段階 | 作るもの | 照合する既存の計算 |
 |---|---|---|
-| P0 | 仕様書、比較の文書、ワークスペースの骨組み | — |
-| P1 | 日付、カレンダー（東京・TARGET・米国 SOFR・英国）、日数計算、営業日調整、スケジュール生成 | QuantLib の R バインディング（GaussQuant 経由）で、同じ規約の日付列と年数を CSV に出す。完全一致を求める |
-| P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1 の計算 |
-| P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値（合成気配）、LagrangeFinance II-3.2（TONA）・II-3.4（SOFR）、EONIA ベンチマーク |
-| P4 | R からの入口（`riemann-r`）。P1〜P3 の関数を R から呼び、testthat で GaussQuant と直接比べる | 上と同じ |
+| P1 | 日付、カレンダー（東京・TARGET・米国 SOFR・英国）、日数計算、営業日調整、スケジュール生成 | QuantLib の R バインディングで、同じ規約の日付列と年数を出す。日付は完全一致、年数は 7.3 の基準で照合する |
+| P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1 |
+| P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値、LagrangeFinance II-3.2・II-3.4、EONIA ベンチマーク |
+| P4 | R からの入口（`riemann-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、6.3 の逐次と並列の一致テストを置く | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる |
 | P5 | OIS の ASW と円ベーシス込み ASW | GaussQuant の `ois_asset_swap_GQL` と回帰テストの基準値、LagrangeFinance II-3.7 |
+| P6 | TypeScript の Node.js 版の入口（`riemann-node`、napi-rs） | R と同じ基準値で、7.3 の「言語間・ネイティブ同士」の基準を満たすことを確かめる |
+| P7 | TypeScript のブラウザー版の入口（`riemann-wasm`、wasm-bindgen） | 同じ基準値で、7.3 の「ネイティブと WebAssembly」の基準を満たすことを確かめる |
 
-P6 以降（Black・Bachelier と自動微分のグリークス、MC、Hull-White、CDS など）は、P5 までの結果を見てから決める。
+開発の順序は、R → TypeScript の Node.js 版 → ブラウザー版とする。まず既存の GaussQuant で数値を照合し、そのあとで利用先を広げる。
 
-## 7. R からの入口
+P8 以降（Black・Bachelier、MC、Hull-White、CDS など）は、P7 までの結果を見て決める。Python の入口（`riemann-py`：PyO3）は、必要になった時点で同じ決まり（7.2）で足す。
 
-- `riemann-r` crate を extendr で作り、R パッケージから呼ぶ。
-- 入口は「データを渡してデータを返す」形にする。気配や規約は data.frame とリストで受け取り、結果は data.frame で返す。R の側に状態を持たせない。
-- カーブなど大きな結果は、必要になったら R の外部ポインターで持つ。中身は書き換えない値なので、R から複数回使っても安全である。
-- Rust の中核（`riemann`）は R に依存させない。
+## 11. 各言語の入口（R と TypeScript を主とする）
 
-## 8. 最小構成
+- 最初の入口は R とする（`riemann-r`、extendr）。GaussQuant・LagrangeFinance と同じ環境で照合できるためである。
+- 入口は「データを渡してデータを返す」形にする。気配や規約は data.frame とリストで受け取り、結果は data.frame で返す。選択肢の `enum` は、全言語共通の文字列名で受け取る。
+- 並列の計算は中核の中で行い、R の API を呼ぶのは計算の前後だけにする。
+- カーブなど大きな結果は、必要になったら R の外部ポインターで持つ。中身は書き換えない値なので、何度使っても安全である。
+- TypeScript の入口も、同じ決まり（7.2）で作る。Node.js 版（napi-rs）はネイティブの速度と並列計算をそのまま使い、ブラウザー版（WebAssembly）は同じ計算をブラウザーの中で動かす。
+- Python の入口は主な対象ではなく、必要になったら同じ決まりで足す。
+
+## 12. 最小構成
 
 ```
 Riemann/
 ├── Cargo.toml              # ワークスペース
 ├── crates/
-│   ├── riemann/            # 中核ライブラリー（R に依存しない）
-│   │   └── src/            # time/、market/、curves/、instruments/、pricing/ を段階ごとに足す
-│   └── riemann-r/          # R からの入口（P4 で追加）
-├── tools/golden/           # 基準値を作る R スクリプト（GaussQuant・LagrangeFinance を使う）
+│   ├── riemann/            # 中核（言語に依存しない、unsafe なし、Send + Sync）
+│   ├── riemann-r/          # R の入口（P4）
+│   ├── riemann-node/       # TypeScript／Node.js の入口（P6、napi-rs）
+│   ├── riemann-wasm/       # TypeScript／ブラウザーの入口（P7、wasm-bindgen）
+│   └── riemann-py/         # Python の入口（必要になったら）
+├── benches/                # 性能測定（criterion）
+├── tools/golden/           # 基準値を作る R スクリプト
 ├── tests/golden/           # 基準値の CSV（市場データの気配は含めない）
-└── docs/                   # 本書、比較の文書
+└── docs/
 ```
 
-最初の1歩は P1 の「日付・カレンダー・日数計算・スケジュール」だけにする。ここは外部の市場データが要らず、QuantLib と完全一致で照合でき、すべての後続の土台になる。
+最初の1歩は P1 の中核だけにする。外部の市場データが要らず、日付は QuantLib と完全一致で照合でき、後続のすべての土台になる。
 
-## 9. 決めていただきたいこと
+## 13. ライセンス
 
-決定済み（2026-10-30）：ライセンスは MIT と Apache-2.0 の併用、置き場所は GitHub。
+- Riemann は MIT と Apache-2.0 の併用とする（`LICENSE-MIT`、`LICENSE-APACHE`）。
+- QuantLib（修正 BSD）と finmath-lib（Apache-2.0）のコードは移植せず、数式・仕様・規約の参考にする。
+- やむを得ず移植するときは、ファイルの先頭に元のファイル・コミット・ライセンスを書く。QuantLib は著作権表示と条件を残し、finmath-lib は `NOTICE.txt` の帰属表示を引き継いで変更した旨を書く。
+- この整理は法的な助言ではない。
+
+## 14. 決めていただきたいこと
 
 1. 日付の型を自前にするか、既存の crate（`time` や `chrono`）を内部で使うか
-2. 休日データの持ち方（QuantLib と同じく規則をコードで書くか、日付表のデータとして持つか）
-3. 自動微分を入れる時期（P2 から関数を総称的に書いておくか、P6 で入れるか）
+2. 休日データの持ち方（規則を関数で書くか、日付表のデータとして持つか）
+3. 自動微分の方式（数値計算の中核をスカラー型について総称的に書くか、式のグラフをデータにするか）。P2 の前に決める
+
+決定済み（2026-10-30）：開発の順序は R → TypeScript の Node.js 版 → ブラウザー版。
+
+## 参考資料
+
+- [QuantLib と finmath-lib の比較](library_comparison.md)：対応商品・モデル・カーブ・グリークス・設計の、本体ソースによる比較（QuantLib `70f240f`、finmath-lib `9bd054f`）。商品の範囲や数式・規約を調べるときに使う。
