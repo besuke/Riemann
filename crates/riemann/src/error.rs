@@ -14,6 +14,8 @@ pub enum Error {
     InvalidSchedule { reason: String },
     /// A feature specified but not implemented yet.
     Unsupported { feature: String },
+    /// A reference period that a day count convention cannot use.
+    InvalidReferencePeriod { reason: String },
 }
 
 impl fmt::Display for Error {
@@ -31,6 +33,7 @@ impl fmt::Display for Error {
             }
             Error::InvalidSchedule { reason } => write!(f, "invalid schedule: {reason}"),
             Error::Unsupported { feature } => write!(f, "not implemented yet: {feature}"),
+            Error::InvalidReferencePeriod { reason } => write!(f, "invalid reference period: {reason}"),
         }
     }
 }

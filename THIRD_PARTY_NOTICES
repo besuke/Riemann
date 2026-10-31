@@ -2,8 +2,9 @@ THIRD-PARTY NOTICES
 ===================
 
 Riemann contains code derived from QuantLib (commit
-70f240f29ddb84927ff654502f1d75b3de24ba43; the source files below are unchanged since
-v1.42 except schedule.cpp, where only ext::optional was replaced by std::optional):
+70f240f29ddb84927ff654502f1d75b3de24ba43). Since v1.42 the source files below changed only
+in ways that do not affect results (ext::optional -> std::optional in schedule.cpp,
+make_shared and the removal of an unused helper in the day counters):
 
 - crates/riemann/src/time/calendar/rules.rs: holiday rules from
   ql/time/calendars/japan.cpp, target.cpp, unitedstates.cpp and unitedkingdom.cpp
@@ -11,6 +12,9 @@ v1.42 except schedule.cpp, where only ext::optional was replaced by std::optiona
   ql/time/calendar.cpp
 - crates/riemann/src/time/schedule.rs: schedule generation from
   ql/time/schedule.cpp
+- crates/riemann/src/time/day_count.rs: day count formulas from
+  ql/time/daycounters/ (actual360, actual364, actual36525, actual365fixed, actual366,
+  actualactual, thirty360, thirty365, one, simpledaycounter, business252)
 
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.

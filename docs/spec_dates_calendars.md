@@ -12,7 +12,7 @@
 | 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
 | 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）、休日カレンダー（3.4 節）、営業日調整（4.3 節）、スケジュール生成（5.3 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）、休日カレンダー（3.4 節）、営業日調整（4.3 節）、スケジュール生成（5.3 節）、日数計算（6.3 節）である。** それ以外の Riemann の動作に関する記述は【設計案】である。
 
 ## 0. 参照した QuantLib
 
@@ -266,9 +266,32 @@ Riemann の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql
 - `day_count(dc, d1, d2) -> i32` と `year_fraction(dc, d1, d2, ref_start, ref_end) -> Result<f64>` を関数として作る。参照期間やスケジュールが要る種類で、それが与えられていなければ `Err` を返す。
 - 最初に作る種類：Actual/360、Actual/365 Fixed、30/360 BondBasis、Actual/Actual ISDA、Actual/Actual ISMA（債券）。GaussQuant・LagrangeFinance で使っている種類である。
 
-## 7. QuantLib との照合【設計案・未実施】
+### 6.3 実装と QuantLib との照合結果【実行照合済み】
 
-基準値は `tools/golden/` の R スクリプトで、QuantLib の R バインディング（1.42）から CSV に書き出す。基準値はまだ作っておらず、照合もまだ行っていない。以下は照合の計画である。比べ方は仕様書 7.3 の許容誤差に従う。
+**実装（`crates/riemann/src/time/day_count.rs`）**
+
+- `DayCount`：Actual/360（最終日を含むかどうか）、Actual/364、Actual/365.25（同）、Actual/365 Fixed（Standard・Canadian・NoLeap）、Actual/366（同）、Actual/Actual（ISDA・ISMA・AFB）、30/360（USA・BondBasis・European・Italian・ISDA（終了日つき）・NASD）、30/365、1/1、Simple、Business/252（カレンダーつき）。QuantLib の別名（Bond = ISMA、Historical・Actual365 = ISDA、Euro = AFB、EurobondBasis = European、ISMA = BondBasis、German = ISDA）は同じ値に対応させた。
+- `day_count(d1, d2)` と `year_fraction(d1, d2, ref_start, ref_end)`。参照期間が必要な種類で不正な参照期間を渡すと `Err` を返す。
+- Business/252 は、QuantLib が月・年単位のキャッシュで足し合わせる営業日数を、キャッシュなしで `business_days_between` で数える（結果は下の照合で一致した）。
+- 未実装：スケジュールを渡す Actual/Actual（ISMA/Bond）。QuantLib がスケジュールなしで使う参照期間の方式は実装した。
+- 式は `ql/time/daycounters/` から移したものとして扱い、ファイルの先頭に移植元と著作権表示を書いた（`THIRD_PARTY_NOTICES` にも記載）。
+
+**照合結果**（2026-10-31、QuantLib R バインディング 1.42、`tools/golden/p1_day_counts.R`、`cargo test --test golden_day_counts`）
+
+- 日付の組：範囲全体から乱数（種を固定）で選んだ 2,000 組と、月末・2 月 28 日・29 日・30 日・31 日・範囲の両端を含む 20 日付の総当たり 400 組（同日・逆順を含む）。参照期間は、なし・1/3/6/12 か月の正しい期間・不正な期間を乱数で付けた。
+- 日数計算 30 種類（別名を含む）。Business/252 は、間隔が 1,500 日以内の組に限った。
+
+| 対象 | 件数 | 結果 |
+|---|---|---|
+| 日数（`dayCount`） | 70,660 件 | すべて完全一致 |
+| 年数割合（`yearFraction`）が求まった組 | 67,747 件 | すべて完全一致（浮動小数の最後の桁まで。7.3 の許容誤差を使う必要はなかった） |
+| QuantLib がエラーにした組 | 2,913 件（Actual/365 Canadian 1,221、Actual/Actual ISMA・Bond 各 797、AFB・Euro 各 46、ISDA・Historical・Actual365 各 2） | Riemann もすべてエラーを返した。エラーの理由までは比べていない |
+
+ISDA の 2 件は、2199 年に始まる期間で、QuantLib が翌年 1 月 1 日（2200 年）を作れずにエラーにするものである。
+
+## 7. QuantLib との照合計画（P1 で実施済み。結果は各章の照合結果の節）
+
+基準値は `tools/golden/` の R スクリプトで、QuantLib の R バインディング（1.42）から CSV に書き出す。以下は、P1 を始める前に立てた照合の計画である。実施した内容と結果は、2.3、3.4、4.3、5.3、6.3 節に記録した。比べ方は仕様書 7.3 の許容誤差に従う。
 
 | 対象 | 基準値の内容 | 一致の基準 |
 |---|---|---|
