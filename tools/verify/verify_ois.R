@@ -2,7 +2,8 @@
 # for log-linear and monotonic log-cubic interpolation of the discount factors. The exact C++
 # commit of the package is unknown, so this is not a comparison with running QuantLib C++ v1.42.
 #
-# Riemann is called through crates/riemann/examples/verify_ois.rs, until the R entry point of P4.
+# Riemann is called directly through its R package (crates/riemann-r). The example program
+# crates/riemann/examples/verify_ois.rs stays as a second path, to compare the two.
 #
 # Usage from an R session started anywhere in the repository:
 #   source("tools/verify/verify_common.R"); source("tools/verify/verify_ois.R")
@@ -165,7 +166,59 @@ ois_method_check <- function(scenario, probes) {
 
 # ---- Riemann ----------------------------------------------------------------------------
 
-riemann_ois_values <- function(runs, root = find_riemann_root()) {
+split_probes <- function(probes) {
+  if (is.character(probes)) as.integer(strsplit(probes, " ", fixed = TRUE)[[1]]) else as.integer(probes)
+}
+
+ois_instruments_of <- function(run) {
+  items <- str_split(run$instruments, " ")[[1]]
+  riemann::ois_instruments(
+    tenor = str_remove(items, ":.*$"), rate = as.numeric(str_remove(items, "^.*:")),
+    settlement_days = as.integer(run$settlement_days), payment_frequency = as.integer(run$payment_frequency),
+    payment_lag = as.integer(run$payment_lag)
+  )
+}
+
+riemann_ois_run <- function(run) {
+  row <- function(kind, key, value) {
+    tibble(case = as.character(run$case), interpolation = run$interpolation, kind = kind, key = as.integer(key), value = value)
+  }
+  built <- tryCatch(
+    riemann::build_ois_curve(
+      serial_to_date(as.integer(run$evaluation)), serial_to_date(as.integer(run$reference)), tolower(run$index), run$day_counter,
+      ois_instruments_of(run), interpolation = snake_name(run$interpolation)
+    ),
+    error = function(e) NULL
+  )
+  if (is.null(built)) return(row("build", 0L, NA_real_))
+  curve <- riemann::with_extrapolation(built, as.integer(run$extrapolate) == 1L)
+  probes <- split_probes(run$probes[[1]])
+  dates <- serial_to_date(probes)
+  repricing <- riemann::quote_repricing(curve)
+  nodes <- riemann::discount_nodes(curve)
+  positions <- seq_len(nrow(repricing)) - 1L
+  values <- suppressWarnings(list(
+    discount = riemann::discount(curve, dates, on_error = "na"),
+    zero_continuous = riemann::zero_rate(curve, dates, run$day_counter, "continuous", 1L, on_error = "na"),
+    forward_1d_simple = riemann::forward_rate(curve, dates, dates + 1L, run$day_counter, "simple", 1L, on_error = "na"),
+    forward_instantaneous = riemann::forward_rate(curve, dates, dates, run$day_counter, "continuous", 1L, on_error = "na")
+  ))
+  bind_rows(
+    row("implied_rate", positions, repricing$implied_rate),
+    row("pillar_date", positions, as.numeric(date_to_serial(repricing$pillar_date))),
+    row("node_discount", date_to_serial(nodes$date), nodes$discount),
+    imap(values, \(value, kind) row(kind, probes, value)) |> list_rbind()
+  )
+}
+
+riemann_ois_values <- function(runs) {
+  require_riemann_package()
+  map(seq_len(nrow(runs)), \(i) riemann_ois_run(runs[i, ])) |>
+    list_rbind() |>
+    mutate(case = as.integer(case))
+}
+
+riemann_ois_values_csv <- function(runs, root = find_riemann_root()) {
   input_path <- tempfile(fileext = ".csv")
   output_path <- tempfile(fileext = ".csv")
   on.exit(unlink(c(input_path, output_path)), add = TRUE)
@@ -293,21 +346,17 @@ check_golden_index <- function(index, prefix, root) {
   probes <- discounts |>
     group_by(case) |>
     summarise(probes = paste(date, collapse = " "), .groups = "drop")
-  input_path <- tempfile(fileext = ".csv")
-  output_path <- tempfile(fileext = ".csv")
-  on.exit(unlink(c(input_path, output_path)), add = TRUE)
-  cases |>
+  runs <- cases |>
     left_join(probes, by = "case") |>
     transmute(case, evaluation, reference, day_counter, extrapolate, settlement_days, payment_lag, payment_frequency,
-              instruments, interpolation = "MonotonicLogCubic", probes = replace_na(probes, ""), index = index) |>
-    write_csv(input_path)
-  run_riemann_example("verify_ois", input_path, output_path, root)
-  riemann <- read_csv(output_path, col_types = cols(.default = col_character()))
+              instruments, interpolation = "MonotonicLogCubic", probes = replace_na(probes, ""), index = index)
+  riemann <- riemann_ois_values(runs) |>
+    mutate(case = as.character(case), key = as.character(key))
 
   # QuantLib errors are the status of the case; dates and causes are compared by cargo test
   built_riemann <- riemann |> filter(kind != "build") |> pull(case) |> unique()
   built_quantlib <- cases |> filter(status == "ok") |> pull(case)
-  value_of <- function(kind_name) riemann |> filter(kind == kind_name) |> transmute(case, key, riemann = to_number(value))
+  value_of <- function(kind_name) riemann |> filter(kind == kind_name) |> transmute(case, key, riemann = value)
 
   quotes <- cases |>
     filter(status == "ok") |>
@@ -332,13 +381,16 @@ check_golden_index <- function(index, prefix, root) {
     mutate(diff = abs(riemann - quantlib), over = diff > 1e-12 * abs(quantlib))
 
   tolerance <- quote_reproduction_tolerance()
-  misses <- implied |>
-    filter(error_quantlib > tolerance | error_riemann > tolerance) |>
+  missed <- implied |> filter(error_quantlib > tolerance | error_riemann > tolerance)
+  misses <- missed |>
     group_by(case) |>
     summarise(
       miss_quotes = n(),
       labels = paste(label, collapse = ", "),
-      max_error_riemann = max(error_riemann), max_error_quantlib = max(error_quantlib), max_diff = max(diff),
+      # no groups when nothing is missed, and max() of nothing warns
+      max_error_riemann = if (n()) max(error_riemann) else NA_real_,
+      max_error_quantlib = if (n()) max(error_quantlib) else NA_real_,
+      max_diff = if (n()) max(diff) else NA_real_,
       .groups = "drop"
     ) |>
     left_join(node_diff |> group_by(case) |> summarise(lowest_discount = min(quantlib), .groups = "drop"), by = "case") |>
@@ -371,6 +423,76 @@ verify_ois_golden <- function(root = find_riemann_root()) {
   list(summary = list_rbind(map(checked, "summary")), misses = list_rbind(map(checked, "misses")))
 }
 
+# ---- parallel batch -----------------------------------------------------------------------
+
+# Every golden curve of every index, read on its golden dates, for one number of threads.
+golden_batch_input <- function(root) {
+  pmap(golden_ois_sets(), \(index, prefix) {
+    cases <- read_golden_part(root, prefix, "cases")
+    dates <- read_golden_part(root, prefix, "discounts") |>
+      mutate(date = serial_to_date(as.integer(date))) |>
+      group_by(case) |>
+      summarise(dates = list(date), .groups = "drop")
+    cases |>
+      inner_join(dates, by = "case") |>
+      transmute(
+        evaluation_date = serial_to_date(as.integer(evaluation)), reference_date = serial_to_date(as.integer(reference)),
+        index = tolower(index), curve_day_count = day_counter, dates,
+        instruments = pmap(list(instruments, settlement_days, payment_frequency, payment_lag), \(text, days, frequency, lag) {
+          items <- str_split(text, " ")[[1]]
+          riemann::ois_instruments(str_remove(items, ":.*$"), as.numeric(str_remove(items, "^.*:")), as.integer(days), as.integer(frequency), as.integer(lag))
+        })
+      )
+  }) |>
+    list_rbind()
+}
+
+verify_parallel_batch <- function(root = find_riemann_root(), threads = c(1L, 2L, 4L, 8L)) {
+  require_riemann_package()
+  message("Evaluating the golden curves in parallel ...")
+  curves <- golden_batch_input(root)
+  runs <- map(threads, \(n) {
+    elapsed <- system.time(values <- riemann::curve_values_batch(curves, threads = n))[["elapsed"]]
+    list(threads = n, elapsed = elapsed, values = values)
+  })
+  reference <- runs[[1]]$values
+  # a curve that builds has its dates in the input order; one that fails has one row without a date
+  input_order_kept <- function(values) {
+    all(diff(values$curve) >= 0L) && all(map_lgl(seq_len(nrow(curves)), \(i) {
+      read <- values$date[values$curve == i]
+      identical(as.numeric(read), as.numeric(curves$dates[[i]])) || (length(read) == 1L && is.na(read))
+    }))
+  }
+  # direct calls run on R's main thread, batches on worker threads
+  direct <- map(seq_len(nrow(curves)), \(i) {
+    curve <- tryCatch(
+      riemann::build_ois_curve(curves$evaluation_date[i], curves$reference_date[i], curves$index[i], curves$curve_day_count[i], curves$instruments[[i]]),
+      error = function(e) NULL
+    )
+    if (is.null(curve)) return(NULL)
+    tibble(curve_number = i, date = curves$dates[[i]],
+           direct = suppressWarnings(riemann::discount(curve, curves$dates[[i]], on_error = "na")))
+  }) |> list_rbind()
+  against_direct <- reference |>
+    filter(!is.na(date)) |>
+    mutate(row_in_curve = row_number(), .by = curve) |>
+    inner_join(mutate(direct, row_in_curve = row_number(), .by = curve_number), by = c("curve" = "curve_number", "row_in_curve", "date")) |>
+    filter(!is.na(discount), !is.na(direct))
+  list(
+    against_direct = tibble(
+      compared = nrow(against_direct),
+      exact = sum(against_direct$discount == against_direct$direct),
+      max_abs_diff = max(abs(against_direct$discount - against_direct$direct)),
+      max_rel_diff = max(abs(against_direct$discount - against_direct$direct) / abs(against_direct$direct))
+    ),
+    curves = nrow(curves),
+    rows = nrow(reference),
+    by_threads = map(runs, \(run) tibble(threads = run$threads, seconds = run$elapsed,
+                                         identical_to_one_thread = identical(run$values, reference),
+                                         input_order_kept = input_order_kept(run$values))) |> list_rbind()
+  )
+}
+
 verify_ois <- function(root = find_riemann_root()) {
   message("Building synthetic OIS scenarios ...")
   scenarios <- make_ois_scenarios()
@@ -384,10 +506,12 @@ verify_ois <- function(root = find_riemann_root()) {
   }) |> list_rbind()
   message("Checking PiecewiseLogCubicDiscount against MonotonicLogCubicDiscountCurve ...")
   method_check <- map(seq_len(nrow(scenarios)), \(i) ois_method_check(scenarios[i, ], scenarios$probes[[i]])) |> list_rbind()
-  message("Bootstrapping the same curves with Riemann ...")
-  riemann <- riemann_ois_values(runs, root)
+  message("Bootstrapping the same curves with Riemann, called directly ...")
+  riemann <- riemann_ois_values(runs)
+  message("Comparing the direct call with the CSV path ...")
+  via_csv <- compare_direct_with_csv(riemann, riemann_ois_values_csv(runs, root), c("case", "interpolation", "kind", "key"))
   comparison <- compare_ois_values(quantlib, riemann)
-  results <- list(scenarios = scenarios, comparison = comparison, method_check = method_check,
+  results <- list(scenarios = scenarios, comparison = comparison, method_check = method_check, direct_vs_csv = via_csv,
                   quotes = ois_quote_reproduction(scenarios, comparison))
   summary <- summarise_ois(results)
   walk(seq_len(nrow(summary)), \(i) {

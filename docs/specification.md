@@ -234,7 +234,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 | P1 | 日付、カレンダー（東京・TARGET・米国 SOFR・英国。その後、QuantLib の全カレンダー・全市場区分に拡張。spec_dates_calendars.md 3.5 節）、日数計算、営業日調整、スケジュール生成 | QuantLib の R バインディングで、同じ規約の日付列と年数を出す。日付は完全一致、年数は 7.3 の基準で照合する。**2026-10-31 に完了**（【実行照合済み】。結果は spec_dates_calendars.md） |
 | P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1。**完了**（【実行照合済み】）：P2-1（キャッシュフローと経過利子）、P2-2（利回りと価格、デュレーション、コンベクシティ、BPV）、P2-3（割引カーブによる評価）は 2026-10-31 に QuantLib と、P2-4（日本式の単利・複利利回り）は同日に GaussQuant と照合済み（[spec_bonds.md](spec_bonds.md)） |
 | P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | QuantLib R バインディング 1.42（合成の気配。仕様は [spec_ois.md](spec_ois.md)）、GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値、LagrangeFinance II-3.2・II-3.4、EONIA ベンチマーク |
-| P4 | R からの入口（`riemann-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、6.3 の逐次と並列の一致テストを置く | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる |
+| P4 | R からの入口（`riemann-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、6.3 の逐次と並列の一致テストを置く。仕様と結果は [spec_r.md](spec_r.md) | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる（GaussQuant との比較は未実施） |
 | P5 | OIS の ASW と円ベーシス込み ASW | GaussQuant の `ois_asset_swap_GQL` と回帰テストの基準値、LagrangeFinance II-3.7 |
 | P6 | TypeScript の Node.js 版の入口（`riemann-node`、napi-rs） | R と同じ基準値で、7.3 の「言語間・ネイティブ同士」の基準を満たすことを確かめる |
 | P7 | TypeScript のブラウザー版の入口（`riemann-wasm`、wasm-bindgen） | 同じ基準値で、7.3 の「ネイティブと WebAssembly」の基準を満たすことを確かめる |

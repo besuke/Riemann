@@ -2,8 +2,8 @@
 # on synthetic inputs. The exact C++ commit of the package is unknown, so this is not a
 # comparison with running QuantLib C++ v1.42 itself.
 #
-# Riemann is called through the example program crates/riemann/examples/verify_bonds.rs,
-# until the R entry point of P4 exists.
+# Riemann is called directly through its R package (crates/riemann-r). The example program
+# crates/riemann/examples/verify_bonds.rs stays as a second path, to compare the two.
 #
 # Usage from an R session started anywhere in the repository:
 #   source("tools/verify/verify_common.R"); source("tools/verify/verify_bonds.R")
@@ -139,7 +139,46 @@ quantlib_bond_values <- function(inputs) {
 
 # ---- Riemann ----------------------------------------------------------------------------
 
-riemann_bond_values <- function(inputs, root = find_riemann_root()) {
+snake_name <- function(x) tolower(gsub("([a-z])([A-Z])", "\\1_\\2", x))
+
+riemann_bond_row <- function(input) {
+  failed <- tibble(row = input$row, settlement_date = NA_integer_, clean_price = NA_real_, dirty_price = NA_real_, accrued = NA_real_,
+                   duration_modified = NA_real_, convexity = NA_real_, bpv = NA_real_, yield = NA_real_)
+  bond <- tryCatch(
+    riemann::fixed_rate_bond(
+      settlement_days = input$settlement_days, face_amount = input$face_amount,
+      effective_date = serial_to_date(input$effective), termination_date = serial_to_date(input$termination),
+      tenor = paste0(input$tenor_n, "M"), calendar = input$calendar, convention = snake_name(input$convention),
+      termination_convention = snake_name(input$termination_convention), rule = snake_name(input$rule),
+      end_of_month = input$end_of_month == 1L, coupon_rate = input$coupon, day_count = input$day_counter,
+      payment_convention = snake_name(input$payment_convention), redemption = input$redemption,
+      issue_date = serial_to_date(input$issue_date)
+    ),
+    error = function(e) NULL
+  )
+  if (is.null(bond)) return(failed)
+  settlement <- tryCatch(riemann::settlement_date(bond, serial_to_date(input$evaluation_date)), error = function(e) NULL)
+  if (is.null(settlement)) return(failed)
+  compounding <- tolower(input$compounding)
+  values <- riemann::bond_values(bond, input$rate, input$yield_day_counter, compounding, input$frequency, settlement, on_error = "na")
+  tibble(
+    row = input$row, settlement_date = date_to_serial(settlement), clean_price = values$clean_price, dirty_price = values$dirty_price,
+    accrued = values$accrued_amount, duration_modified = values$duration_modified, convexity = values$convexity,
+    bpv = values$basis_point_value,
+    yield = suppressWarnings(riemann::yield_from_price(bond, input$price, tolower(input$price_type), input$yield_day_counter,
+                                                       compounding, input$frequency, settlement, on_error = "na"))
+  )
+}
+
+riemann_bond_values <- function(inputs) {
+  require_riemann_package()
+  inputs |>
+    split(seq_len(nrow(inputs))) |>
+    map(riemann_bond_row) |>
+    list_rbind()
+}
+
+riemann_bond_values_csv <- function(inputs, root = find_riemann_root()) {
   input_path <- tempfile(fileext = ".csv")
   output_path <- tempfile(fileext = ".csv")
   on.exit(unlink(c(input_path, output_path)), add = TRUE)
@@ -213,9 +252,13 @@ verify_bonds <- function(n_bonds = 60L, scenarios_per_bond = 3L, seed = 20261110
   message("Valuing ", nrow(inputs), " scenarios with QuantLib R package ",
           as.character(packageVersion("QuantLib")), " (exact C++ commit unknown) ...")
   quantlib <- quantlib_bond_values(inputs)
-  message("Valuing the same scenarios with Riemann ...")
-  riemann <- riemann_bond_values(inputs, root)
-  results <- c(list(inputs = inputs, quantlib = quantlib, riemann = riemann), compare_bond_values(inputs, quantlib, riemann))
+  message("Valuing the same scenarios with Riemann, called directly ...")
+  riemann <- riemann_bond_values(inputs)
+  message("Comparing the direct call with the CSV path ...")
+  riemann_csv <- riemann_bond_values_csv(inputs, root)
+  long <- function(values) pivot_longer(select(values, -settlement_date), -row, names_to = "measure", values_to = "value")
+  via_csv <- compare_direct_with_csv(long(riemann), long(riemann_csv), c("row", "measure"))
+  results <- c(list(inputs = inputs, quantlib = quantlib, riemann = riemann, direct_vs_csv = via_csv), compare_bond_values(inputs, quantlib, riemann))
   summary <- summarise_verification(results)
   walk(seq_len(nrow(summary)), \(i) {
     with(summary[i, ], message(sprintf("%-18s %s  compared %d  failed %d  max diff %.2e  tolerance %.0e",

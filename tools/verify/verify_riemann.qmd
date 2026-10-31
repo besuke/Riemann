@@ -26,6 +26,7 @@ ois_results <- verify_ois()
 ois_summary <- summarise_ois(ois_results)
 ois_compare <- compare_interpolations(ois_results)
 ois_golden <- verify_ois_golden()
+parallel_results <- verify_parallel_batch()
 ois_curve_values <- ois_curves(ois_results)
 calendar_results <- verify_calendars()
 
@@ -50,7 +51,7 @@ pass_label <- function(pass) if_else(pass, "PASS", "FAIL")
 Riemann の実装済みの計算を、合成データで QuantLib と比べる検証です。計算と照合はすべて `verify_common.R`、`verify_bonds.R`、`verify_ois.R`、`verify_calendars.R` の関数で行い、この文書はその結果を表と図で示します。
 
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
-- **Riemann の呼び方**：R の入口（P4）はまだないので、Rust の `crates/riemann/examples/` の `verify_bonds.rs`、`verify_ois.rs`、`verify_calendars.rs` を実行し、CSV で受け渡します。数値は文字列を経由するので、R での読み取りで最下位の桁に丸めの差が入る可能性があります。
+- **Riemann の呼び方**：R パッケージ `riemann`（`crates/riemann-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/riemann/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
 - **データ**：すべて合成の値で、市場データは使っていません。
 - **対象**：債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 
@@ -65,16 +66,18 @@ ois_miss_curves <- sum(ois_golden$summary$miss_curves_riemann)
 ois_miss_quotes <- sum(ois_golden$summary$miss_quotes_riemann)
 ois_report_quotes_ok <- all(ois_results$quotes$pass)
 ois_golden_quotes_ok <- ois_miss_quotes == 0
+parallel_ok <- all(parallel_results$by_threads$identical_to_one_thread) && all(parallel_results$by_threads$input_order_kept)
 calendar_ok <- all(calendar_results$by_market$result == "PASS") && sum(calendar_results$by_market$r_diff, na.rm = TRUE) == 0
 cat(sprintf(paste0("- 債券：**%s**\n",
                   "- OIS カーブ、QuantLib との照合：**%s**\n",
                   "- OIS カーブ、入力気配の再現（この文書の曲線形）：**%s**\n",
                   "- OIS カーブ、入力気配の再現（照合用データ全件）：**%s**\n",
-                  "- カレンダー（QuantLib との一致）：**%s**\n"),
+                  "- カレンダー（QuantLib との一致）：**%s**\n",
+                  "- 並列バッチ（スレッド数を変えた結果と入力順の一致）：**%s**\n"),
             pass_label(bond_ok), pass_label(ois_comparison_ok),
             if (ois_report_quotes_ok) "基準達成" else "基準未達",
             if (ois_golden_quotes_ok) "基準達成" else sprintf("基準未達（%d カーブ、%d 商品。QuantLib も同じカーブで未達）", ois_miss_curves, ois_miss_quotes),
-            pass_label(calendar_ok)))
+            pass_label(calendar_ok), pass_label(parallel_ok)))
 ```
 
 # 債券
@@ -443,9 +446,9 @@ ois_golden$misses |>
 | 節点と任意の日付の割引係数 | 相対 1e-12 | 絶対 2e-12 | 反復は差が `accuracy`（1e-12）以内で止まり、最後の変化量がちょうど `accuracy` 付近だと、QuantLib と反復回数が 1 回違うことがあります |
 | 再現した気配の QuantLib との差 | 相対 1e-12 | 絶対 1e-10 | 金利の基準（仕様書 7.3 節）に合わせました。短い期間の金利では、最下位ビットの差が相対では大きく見えます |
 
-原因の確認で `accuracy` を 1.001e-12 にしたのは一度きりの実験で、ライブラリーの設定にも照合にも使っていません。€STR のケース 84 では、差が 1.0e-12 から 6.7e-16 に下がりました。
+原因の確認で `accuracy` を 1.001e-12 にしたのは一度きりの実験で、ライブラリーの設定にも照合にも使っていません。€STR のケース 84 では、MSVC のビルドで差が 1.0e-12 から 6.7e-16 に下がりました。この許容誤差は MSVC のビルドで実行する `cargo test` のためのものです。この文書の R パッケージ（GNU ビルド）では、下の表のとおり変更前の基準を超えた値はありません。
 
-変更前の基準を超えた件数です。
+この文書の R パッケージ（GNU ビルド）で、変更前の基準を超えた件数です。`cargo test`（MSVC）の件数は `docs/spec_ois.md` 10.4 節にあります。
 
 ```{r}
 #| label: ois-golden-tolerance
@@ -543,13 +546,56 @@ calendar_results$by_market |>
 
 範囲の外でも、Riemann は QuantLib と同じくエラーにせず営業日の判定を返します（MOEX の 2012 年より前を除く）。そのため、範囲の外の日付では、祝日が営業日と判定されることがあります。実際の休日が分かっている場合は、`with_holiday` で例外日として追加できます。
 
+# 直接呼び出しと CSV 経由の比較
+
+この文書の値は、R パッケージを直接呼んだものです。同じ入力を、従来の CSV 経由（`crates/riemann/examples/`）でも計算して比べました。計算は同じ Rust の関数ですが、**ビルドが違います**。R パッケージは Rtools の GNU ツールチェーン（`x86_64-pc-windows-gnu`）、CSV 経由と `cargo test` は MSVC です。下の微小な差の主な原因は、この 2 つの数学ライブラリー（`exp`、`ln`、`pow`）の違いです。文字列の受け渡しによる丸めも含まれる可能性があります。
+
+QuantLib R パッケージも Rtools でビルドされています。上の「照合用データ全件の結果」で、OIS の QuantLib との差がちょうど 0 なのは、数学ライブラリーがそろうためと考えられます。
+
+```{r}
+#| label: direct-vs-csv
+bind_rows(
+  mutate(results$direct_vs_csv, target = "Bonds", .before = 1),
+  mutate(ois_results$direct_vs_csv, target = "OIS curves", .before = 1)
+) |>
+  mutate(max_abs_diff = sprintf("%.2e", max_abs_diff)) |>
+  knitr::kable(col.names = c("Target", "Values compared", "Exactly equal", "Both error", "One-sided error", "Max abs. diff."))
+
+calendar_results$direct_vs_csv |>
+  mutate(dates = format(dates, big.mark = ",")) |>
+  knitr::kable(col.names = c("Calendars", "Dates compared", "Differences"))
+```
+
+# 並列バッチ
+
+`curve_values_batch()` で、照合用データの `r format(parallel_results$curves, big.mark = ",")` カーブを作り、合計 `r format(parallel_results$rows, big.mark = ",")` 行を読み取りました。並列の計算は Rust の中核（`riemann::batch`）で行います。入力は R のメインスレッドで Rust の値に変換し、スレッドはその値だけで計算し、結果は R のメインスレッドで表に戻します。中核の crate は extendr に依存しないので、計算中のスレッドから R の API は呼べません。
+
+スレッド数を変えても、すべての値、エラー、入力順が完全に一致する必要があります。時間は参考値で、実行のたびに変わります。
+
+```{r}
+#| label: parallel-batch
+parallel_results$by_threads |>
+  mutate(seconds = sprintf("%.2f", seconds), result = if_else(identical_to_one_thread, "PASS", "FAIL"), order = if_else(input_order_kept, "PASS", "FAIL")) |>
+  select(threads, seconds, result, order) |>
+  knitr::kable(col.names = c("Threads", "Seconds (for reference)", "Identical to one thread", "Input order kept"))
+```
+
+バッチは `threads = 1` でも常にワーカースレッドで計算し、直接呼び出しは R のメインスレッドで計算します。R のメインスレッドの x87 は拡張精度（64 ビット）、新しいスレッドは倍精度（53 ビット）で、GNU ビルドの数学関数はこの設定の影響を受けます。そのため、バッチと直接呼び出しは最下位の桁で違うことがあります。下の表は割引係数の差です。QuantLib R パッケージとの差がちょうど 0 なのは、直接呼び出しの場合です。
+
+```{r}
+#| label: parallel-vs-direct
+parallel_results$against_direct |>
+  mutate(across(c(max_abs_diff, max_rel_diff), \(x) sprintf("%.2e", x))) |>
+  knitr::kable(col.names = c("Discounts compared", "Exactly equal", "Max abs. diff., batch vs direct", "Max rel. diff., batch vs direct"))
+```
+
 # 実行環境
 
 ```{r}
 #| label: session
 tibble(
-  item = c("R", "QuantLib R package", "tidyverse", "Run at"),
-  value = c(as.character(getRversion()), as.character(packageVersion("QuantLib")),
+  item = c("R", "QuantLib R package", "riemann R package", "tidyverse", "Run at"),
+  value = c(as.character(getRversion()), as.character(packageVersion("QuantLib")), as.character(packageVersion("riemann")),
             as.character(packageVersion("tidyverse")), format(Sys.time(), "%Y-%m-%d %H:%M %Z"))
 ) |>
   knitr::kable(col.names = c("Item", "Value"))

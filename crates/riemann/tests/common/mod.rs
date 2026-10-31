@@ -4,10 +4,9 @@
 use riemann::instruments::FixedRateBondSpec;
 use riemann::ois::{OisCurveInstrument, OisCurveSpec, OisInterpolation, OvernightIndex};
 use riemann::time::{
-    Actual365Kind, ActualActualKind, AustraliaMarket, AustriaMarket, BrazilMarket, BusinessDayConvention, Calendar,
-    CanadaMarket, ChinaMarket, DateGenerationRule, DayCount, FranceMarket, GermanyMarket, HolidayCalendar,
-    IndonesiaMarket, IsraelMarket, ItalyMarket, JointRule, NewZealandMarket, Period, PolandMarket, RomaniaMarket,
-    RussiaMarket, ScheduleSpec, SouthKoreaMarket, Thirty360Kind, TimeUnit, UkMarket, UsMarket, Weekday,
+    Actual365Kind, ActualActualKind, BrazilMarket, BusinessDayConvention, Calendar, DateGenerationRule, DayCount,
+    GermanyMarket, HolidayCalendar, JointRule, Period, RussiaMarket, ScheduleSpec, Thirty360Kind, TimeUnit, UsMarket,
+    Weekday,
 };
 use riemann::Date;
 use std::path::PathBuf;
@@ -108,8 +107,6 @@ pub fn calendar_by_key(key: &str) -> Calendar {
     let three = || vec![Japan, Germany(GermanyMarket::Xetra), Brazil(BrazilMarket::Exchange)];
     let japan_moex = || vec![Japan, Russia(RussiaMarket::Moex)];
     match key {
-        "null_calendar" => NullCalendar,
-        "weekends_only" => WeekendsOnly,
         "bespoke_wednesday_thursday" => Bespoke {
             name: "Riemann test".to_string(),
             weekend: vec![Weekday::Wednesday, Weekday::Thursday],
@@ -119,79 +116,8 @@ pub fn calendar_by_key(key: &str) -> Calendar {
         "joint_japan_moex_holidays" => Joint(japan_moex(), JointRule::JoinHolidays),
         "joint_japan_moex_business_days" => Joint(japan_moex(), JointRule::JoinBusinessDays),
 
-        "argentina_merval" => Argentina,
-        "brazil_settlement" => Brazil(BrazilMarket::Settlement),
-        "brazil_exchange" => Brazil(BrazilMarket::Exchange),
-        "canada_settlement" => Canada(CanadaMarket::Settlement),
-        "canada_tsx" => Canada(CanadaMarket::Tsx),
-        "chile_sse" => Chile,
-        "mexico_bmv" => Mexico,
-        "us_settlement" => UnitedStates(UsMarket::Settlement),
-        "us_nyse" => UnitedStates(UsMarket::Nyse),
-        "us_government_bond" => UnitedStates(UsMarket::GovernmentBond),
-        "us_nerc" => UnitedStates(UsMarket::Nerc),
-        "us_libor_impact" => UnitedStates(UsMarket::LiborImpact),
-        "us_federal_reserve" => UnitedStates(UsMarket::FederalReserve),
-        "us_sofr" => UnitedStates(UsMarket::Sofr),
-
-        "target" => Target,
-        "austria_settlement" => Austria(AustriaMarket::Settlement),
-        "austria_exchange" => Austria(AustriaMarket::Exchange),
-        "czech_republic_pse" => CzechRepublic,
-        "denmark" => Denmark,
-        "finland" => Finland,
-        "france_settlement" => France(FranceMarket::Settlement),
-        "france_exchange" => France(FranceMarket::Exchange),
-        "germany_settlement" => Germany(GermanyMarket::Settlement),
-        "germany_frankfurt_stock_exchange" => Germany(GermanyMarket::FrankfurtStockExchange),
-        "germany_xetra" => Germany(GermanyMarket::Xetra),
-        "germany_eurex" => Germany(GermanyMarket::Eurex),
-        "germany_euwax" => Germany(GermanyMarket::Euwax),
-        "hungary" => Hungary,
-        "iceland_icex" => Iceland,
-        "italy_settlement" => Italy(ItalyMarket::Settlement),
-        "italy_exchange" => Italy(ItalyMarket::Exchange),
-        "norway" => Norway,
-        "poland_settlement" => Poland(PolandMarket::Settlement),
-        "poland_wse" => Poland(PolandMarket::Wse),
-        "romania_public" => Romania(RomaniaMarket::Public),
-        "romania_bvb" => Romania(RomaniaMarket::Bvb),
-        "russia_settlement" => Russia(RussiaMarket::Settlement),
-        "russia_moex" => Russia(RussiaMarket::Moex),
-        "slovakia_bsse" => Slovakia,
-        "sweden" => Sweden,
-        "switzerland" => Switzerland,
-        "ukraine_use" => Ukraine,
-        "uk_settlement" => UnitedKingdom(UkMarket::Settlement),
-        "uk_exchange" => UnitedKingdom(UkMarket::Exchange),
-        "uk_metals" => UnitedKingdom(UkMarket::Metals),
-
-        "botswana" => Botswana,
-        "israel_settlement" => Israel(IsraelMarket::Settlement),
-        "israel_tase" => Israel(IsraelMarket::Tase),
-        "israel_shir" => Israel(IsraelMarket::Shir),
-        "saudi_arabia_tadawul" => SaudiArabia,
-        "south_africa" => SouthAfrica,
-        "turkey" => Turkey,
-
-        "japan" => Japan,
-        "australia_settlement" => Australia(AustraliaMarket::Settlement),
-        "australia_asx" => Australia(AustraliaMarket::Asx),
-        "china_sse" => China(ChinaMarket::Sse),
-        "china_ib" => China(ChinaMarket::Ib),
-        "hong_kong_hkex" => HongKong,
-        "india_nse" => India,
-        "indonesia_bej" => Indonesia(IndonesiaMarket::Bej),
-        "indonesia_jsx" => Indonesia(IndonesiaMarket::Jsx),
-        "indonesia_idx" => Indonesia(IndonesiaMarket::Idx),
-        "new_zealand_wellington" => NewZealand(NewZealandMarket::Wellington),
-        "new_zealand_auckland" => NewZealand(NewZealandMarket::Auckland),
-        "singapore_sgx" => Singapore,
-        "south_korea_settlement" => SouthKorea(SouthKoreaMarket::Settlement),
-        "south_korea_krx" => SouthKorea(SouthKoreaMarket::Krx),
-        "taiwan_tsec" => Taiwan,
-        "thailand" => Thailand,
-        other => panic!("no Riemann calendar for the QuantLib key {other}"),
+        other => riemann::names::calendar(other)
+            .unwrap_or_else(|e| panic!("no Riemann calendar for the QuantLib key {other}: {e}")),
     }
 }
 

@@ -1,0 +1,18 @@
+Package: riemann
+Type: Package
+Title: Bond and OIS Curve Calculations from the Riemann Rust Library
+Version: 0.1.0
+Authors@R: person("Eiichi", "Horigome", role = c("aut", "cre"), email = "besuke.poripori@gmail.com")
+Description: R entry point of the Riemann financial library. The calculations are
+    in Rust; the R functions convert dates and return tibbles. Dates, calendars and
+    conventions follow QuantLib, and everything is passed explicitly.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    tibble
+Suggests:
+    testthat (>= 3.0.0),
+    readr
+Config/testthat/edition: 3
+SystemRequirements: Cargo (Rust's package manager), rustc, and on Windows the
+    x86_64-pc-windows-gnu target

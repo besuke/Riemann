@@ -1,0 +1,16 @@
+TARGET_DIR = ./rust/target
+LIBDIR = $(TARGET_DIR)/release
+STATLIB = $(LIBDIR)/libriemann_r.a
+PKG_LIBS = -L$(LIBDIR) -lriemann_r
+
+all: $(SHLIB)
+
+$(SHLIB): $(STATLIB)
+
+# cargo decides what to rebuild; without this, changed Rust sources would keep the old library.
+$(STATLIB): FORCE
+	cargo build --lib --release --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR)
+
+FORCE:
+
+.PHONY: all FORCE

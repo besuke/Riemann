@@ -3,7 +3,9 @@
 # cross-checks the QuantLib R package Version 1.42, whose exact C++ commit is unknown.
 # Agreement with QuantLib is not a check against actual market holidays.
 #
-# Riemann is called through crates/riemann/examples/verify_calendars.rs, until the R entry point of P4.
+# Riemann is called directly through its R package (crates/riemann-r). The joint and bespoke
+# calendars are not in that entry point yet, so they and the comparison use
+# crates/riemann/examples/verify_calendars.rs.
 #
 # Usage from an R session started anywhere in the repository:
 #   source("tools/verify/verify_common.R"); source("tools/verify/verify_calendars.R")
@@ -34,6 +36,24 @@ quantlib_cpp_calendar_values <- function(markets, root) {
     transmute(key = calendar, serial = map2(first, last, seq.int), kind = "E") |>
     unnest(serial)
   bind_rows(days, errors)
+}
+
+riemann_calendar_direct <- function(markets) {
+  require_riemann_package()
+  serials <- first_serial:last_serial
+  dates <- serial_to_date(serials)
+  # numbers with Sunday = 1, as in calendar_markets.csv
+  weekday <- as.integer(format(dates, "%w")) + 1L
+  markets |>
+    filter(region != "common") |>
+    pmap(\(key, weekend, ...) {
+      weekend_days <- as.integer(strsplit(weekend, " ", fixed = TRUE)[[1]])
+      business <- suppressWarnings(riemann::is_business_day(key, dates, on_error = "na"))
+      on_weekend <- weekday %in% weekend_days
+      kind <- case_when(is.na(business) ~ "E", !business & !on_weekend ~ "H", business & on_weekend ~ "W", .default = NA_character_)
+      tibble(key = key, serial = serials[!is.na(kind)], kind = kind[!is.na(kind)])
+    }) |>
+    list_rbind()
 }
 
 riemann_calendar_values <- function(markets, root) {
@@ -152,7 +172,16 @@ verify_calendars <- function(root = find_riemann_root()) {
   message("Reading QuantLib C++ v1.42 values for ", nrow(markets), " calendars ...")
   cpp <- quantlib_cpp_calendar_values(markets, root)
   message("Computing the same calendars with Riemann on ", last_serial - first_serial + 1L, " dates each ...")
-  riemann <- riemann_calendar_values(markets, root)
+  riemann_csv <- riemann_calendar_values(markets, root)
+  direct <- riemann_calendar_direct(markets)
+  regional <- riemann_csv |> semi_join(filter(markets, region != "common"), by = "key")
+  direct_vs_csv <- tibble(
+    calendars = n_distinct(markets$key[markets$region != "common"]),
+    dates = (last_serial - first_serial + 1L) * calendars,
+    differences = nrow(anti_join(direct, regional, by = c("key", "serial", "kind"))) + nrow(anti_join(regional, direct, by = c("key", "serial", "kind")))
+  )
+  # the direct values for the markets, the example program for the joint and bespoke calendars
+  riemann <- bind_rows(direct, riemann_csv |> anti_join(direct, by = "key"))
   message("Cross-checking with QuantLib R package ", as.character(packageVersion("QuantLib")), " (exact C++ commit unknown) ...")
   r_package <- compare_with_r_package(markets, cpp)
   by_market <- compare_calendars(markets, cpp, riemann) |>
@@ -161,5 +190,5 @@ verify_calendars <- function(root = find_riemann_root()) {
   message(sprintf("Calendars %d, differences %d, failed %d; R package compared %d, differences %d",
                   nrow(by_market), sum(by_market$differences), sum(by_market$result == "FAIL"),
                   sum(by_market$r_status == "compared"), sum(by_market$r_diff, na.rm = TRUE)))
-  list(by_market = by_market, per_year = holidays_per_year(cpp))
+  list(by_market = by_market, per_year = holidays_per_year(cpp), direct_vs_csv = direct_vs_csv)
 }

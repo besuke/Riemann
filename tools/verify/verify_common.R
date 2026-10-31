@@ -37,3 +37,24 @@ run_riemann_example <- function(example, input_path, output_path, root, attempts
   if (!file.exists(output_path)) stop(example, " example failed after ", attempts, " attempts.", call. = FALSE)
   invisible(log)
 }
+
+# The R package of Riemann, called directly. Install it with: R CMD INSTALL crates/riemann-r
+require_riemann_package <- function() {
+  if (!requireNamespace("riemann", quietly = TRUE)) {
+    stop("The riemann package is not installed. Run: R CMD INSTALL crates/riemann-r", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# Compares the same values from the direct call and through CSV. The CSV path writes numbers as
+# text, so R's reading of them can move the last bits.
+compare_direct_with_csv <- function(direct, csv, by, value = "value") {
+  joined <- full_join(rename(direct, direct = all_of(value)), rename(csv, csv = all_of(value)), by = by)
+  tibble(
+    compared = nrow(joined),
+    exact = sum(joined$direct == joined$csv, na.rm = TRUE),
+    both_error = sum(is.na(joined$direct) & is.na(joined$csv)),
+    one_sided = sum(is.na(joined$direct) != is.na(joined$csv)),
+    max_abs_diff = if (any(!is.na(joined$direct) & !is.na(joined$csv))) max(abs(joined$direct - joined$csv), na.rm = TRUE) else 0
+  )
+}

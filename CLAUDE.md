@@ -10,6 +10,7 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 | `docs/spec_dates_calendars.md` | P1 の仕様と照合結果 |
 | `docs/spec_bonds.md` | P2 の仕様と照合結果（2 章 P2-1、3 章 P2-2、4 章 P2-3、5 章 P2-4） |
 | `docs/spec_ois.md` | P3 の OIS カーブの仕様（QuantLib のソース調査、差、未確認事項） |
+| `docs/spec_r.md` | P4 の R の入口（構成、公開関数、エラーと panic、並列バッチ、照合結果、未対応） |
 | `docs/spec_autodiff.md` | 自動微分の設計（finmath-lib の方式） |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
 
@@ -56,7 +57,7 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 | P2-3 | 割引カーブによる評価（フラット、ゼロ、割引係数、ゼロスプレッド） | 完了 |
 | P2-4 | 日本式の単利・複利利回りとリスク指標（`yen_bond.rs`） | 完了 |
 | P3 | OIS のブートストラップ | **完了。TONAR・€STR・SOFR・SONIA の `MonotonicLogCubic` を照合済み（`docs/spec_ois.md` 8〜10 章）。指標はこの 4 つに限定する。±8% で振れる入力の 3 カーブは、QuantLib と一致するが入力気配の再現基準は未達（10.3 節）。GaussQuant・LagrangeFinance との照合（仕様書 10 章）は未実施。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
-| P4 | R の入口 | 未着手 |
+| P4 | R の入口 | 実装済み（`crates/riemann-r`、extendr。`docs/spec_r.md`）。債券・OIS 4 指標・カレンダーの直接呼び出しと並列バッチ。GaussQuant との比較は未実施 |
 | P5 | OIS の ASW と円ベーシス込み ASW | 未着手 |
 | P6・P7 | TypeScript の Node 版、ブラウザー版 | 未着手 |
 
@@ -79,4 +80,5 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 - `rustfmt` にファイルを渡すと `mod` 先まで整形する。テストのファイルでは `tests/common/mod.rs` まで変わるので、`--config skip_children=true` を付けて確かめる。
 - CRLF のファイルは MSYS の sed で CR が消える。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。
 - カレンダーの規則は `tools/golden/port_calendars.R` が生成する（`rules/` の `special.rs` 以外）。生成後に rustfmt をかける。C++ のビルドは Rtools の g++ を PATH に入れて、bash から実行する。
+- R パッケージ：`R CMD INSTALL crates/riemann-r`（`x86_64-pc-windows-gnu` と Rtools が必要）。テストは `crates/riemann-r/tests/testthat`。このビルドは MSVC の `cargo test` と数学ライブラリーが違い、最下位ビットの差が出る（`docs/spec_ois.md` 10.6 節）。
 - QuantLib のソース（v1.42 の確認用）は以前の会話の一時フォルダーにあり、新しい会話では使えない。必要なら一時フォルダーに clone し直す。

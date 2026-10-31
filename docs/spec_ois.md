@@ -450,3 +450,11 @@ TONAR の処理をそのまま使い、指標の違いは `OvernightIndex` の�
 ### 10.5 検証レポート
 
 `tools/verify/verify_riemann.qmd` に 3 指標を追加した。TONAR は 4 つ、他の指標は 2 つの曲線形で、対数線形と `MonotonicLogCubic` の両方を QuantLib と比べる。対数線形の 3 指標の照合は、このレポートの範囲だけである（`cargo test` の照合は `MonotonicLogCubic` だけ）。照合用データ全件の結果も表示し、「Riemann と QuantLib の差」「Riemann の再現誤差」「QuantLib の再現誤差」を分け、総合判定でも「QuantLib との照合」と「入力気配の再現」を分ける。
+
+### 10.6 微小な差の原因（P4 で判明）
+
+R パッケージ（`crates/riemann-r`、Rtools の GNU ツールチェーン）で照合用データ全件を計算すると、節点、任意の日付の割引係数、再現した気配の QuantLib R パッケージとの差は、4 指標とも**ちょうど 0** だった（2026-11-01、`tools/verify/verify_riemann.qmd`）。`cargo test` は MSVC でビルドする。QuantLib R パッケージも Rtools でビルドされている。
+
+【実行確認】したがって、8.3 節、9.3 節、10.4 節で未確認の推定としてきた微小な差の主な原因は、MSVC と Rtools の数学ライブラリーの違いと判断できる。ただし、`exp`・`ln` などの関数ごとに個別には確かめていない。GNU ビルドの値は、実行するスレッドの x87 の精度でも変わる（`docs/spec_r.md` 5 章）。ここでの差 0 は、R のメインスレッドで計算する直接呼び出しの結果である。
+
+€STR のケース 84 の反復回数の違いも、GNU ビルドでは起きない。10.4 節の許容誤差は、MSVC で実行する `cargo test` のものとして残す。**未達の 3 カーブは GNU ビルドでも基準未達のままである。**
