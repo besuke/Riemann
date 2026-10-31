@@ -12,6 +12,7 @@ pub mod instruments;
 pub mod interest_rate;
 pub mod math;
 pub mod time;
+pub mod yen_bond;
 
 pub use error::Error;
 pub use time::{Date, Month, Period, TimeUnit, Weekday};
