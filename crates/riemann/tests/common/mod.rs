@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use riemann::instruments::FixedRateBondSpec;
-use riemann::ois::{tonar, OisCurveInstrument, OisCurveSpec, OisInterpolation};
+use riemann::ois::{OisCurveInstrument, OisCurveSpec, OisInterpolation, OvernightIndex};
 use riemann::time::{
     Actual365Kind, ActualActualKind, AustraliaMarket, AustriaMarket, BrazilMarket, BusinessDayConvention, Calendar,
     CanadaMarket, ChinaMarket, DateGenerationRule, DayCount, FranceMarket, GermanyMarket, HolidayCalendar,
@@ -71,8 +71,8 @@ fn ois_tenor(label: &str) -> Period {
     Period::new(n.parse().unwrap(), unit)
 }
 
-/// TONAR curve inputs from a row of `ois_tonar_cases.csv`.
-pub fn tonar_curve_spec(r: &[String], interpolation: OisInterpolation) -> OisCurveSpec {
+/// OIS curve inputs from a row of a golden cases file such as `ois_tonar_cases.csv`.
+pub fn ois_curve_spec(r: &[String], index: OvernightIndex, interpolation: OisInterpolation) -> OisCurveSpec {
     let instruments = r[8]
         .split(' ')
         .map(|item| {
@@ -94,7 +94,7 @@ pub fn tonar_curve_spec(r: &[String], interpolation: OisInterpolation) -> OisCur
     OisCurveSpec {
         evaluation_date: date(&r[1]),
         reference_date: date(&r[2]),
-        index: tonar(),
+        index,
         curve_day_count: day_count(&r[3]),
         instruments,
         interpolation,

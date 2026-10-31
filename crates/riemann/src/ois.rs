@@ -17,7 +17,9 @@
 //! Lecuyer), `ql/cashflows/overnightindexedcouponpricer.cpp` (Copyright (C) 2009 Roland
 //! Lichters; (C) 2009 Ferdinando Ametrano; (C) 2014 Peter Caspers; (C) 2016 Stefano Fondi;
 //! (C) 2017 Joseph Jeisman; (C) 2017 Fabrice Lecuyer), `ql/indexes/ibor/tonar.hpp` (Copyright
-//! (C) 2022 Jonghee Lee), `ql/indexes/iborindex.cpp` (Copyright (C) 2000, 2001, 2002, 2003
+//! (C) 2022 Jonghee Lee), `ql/indexes/ibor/estr.cpp` (Copyright (C) 2021 Magnus Mencke),
+//! `ql/indexes/ibor/sofr.cpp` (Copyright (C) 2018 Roy Zywina), `ql/indexes/ibor/sonia.cpp`
+//! (Copyright (C) 2011 Ferdinando Ametrano), `ql/indexes/iborindex.cpp` (Copyright (C) 2000, 2001, 2002, 2003
 //! RiskMap srl; (C) 2003, 2004, 2005, 2006, 2008, 2009 StatPro Italia srl; (C) 2009 Ferdinando
 //! Ametrano), `ql/termstructures/iterativebootstrap.hpp` (Copyright (C) 2008, 2011, 2015
 //! Ferdinando Ametrano; (C) 2007 Chris Kenyon; (C) 2007 StatPro Italia srl; (C) 2015 Paolo
@@ -38,7 +40,7 @@ use crate::curves::{LogDiscountInterpolation, LogDiscounts, YieldCurve};
 use crate::math::solver1d::{brent, close_enough, finite_difference_newton_safe};
 use crate::time::{
     generate_schedule, Actual365Kind, BusinessDayConvention, Calendar, Date, DateGenerationRule,
-    DayCount, HolidayCalendar, Period, ScheduleSpec, TimeUnit,
+    DayCount, HolidayCalendar, Period, ScheduleSpec, TimeUnit, UkMarket, UsMarket,
 };
 use crate::Error;
 use std::cell::Cell;
@@ -63,6 +65,34 @@ pub struct OvernightIndex {
 pub fn tonar() -> OvernightIndex {
     OvernightIndex {
         calendar: HolidayCalendar::from(Calendar::Japan),
+        day_count: DayCount::Actual365Fixed(Actual365Kind::Standard),
+    }
+}
+
+/// €STR: TARGET calendar, Actual/360 (QuantLib `Estr`).
+pub fn estr() -> OvernightIndex {
+    OvernightIndex {
+        calendar: HolidayCalendar::from(Calendar::Target),
+        day_count: DayCount::Actual360 {
+            include_last_day: false,
+        },
+    }
+}
+
+/// SOFR: United States SOFR calendar, Actual/360 (QuantLib `Sofr`).
+pub fn sofr() -> OvernightIndex {
+    OvernightIndex {
+        calendar: HolidayCalendar::from(Calendar::UnitedStates(UsMarket::Sofr)),
+        day_count: DayCount::Actual360 {
+            include_last_day: false,
+        },
+    }
+}
+
+/// SONIA: United Kingdom exchange calendar, Actual/365 Fixed (QuantLib `Sonia`).
+pub fn sonia() -> OvernightIndex {
+    OvernightIndex {
+        calendar: HolidayCalendar::from(Calendar::UnitedKingdom(UkMarket::Exchange)),
         day_count: DayCount::Actual365Fixed(Actual365Kind::Standard),
     }
 }

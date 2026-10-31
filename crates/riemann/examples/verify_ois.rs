@@ -1,17 +1,17 @@
-//! Builds TONAR curves from a CSV for `tools/verify/verify_ois.R`, until the R entry point of P4.
+//! Builds OIS curves from a CSV for `tools/verify/verify_ois.R`, until the R entry point of P4.
 //!
 //! Usage: `verify_ois <input.csv> <output.csv>`. The first 9 input columns are those of
 //! `tests/golden/ois_tonar_cases.csv`; then interpolation (LogLinear or MonotonicLogCubic) and
-//! the probe date serials separated by spaces. Each output row is case, interpolation, kind,
+//! the probe date serials separated by spaces, and the index (TONAR, ESTR, SOFR or SONIA). Each output row is case, interpolation, kind,
 //! key (a date serial, or the instrument position for implied_rate and pillar_date), value;
 //! a value is a number or ERROR. A curve that cannot be built gives the single kind `build`.
 
 #[path = "../tests/common/mod.rs"]
 mod common;
 
-use common::{date, day_count, tonar_curve_spec};
+use common::{date, day_count, ois_curve_spec};
 use riemann::interest_rate::{Compounding, InterestRate};
-use riemann::ois::{build_ois_curve, OisCurve, OisInterpolation};
+use riemann::ois::{build_ois_curve, estr, sofr, sonia, tonar, OisCurve, OisInterpolation};
 use riemann::Error;
 
 fn cell(value: Result<f64, Error>) -> String {
@@ -28,10 +28,17 @@ fn value_rows(r: &[String]) -> Vec<(String, i64, String)> {
         "MonotonicLogCubic" => OisInterpolation::MonotonicLogCubic,
         other => panic!("unknown interpolation {other}"),
     };
+    let index = match r[11].as_str() {
+        "TONAR" => tonar(),
+        "ESTR" => estr(),
+        "SOFR" => sofr(),
+        "SONIA" => sonia(),
+        other => panic!("unknown index {other}"),
+    };
     let OisCurve {
         curve,
         quote_repricing,
-    } = match build_ois_curve(&tonar_curve_spec(r, interpolation)) {
+    } = match build_ois_curve(&ois_curve_spec(r, index, interpolation)) {
         Ok(built) => built,
         Err(_) => return vec![("build".to_string(), 0, "ERROR".to_string())],
     };
@@ -57,7 +64,7 @@ fn value_rows(r: &[String]) -> Vec<(String, i64, String)> {
             v.to_string(),
         ));
     }
-    for serial in r[10].split(' ') {
+    for serial in r[10].split_whitespace() {
         let d = date(serial);
         let next = date(&(serial.parse::<i64>().unwrap() + 1).to_string());
         let key: i64 = serial.parse().unwrap();

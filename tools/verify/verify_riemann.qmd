@@ -25,6 +25,7 @@ summary_table <- summarise_verification(results)
 ois_results <- verify_ois()
 ois_summary <- summarise_ois(ois_results)
 ois_compare <- compare_interpolations(ois_results)
+ois_golden <- verify_ois_golden()
 ois_curve_values <- ois_curves(ois_results)
 calendar_results <- verify_calendars()
 
@@ -51,7 +52,7 @@ Riemann の実装済みの計算を、合成データで QuantLib と比べる�
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
 - **Riemann の呼び方**：R の入口（P4）はまだないので、Rust の `crates/riemann/examples/` の `verify_bonds.rs`、`verify_ois.rs`、`verify_calendars.rs` を実行し、CSV で受け渡します。数値は文字列を経由するので、R での読み取りで最下位の桁に丸めの差が入る可能性があります。
 - **データ**：すべて合成の値で、市場データは使っていません。
-- **対象**：債券の価格と利回り（P2-1・P2-2）、TONAR の OIS カーブ（P3-1・P3-3）、全カレンダー。€STR・SOFR・SONIA（P3-2）は、まだ実装していません。
+- **対象**：債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 
 ## 総合判定
 
@@ -59,10 +60,21 @@ Riemann の実装済みの計算を、合成データで QuantLib と比べる�
 #| label: overall
 #| output: asis
 bond_ok <- sum(summary_table$failed) == 0 && nrow(results$settlement_mismatches) == 0
-ois_ok <- sum(ois_summary$failed) == 0 && all(ois_results$quotes$pass)
+ois_comparison_ok <- sum(ois_summary$failed) == 0 && all(ois_golden$summary$comparison == "PASS")
+ois_miss_curves <- sum(ois_golden$summary$miss_curves_riemann)
+ois_miss_quotes <- sum(ois_golden$summary$miss_quotes_riemann)
+ois_report_quotes_ok <- all(ois_results$quotes$pass)
+ois_golden_quotes_ok <- ois_miss_quotes == 0
 calendar_ok <- all(calendar_results$by_market$result == "PASS") && sum(calendar_results$by_market$r_diff, na.rm = TRUE) == 0
-cat(sprintf("- 債券：**%s**\n- TONAR の OIS カーブ：**%s**\n- カレンダー（QuantLib との一致）：**%s**\n",
-            pass_label(bond_ok), pass_label(ois_ok), pass_label(calendar_ok)))
+cat(sprintf(paste0("- 債券：**%s**\n",
+                  "- OIS カーブ、QuantLib との照合：**%s**\n",
+                  "- OIS カーブ、入力気配の再現（この文書の曲線形）：**%s**\n",
+                  "- OIS カーブ、入力気配の再現（照合用データ全件）：**%s**\n",
+                  "- カレンダー（QuantLib との一致）：**%s**\n"),
+            pass_label(bond_ok), pass_label(ois_comparison_ok),
+            if (ois_report_quotes_ok) "基準達成" else "基準未達",
+            if (ois_golden_quotes_ok) "基準達成" else sprintf("基準未達（%d カーブ、%d 商品。QuantLib も同じカーブで未達）", ois_miss_curves, ois_miss_quotes),
+            pass_label(calendar_ok)))
 ```
 
 # 債券
@@ -184,7 +196,7 @@ results$comparison |>
   knitr::kable()
 ```
 
-# TONAR の OIS カーブ
+# OIS カーブ（TONAR・€STR・SOFR・SONIA）
 
 ## 補間の方式
 
@@ -206,7 +218,16 @@ ois_results$method_check |>
 
 ## 入力条件
 
-数式から作った 4 つの曲線形で、市場データではありません。指標は TONAR（日本のカレンダー、Actual/365 Fixed）、カーブの日数計算も Actual/365 Fixed、基準日は評価日です。受渡日数などは、QuantLib の既定ではなく、ここで明示した値です。市場の規約を表すものではありません。
+数式から作った曲線形で、市場データではありません。TONAR は 4 つ、他の指標は 2 つの形で比べます。カーブの日数計算は Actual/365 Fixed、基準日は評価日です。受渡日数と支払ラグは比較のために明示した値で、市場の規約を表すものではありません（受渡日数は QuantLib `MakeOIS` の既定と同じ値で、市場の規約としては未確認です。`docs/spec_ois.md` 2.10 節）。
+
+| 指標 | カレンダー | 日数計算 | Riemann |
+|---|---|---|---|
+| TONAR | `Japan` | Actual/365 Fixed | `tonar()` |
+| €STR（表では ESTR） | `TARGET` | Actual/360 | `estr()` |
+| SOFR | `UnitedStates(SOFR)` | Actual/360 | `sofr()` |
+| SONIA | `UnitedKingdom(Exchange)` | Actual/365 Fixed | `sonia()` |
+
+4 指標の違いは、この値だけです。カーブを作る処理は共通です。
 
 ```{r}
 #| label: ois-inputs
@@ -219,7 +240,7 @@ ois_results$scenarios |>
                              "ON quote", "30Y quote", "Lowest quote", "Highest quote"))
 ```
 
-商品は `r paste(ois_tenors()$label, collapse = "、")` の `r nrow(ois_tenors())` 本です。評価日には、日本の休日（2026-04-29）、2 月 29 日、月末を含めました。
+商品は `r paste(ois_tenors()$label, collapse = "、")` の `r nrow(ois_tenors())` 本です。評価日には、各カレンダーの休日（2026-04-29 の日本、2026-12-25 の TARGET、2026-04-03 の SOFR、2026-05-04 の英国）、2 月 29 日、月末を含めました。
 
 ## 項目ごとの結果
 
@@ -231,26 +252,26 @@ ois_results$scenarios |>
 #| label: ois-summary
 ois_summary |>
   mutate(tolerance = sprintf("%.0e", tolerance), max_diff = sprintf("%.2e", max_diff)) |>
-  select(interpolation, kind, compared, exact, within_tolerance, failed, max_diff, tolerance, diff_type, result) |>
-  knitr::kable(col.names = c("Interpolation", "Measure", "Compared", "Exact", "Within tol.", "Failed", "Max diff", "Tolerance", "Diff type", "Result"))
+  select(index, interpolation, kind, compared, exact, within_tolerance, failed, max_diff, tolerance, diff_type, result) |>
+  knitr::kable(col.names = c("Index", "Interpolation", "Measure", "Compared", "Exact", "Within tol.", "Failed", "Max diff", "Tolerance", "Diff type", "Result"))
 ```
 
-この文書の 4 つの曲線形は、すべて作成に成功しています。エラーの一致は、ここでは確かめていません。作成の失敗とその原因、失敗した反復の回数と商品の位置は、`cargo test --test golden_ois_tonar` で照合しています。
+この文書のカーブは、すべて作成に成功しています。エラーの一致は、ここでは確かめていません。作成の失敗とその原因、失敗した反復の回数と商品の位置は、`cargo test --test golden_ois` で照合しています。
 
 ## カーブの図
 
-図の線はすべて Riemann の値です。QuantLib との差は前の表のとおりで、この縮尺では見分けられません。
+図の線はすべて Riemann の値です。指標の間で形が似ているのは、同じ式から作った気配を使っているためで、各市場のカーブを表すものではありません。QuantLib との差は前の表のとおりで、この縮尺では見分けられません。
 
 ```{r}
 #| label: fig-ois-discount
 #| fig-cap: "割引係数：対数線形と MonotonicLogCubic"
 #| fig-width: 9
-#| fig-height: 5
+#| fig-height: 7
 ois_curve_values |>
   filter(kind == "discount") |>
   ggplot(aes(years, value, colour = interpolation)) +
   geom_line(linewidth = 0.7) +
-  facet_wrap(vars(scenario)) +
+  facet_wrap(vars(scenario), ncol = 4) +
   scale_colour_manual(values = series_colours) +
   labs(x = "Years from the reference date", y = "Discount factor", colour = NULL) +
   theme_verify()
@@ -260,12 +281,12 @@ ois_curve_values |>
 #| label: fig-ois-zero
 #| fig-cap: "ゼロ金利（連続複利）：対数線形と MonotonicLogCubic"
 #| fig-width: 9
-#| fig-height: 5
+#| fig-height: 7
 ois_curve_values |>
   filter(kind == "zero_continuous") |>
   ggplot(aes(years, value * 100, colour = interpolation)) +
   geom_line(linewidth = 0.7) +
-  facet_wrap(vars(scenario), scales = "free_y") +
+  facet_wrap(vars(scenario), ncol = 4, scales = "free_y") +
   scale_colour_manual(values = series_colours) +
   labs(x = "Years from the reference date", y = "Zero rate (%)", colour = NULL) +
   theme_verify()
@@ -275,12 +296,12 @@ ois_curve_values |>
 #| label: fig-ois-forward
 #| fig-cap: "1 日フォワード金利（単利）：対数線形と MonotonicLogCubic"
 #| fig-width: 9
-#| fig-height: 5
+#| fig-height: 7
 ois_curve_values |>
   filter(kind == "forward_1d_simple") |>
   ggplot(aes(years, value * 100, colour = interpolation)) +
   geom_line(linewidth = 0.7) +
-  facet_wrap(vars(scenario), scales = "free_y") +
+  facet_wrap(vars(scenario), ncol = 4, scales = "free_y") +
   scale_colour_manual(values = series_colours) +
   labs(x = "Years from the reference date", y = "1-day forward rate (%)", colour = NULL) +
   theme_verify()
@@ -294,13 +315,13 @@ ois_curve_values |>
 #| label: fig-ois-gap
 #| fig-cap: "MonotonicLogCubic と対数線形の差（bp）"
 #| fig-width: 9
-#| fig-height: 5
+#| fig-height: 7
 ois_compare$differences |>
   mutate(kind = recode_values(kind, "zero_continuous" ~ "Zero rate", "forward_1d_simple" ~ "1-day forward")) |>
   ggplot(aes(years, bp)) +
   geom_hline(yintercept = 0, colour = "#c3c2b7") +
   geom_line(colour = "#2a78d6", linewidth = 0.6) +
-  facet_grid(rows = vars(kind), cols = vars(scenario), scales = "free_y") +
+  facet_wrap(vars(scenario, kind), ncol = 4, scales = "free_y") +
   labs(x = "Years from the reference date", y = "MonotonicLogCubic minus LogLinear (bp)") +
   theme_verify()
 ```
@@ -324,26 +345,26 @@ ois_compare$summary |>
 
 ## 入力気配の再現
 
-カーブで計算し直した気配と、入力の気配の差です。許容誤差は `r sprintf("%.0e", quote_reproduction_tolerance())`（金利）です。`MonotonicLogCubic` の誤差は対数線形より大きくなりますが、QuantLib でも同じ大きさです。
+カーブで計算し直した気配と、入力の気配の差です。許容誤差は `r sprintf("%.0e", quote_reproduction_tolerance())`（金利）です。`MonotonicLogCubic` の誤差は対数線形より大きくなりますが、QuantLib でも同じ大きさです。「Riemann と QuantLib の差」「Riemann の再現誤差」「QuantLib の再現誤差」は別の量なので、列を分けています。
 
 ```{r}
 #| label: ois-quote-summary
 ois_results$quotes |>
   group_by(scenario, interpolation) |>
-  summarise(instruments = n(), quantlib = max(error_quantlib), riemann = max(error_riemann),
-            failed = sum(!pass), .groups = "drop") |>
-  mutate(result = pass_label(failed == 0),
+  summarise(instruments = n(), difference = max(diff_riemann_quantlib), riemann = max(error_riemann), quantlib = max(error_quantlib),
+            failed = sum(!pass), failed_quantlib = sum(!pass_quantlib), .groups = "drop") |>
+  mutate(result = if_else(failed == 0, "基準達成", "基準未達"), result_quantlib = if_else(failed_quantlib == 0, "基準達成", "基準未達"),
          tolerance = sprintf("%.0e", quote_reproduction_tolerance()),
-         across(c(quantlib, riemann), \(x) sprintf("%.2e", x))) |>
-  select(scenario, interpolation, instruments, quantlib, riemann, tolerance, failed, result) |>
-  knitr::kable(col.names = c("Scenario", "Interpolation", "Instruments", "Max error, QuantLib", "Max error, Riemann", "Tolerance", "Failed", "Result"))
+         across(c(difference, quantlib, riemann), \(x) sprintf("%.2e", x))) |>
+  select(scenario, interpolation, instruments, difference, riemann, result, quantlib, result_quantlib, tolerance) |>
+  knitr::kable(col.names = c("Scenario", "Interpolation", "Instruments", "Max diff., Riemann vs QuantLib", "Max error, Riemann", "Riemann reproduction", "Max error, QuantLib", "QuantLib reproduction", "Tolerance"))
 ```
 
 ```{r}
 #| label: fig-ois-quotes
 #| fig-cap: "入力気配の再現誤差（破線は許容誤差。差が 0 の値は 1e-18 に置く）"
 #| fig-width: 9
-#| fig-height: 5
+#| fig-height: 7
 ois_results$quotes |>
   mutate(label = factor(label, ois_tenors()$label), plot_error = pmax(error_riemann, 1e-18)) |>
   ggplot(aes(label, plot_error, colour = interpolation, group = interpolation)) +
@@ -351,7 +372,7 @@ ois_results$quotes |>
   geom_line(linewidth = 0.5) +
   geom_point(size = 1.6) +
   scale_y_log10() +
-  facet_wrap(vars(scenario)) +
+  facet_wrap(vars(scenario), ncol = 4) +
   scale_colour_manual(values = series_colours) +
   labs(x = NULL, y = "|Implied rate - quote|", colour = NULL) +
   theme_verify() +
@@ -365,9 +386,72 @@ ois_results$quotes |>
 ois_results$quotes |>
   filter(interpolation == "MonotonicLogCubic") |>
   transmute(scenario, label, quote = sprintf("%.5f%%", quote * 100), quantlib = sprintf("%.14f%%", quantlib * 100),
-            riemann = sprintf("%.14f%%", riemann * 100), error = sprintf("%.2e", error_riemann),
-            tolerance = sprintf("%.0e", tolerance), result = pass_label(pass)) |>
-  knitr::kable(col.names = c("Scenario", "Instrument", "Quote", "QuantLib implied", "Riemann implied", "Error", "Tolerance", "Result"))
+            riemann = sprintf("%.14f%%", riemann * 100), difference = sprintf("%.2e", diff_riemann_quantlib),
+            error = sprintf("%.2e", error_riemann), error_quantlib = sprintf("%.2e", error_quantlib),
+            tolerance = sprintf("%.0e", tolerance), result = if_else(pass, "基準達成", "基準未達")) |>
+  knitr::kable(col.names = c("Scenario", "Instrument", "Quote", "QuantLib implied", "Riemann implied", "Diff., Riemann vs QuantLib", "Error, Riemann", "Error, QuantLib", "Tolerance", "Riemann reproduction"))
+```
+
+## 照合用データ全件の結果
+
+上の曲線形とは別に、乱数で作った照合用データ（`tests/golden/ois_*_log_cubic_*.csv`。TONAR 500 通り、他の指標 400 通り）をすべて比べます。解きにくい入力も含みます。補間は `MonotonicLogCubic` で、`accuracy` は仕様どおり 1e-12 です。作成の失敗の原因と商品の日付は `cargo test --test golden_ois` で比べています。
+
+**「QuantLib との照合」と「入力気配の再現」は別の判定です。** QuantLib と一致していても、入力の気配を再現しているとは限りません。
+
+```{r}
+#| label: ois-golden-comparison
+ois_golden$summary |>
+  transmute(index, curves, built, both_error, build_mismatches, quotes,
+            node = sprintf("%.2e", max_diff_node), discount = sprintf("%.2e", max_diff_discount),
+            quote = sprintf("%.2e", max_diff_quote), comparison) |>
+  knitr::kable(col.names = c("Index", "Curves", "Built", "Both error", "Build mismatches", "Quotes",
+                             "Max diff., nodes", "Max diff., discounts", "Max diff., repriced quotes", "QuantLib comparison"))
+```
+
+```{r}
+#| label: ois-golden-reproduction
+ois_golden$summary |>
+  transmute(index, quotes,
+            riemann = sprintf("%.2e", max_error_riemann), riemann_quotes = miss_quotes_riemann, riemann_curves = miss_curves_riemann,
+            quantlib = sprintf("%.2e", max_error_quantlib), quantlib_quotes = miss_quotes_quantlib, quantlib_curves = miss_curves_quantlib,
+            comparison, reproduction) |>
+  knitr::kable(col.names = c("Index", "Quotes", "Max error, Riemann", "Over 1e-9, quotes", "Over 1e-9, curves",
+                             "Max error, QuantLib", "Over 1e-9, quotes", "Over 1e-9, curves", "QuantLib comparison", "Riemann reproduction"))
+```
+
+次のカーブは、QuantLib との照合は PASS ですが、**入力気配の再現基準（1e-9）は未達**です。Riemann と QuantLib の両方が未達で、節点は QuantLib と一致しています。
+
+```{r}
+#| label: ois-golden-misses
+ois_golden$misses |>
+  transmute(index, case, labels, miss_quotes,
+            difference = sprintf("%.2e", max_diff), riemann = sprintf("%.2e", max_error_riemann), quantlib = sprintf("%.2e", max_error_quantlib),
+            lowest_discount = sprintf("%.2e", lowest_discount),
+            comparison = "PASS", reproduction = "基準未達") |>
+  knitr::kable(col.names = c("Index", "Case", "Instruments over 1e-9", "Quotes", "Max diff., Riemann vs QuantLib", "Max error, Riemann",
+                             "Max error, QuantLib", "Lowest discount factor", "QuantLib comparison", "Input quote reproduction"))
+```
+
+いずれも、±8% で交互に振れる気配です。`accuracy` は割引係数に対する絶対の精度なので、割引係数が小さいカーブでは金利の精度が落ちます。
+
+## 許容誤差の変更
+
+`MonotonicLogCubic` の照合用データでは、次のように許容誤差を変えました。`accuracy` は変えていません。
+
+| 対象 | 変更前 | 変更後 | 理由 |
+|---|---|---|---|
+| 節点と任意の日付の割引係数 | 相対 1e-12 | 絶対 2e-12 | 反復は差が `accuracy`（1e-12）以内で止まり、最後の変化量がちょうど `accuracy` 付近だと、QuantLib と反復回数が 1 回違うことがあります |
+| 再現した気配の QuantLib との差 | 相対 1e-12 | 絶対 1e-10 | 金利の基準（仕様書 7.3 節）に合わせました。短い期間の金利では、最下位ビットの差が相対では大きく見えます |
+
+原因の確認で `accuracy` を 1.001e-12 にしたのは一度きりの実験で、ライブラリーの設定にも照合にも使っていません。€STR のケース 84 では、差が 1.0e-12 から 6.7e-16 に下がりました。
+
+変更前の基準を超えた件数です。
+
+```{r}
+#| label: ois-golden-tolerance
+ois_golden$summary |>
+  transmute(index, over_node, over_discount, over_quote, quotes) |>
+  knitr::kable(col.names = c("Index", "Nodes over relative 1e-12", "Discounts over relative 1e-12", "Repriced quotes over relative 1e-12", "Repriced quotes compared"))
 ```
 
 # カレンダー

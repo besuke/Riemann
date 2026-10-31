@@ -1,16 +1,19 @@
-//! Compares TONAR OIS curves with golden values from the QuantLib R package Version 1.42,
-//! whose exact C++ commit is unknown (`tools/golden/p3_tonar_ois.R` for log-linear and
-//! `tools/golden/p3_tonar_log_cubic.R` for monotonic log-cubic). Dates must match exactly and
+//! Compares OIS curves with golden values from the QuantLib R package Version 1.42, whose exact
+//! C++ commit is unknown (`tools/golden/p3_tonar_ois.R` for log-linear TONAR,
+//! `tools/golden/p3_tonar_log_cubic.R` and `tools/golden/p3_ois_index_log_cubic.R` for monotonic
+//! log-cubic). Dates must match exactly and
 //! errors by cause. Node discount factors, discounts and implied rates must match within the
 //! relative tolerance of each test, and the curve must reprice each quote within 1e-9.
 
 mod common;
 
-use common::{date, day_count, golden_rows, tonar_curve_spec, Stats};
+use common::{date, day_count, golden_rows, ois_curve_spec, Stats};
 use riemann::interest_rate::Compounding;
-use riemann::ois::{build_ois_curve, OisCurve, OisInterpolation};
+use riemann::ois::{
+    build_ois_curve, estr, sofr, sonia, tonar, OisCurve, OisInterpolation, OvernightIndex,
+};
 use riemann::Error;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Maps a QuantLib error message to the matching Riemann error.
 fn same_cause(row: &[String], got: &Error) -> bool {
@@ -73,14 +76,23 @@ fn check_rate(
 /// the field says so, because a relative test on a small short rate only measures its size.
 struct Tolerances {
     relative: f64,
+    discount_absolute: f64,
     implied_relative: f64,
     implied_absolute: f64,
     zero: f64,
     forward_1d: f64,
     forward_instantaneous: f64,
+    /// Curves whose repriced quotes miss the input by more than 1e-9. They are listed one by one:
+    /// agreeing with QuantLib does not make them meet the reproduction criterion.
+    reproduction_misses: &'static [&'static str],
 }
 
-fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Tolerances) {
+fn check_curves(
+    prefix: &str,
+    index: OvernightIndex,
+    interpolation: OisInterpolation,
+    tolerances: Tolerances,
+) {
     let cases = golden_rows(&format!("{prefix}_cases.csv"));
     let instruments_rows = golden_rows(&format!("{prefix}_instruments.csv"));
     let nodes_rows = golden_rows(&format!("{prefix}_nodes.csv"));
@@ -99,11 +111,15 @@ fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Toler
     let (mut s_zero, mut s_forward, mut s_instantaneous) =
         (Stats::default(), Stats::default(), Stats::default());
     let (mut max_repricing_ql, mut max_repricing) = (0.0_f64, 0.0_f64);
+    let (mut quantlib_miss_quotes, mut riemann_miss_quotes) = (0, 0);
+    let (mut quantlib_miss_curves, mut riemann_miss_curves) = (BTreeSet::new(), BTreeSet::new());
+    // how many values the criteria used before P3-2 would have rejected (docs/spec_ois.md 10.4)
+    let (mut nodes_over, mut discounts_over, mut implied_over) = (0, 0, 0);
 
     for r in &cases {
         let case = r[0].as_str();
         let status = r[9].as_str();
-        let result = build_ois_curve(&tonar_curve_spec(r, interpolation));
+        let result = build_ois_curve(&ois_curve_spec(r, index.clone(), interpolation));
         *causes
             .entry(status.split(':').next().unwrap().chars().take(40).collect())
             .or_default() += 1;
@@ -154,8 +170,19 @@ fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Toler
                 )),
                 (implied, Some(v)) => {
                     let golden: f64 = implied.parse().unwrap();
-                    max_repricing_ql = max_repricing_ql.max((golden - q.rate).abs());
-                    max_repricing = max_repricing.max((v - q.rate).abs());
+                    let (quantlib_error, riemann_error) =
+                        ((golden - q.rate).abs(), (v - q.rate).abs());
+                    max_repricing_ql = max_repricing_ql.max(quantlib_error);
+                    max_repricing = max_repricing.max(riemann_error);
+                    if quantlib_error > 1e-9 {
+                        quantlib_miss_quotes += 1;
+                        quantlib_miss_curves.insert(case.to_string());
+                    }
+                    if riemann_error > 1e-9 {
+                        riemann_miss_quotes += 1;
+                        riemann_miss_curves.insert(case.to_string());
+                    }
+                    implied_over += usize::from((v - golden).abs() > 1e-12 * golden.abs());
                     if !s_implied.close(implied, v, tolerances.implied_relative) {
                         bad.push(format!(
                             "case {case}: implied rate: QuantLib {implied}, Riemann {v}"
@@ -182,6 +209,8 @@ fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Toler
                     date(&g[1])
                 ));
             }
+            let golden: f64 = g[2].parse().unwrap();
+            nodes_over += usize::from((v - golden).abs() > 1e-12 * golden.abs());
             if !s_nodes.close(&g[2], *v, tolerances.relative) {
                 bad.push(format!(
                     "case {case} node {d}: QuantLib {}, Riemann {v}",
@@ -203,7 +232,11 @@ fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Toler
                 }
                 ("ERROR", Err(Error::OutsideCurveRange { .. })) => d >= date(&r[2]) && r[4] == "0",
                 ("ERROR", _) | (_, Err(_)) => false,
-                (golden, Ok(v)) => s_discounts.close(golden, *v, tolerances.relative),
+                (golden, Ok(v)) => {
+                    let value: f64 = golden.parse().unwrap();
+                    discounts_over += usize::from((v - value).abs() > 1e-12 * value.abs());
+                    s_discounts.close(golden, *v, tolerances.relative)
+                }
             };
             if !ok {
                 bad.push(format!(
@@ -258,7 +291,31 @@ fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Toler
     }
     eprintln!("discount errors matched {errors_in_discounts}");
     eprintln!("max |implied - quote|: QuantLib {max_repricing_ql:e}, Riemann {max_repricing:e}");
-    assert!(max_repricing <= 1e-9, "repricing error {max_repricing:e}");
+    eprintln!("reproduction over 1e-9: QuantLib {quantlib_miss_quotes} quotes in {quantlib_miss_curves:?}, Riemann {riemann_miss_quotes} quotes in {riemann_miss_curves:?}");
+    eprintln!("over a relative 1e-12: nodes {nodes_over}, discounts {discounts_over}, implied {implied_over}");
+    assert!(
+        s_nodes.max_abs <= tolerances.discount_absolute,
+        "nodes {:e}",
+        s_nodes.max_abs
+    );
+    assert!(
+        s_discounts.max_abs <= tolerances.discount_absolute,
+        "discounts {:e}",
+        s_discounts.max_abs
+    );
+    let expected: BTreeSet<String> = tolerances
+        .reproduction_misses
+        .iter()
+        .map(|c| c.to_string())
+        .collect();
+    assert_eq!(
+        riemann_miss_curves, expected,
+        "curves missing the reproduction criterion, Riemann"
+    );
+    assert_eq!(
+        quantlib_miss_curves, expected,
+        "curves missing the reproduction criterion, QuantLib"
+    );
     assert!(
         s_implied.max_abs <= tolerances.implied_absolute,
         "implied {:e}",
@@ -291,32 +348,74 @@ fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Toler
 fn log_linear_curves_match_quantlib_r_package() {
     check_curves(
         "ois_tonar",
+        tonar(),
         OisInterpolation::LogLinear,
         Tolerances {
             relative: 1e-12,
+            discount_absolute: 1.0,
             implied_relative: 1e-12,
             implied_absolute: 1e-10,
             zero: 0.0,
             forward_1d: 0.0,
             forward_instantaneous: 0.0,
+            reproduction_misses: &[],
         },
     );
 }
 
+/// Discount factors: each bootstrap stops within the accuracy of 1e-12, and the number of passes
+/// can differ by one when the last change is on the threshold (specification 7.3), hence 2e-12.
+/// Rates: absolute 1e-10 (specification 7.3). The forward at a date divides by 0.0001 years, so the
+/// relative 1e-12 of discount factors becomes 1e-8.
+fn monotonic_log_cubic_tolerances(reproduction_misses: &'static [&'static str]) -> Tolerances {
+    Tolerances {
+        relative: f64::INFINITY,
+        discount_absolute: 2e-12,
+        implied_relative: f64::INFINITY,
+        implied_absolute: 1e-10,
+        zero: 1e-10,
+        forward_1d: 1e-10,
+        forward_instantaneous: 1e-8,
+        reproduction_misses,
+    }
+}
+
 #[test]
-fn monotonic_log_cubic_curves_match_quantlib_r_package() {
+fn tonar_monotonic_log_cubic_curves_match_quantlib_r_package() {
     check_curves(
         "ois_tonar_log_cubic",
+        tonar(),
         OisInterpolation::MonotonicLogCubic,
-        // rates: absolute 1e-10 (specification 7.3). The forward at a date divides by 0.0001
-        // years, so the relative 1e-12 of discount factors becomes 1e-8.
-        Tolerances {
-            relative: 1e-12,
-            implied_relative: f64::INFINITY,
-            implied_absolute: 1e-10,
-            zero: 1e-10,
-            forward_1d: 1e-10,
-            forward_instantaneous: 1e-8,
-        },
+        monotonic_log_cubic_tolerances(&[]),
+    );
+}
+
+#[test]
+fn estr_monotonic_log_cubic_curves_match_quantlib_r_package() {
+    check_curves(
+        "ois_estr_log_cubic",
+        estr(),
+        OisInterpolation::MonotonicLogCubic,
+        monotonic_log_cubic_tolerances(&["125", "246"]),
+    );
+}
+
+#[test]
+fn sofr_monotonic_log_cubic_curves_match_quantlib_r_package() {
+    check_curves(
+        "ois_sofr_log_cubic",
+        sofr(),
+        OisInterpolation::MonotonicLogCubic,
+        monotonic_log_cubic_tolerances(&["199"]),
+    );
+}
+
+#[test]
+fn sonia_monotonic_log_cubic_curves_match_quantlib_r_package() {
+    check_curves(
+        "ois_sonia_log_cubic",
+        sonia(),
+        OisInterpolation::MonotonicLogCubic,
+        monotonic_log_cubic_tolerances(&[]),
     );
 }

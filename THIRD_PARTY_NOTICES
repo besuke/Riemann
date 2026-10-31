@@ -50,7 +50,8 @@ used for verification:
   ql/termstructures/yield/ratehelpers.cpp, ql/instruments/makeois.cpp,
   ql/instruments/overnightindexedswap.cpp, ql/instruments/fixedvsfloatingswap.cpp,
   ql/cashflows/overnightindexedcoupon.cpp, ql/cashflows/overnightindexedcouponpricer.cpp,
-  ql/indexes/ibor/tonar.hpp, ql/indexes/iborindex.cpp,
+  ql/indexes/ibor/tonar.hpp, ql/indexes/ibor/estr.cpp, ql/indexes/ibor/sofr.cpp,
+  ql/indexes/ibor/sonia.cpp, ql/indexes/iborindex.cpp,
   ql/termstructures/iterativebootstrap.hpp, ql/termstructures/yield/bootstraptraits.hpp,
   ql/termstructures/yield/piecewiseyieldcurve.hpp,
   ql/pricingengines/swap/discountingswapengine.cpp
