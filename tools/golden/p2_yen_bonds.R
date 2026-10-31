@@ -4,7 +4,7 @@
 # Writes tests/golden/yen_bonds.csv. Numbers have 17 significant digits; ERROR = GaussQuant
 # raised an error.
 #
-# Remaining years: GaussQuant (the VBA-compatible definition that Riemann adopts) switches to
+# Remaining years: GaussQuant (the definition that Riemann adopts) switches to
 # the anniversary rule (leap days not counted) when the calendar years differ by more than
 # one. yf_market is a second-hand description of market practice that switches when the
 # remaining period is one year or more; it is kept only for reference, and rule_differs = 1

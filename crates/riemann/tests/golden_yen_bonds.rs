@@ -76,7 +76,7 @@ fn yen_bonds_match_gaussquant() {
     let num = |s: &str| s.parse::<f64>().unwrap();
     for r in &rows {
         let case = r[0].as_str();
-        // remaining years: the GaussQuant (VBA-compatible) rule
+        // remaining years: the rule of docs/spec_bonds.md 5.1, as in GaussQuant
         c.check(
             case,
             "remaining_years",

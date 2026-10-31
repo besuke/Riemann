@@ -1,8 +1,8 @@
 //! Japanese bond conventions: remaining years, simple yield, compound yield on a geometric
 //! series of coupons, and risk measures with yields in percent.
 //!
-//! These are the VBA-compatible definitions carried over from GaussQuant
-//! (`R/bond_yen_GQL.R`, commit 4ff081c "Add VBA-compatible yen bond analytics"; GaussQuant is
+//! The rules are those of GaussQuant
+//! (`R/bond_yen_GQL.R`, commit 4ff081c; GaussQuant is
 //! by the same author as Riemann). The same rules, arithmetic order and truncation are kept
 //! so that results match GaussQuant; see `docs/spec_bonds.md` chapter 5.
 //!
@@ -47,6 +47,10 @@ fn invalid(reason: &str) -> Error {
 /// years and the rest is the days between the two month-days placed in the non-leap years
 /// 1990 and 1991, over 365 (February 29 is taken as February 28). Otherwise the actual days
 /// over 365, so a February 29 in the period counts as a day.
+///
+/// The anniversary of February 29 in a non-leap year is February 28, so that 2024-02-29 to
+/// 2025-02-28 is one year. This rule belongs to these Japanese bond calculations only; the
+/// QuantLib-compatible dates and day counts in `time` do not use it.
 pub fn remaining_years(start: Date, end: Date) -> Result<f64, Error> {
     if end < start {
         return Err(invalid(
@@ -371,4 +375,62 @@ pub fn risk_from_compound_yield(
         values.dp_dy_pct,
         values.d2p_dy2_pct,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::time::{Actual365Kind, ActualActualKind, DayCount};
+
+    fn d(y: i32, m: u32, day: u32) -> Date {
+        Date::from_ymd(y, m, day).unwrap()
+    }
+
+    #[test]
+    fn february_29_anniversaries_are_whole_years() {
+        assert_eq!(remaining_years(d(2024, 2, 29), d(2025, 2, 28)), Ok(1.0));
+        for year in (1904..=2196)
+            .step_by(4)
+            .filter(|y| crate::time::is_leap(*y))
+        {
+            for n in (1..=40).filter(|n| year + n <= 2199) {
+                let end_day = if crate::time::is_leap(year + n) {
+                    29
+                } else {
+                    28
+                };
+                assert_eq!(
+                    remaining_years(d(year, 2, 29), d(year + n, 2, end_day)),
+                    Ok(n as f64),
+                    "{year} + {n}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn days_around_the_february_29_anniversary() {
+        assert_eq!(
+            remaining_years(d(2024, 2, 29), d(2025, 2, 27)),
+            Ok(truncate_decimal(364.0 / 365.0, 7))
+        );
+        assert_eq!(
+            remaining_years(d(2024, 2, 29), d(2025, 3, 1)),
+            Ok(truncate_decimal(366.0 / 365.0, 7))
+        );
+    }
+
+    #[test]
+    fn the_rule_does_not_reach_quantlib_day_counts() {
+        let act365 = DayCount::Actual365Fixed(Actual365Kind::Standard);
+        let isda = DayCount::ActualActual(ActualActualKind::Isda);
+        assert_eq!(
+            act365.year_fraction(d(2024, 2, 29), d(2028, 2, 29), None, None),
+            Ok(1461.0 / 365.0)
+        );
+        assert_ne!(
+            isda.year_fraction(d(2024, 2, 29), d(2025, 2, 28), None, None),
+            Ok(1.0)
+        );
+    }
 }
