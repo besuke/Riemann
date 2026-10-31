@@ -127,7 +127,7 @@ fn business_days_between_matches_quantlib() {
     let rows = golden_rows("bdc_between.csv");
     let mut bad = Vec::new();
     for r in &rows {
-        let got = calendar(&r[0]).business_days_between(date(&r[1]), date(&r[2]), r[3] == "1", r[4] == "1");
+        let got = calendar(&r[0]).business_days_between(date(&r[1]), date(&r[2]), r[3] == "1", r[4] == "1").unwrap();
         if r[5] != got.to_string() {
             bad.push(format!("{} {} -> {} first={} last={}: QuantLib {}, Riemann {got}", r[0], date(&r[1]), date(&r[2]), r[3], r[4], r[5]));
         }

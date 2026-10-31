@@ -37,7 +37,7 @@ use BusinessDayConvention::*;
 impl HolidayCalendar {
     fn following(&self, d: Date) -> Result<Date, Error> {
         let mut d1 = d;
-        while self.is_holiday(d1) {
+        while self.is_holiday(d1)? {
             d1 = d1.add_days(1)?;
         }
         Ok(d1)
@@ -45,7 +45,7 @@ impl HolidayCalendar {
 
     fn preceding(&self, d: Date) -> Result<Date, Error> {
         let mut d1 = d;
-        while self.is_holiday(d1) {
+        while self.is_holiday(d1)? {
             d1 = d1.add_days(-1)?;
         }
         Ok(d1)
@@ -76,11 +76,11 @@ impl HolidayCalendar {
             }
             Nearest => {
                 let (mut d1, mut d2) = (d, d);
-                while self.is_holiday(d1) && self.is_holiday(d2) {
+                while self.is_holiday(d1)? && self.is_holiday(d2)? {
                     d1 = d1.add_days(1)?;
                     d2 = d2.add_days(-1)?;
                 }
-                Ok(if self.is_holiday(d1) { d2 } else { d1 })
+                Ok(if self.is_holiday(d1)? { d2 } else { d1 })
             }
         }
     }
@@ -107,7 +107,7 @@ impl HolidayCalendar {
                 let mut d1 = d;
                 for _ in 0..n.unsigned_abs() {
                     d1 = d1.add_days(step)?;
-                    while self.is_holiday(d1) {
+                    while self.is_holiday(d1)? {
                         d1 = d1.add_days(step)?;
                     }
                 }
@@ -152,22 +152,28 @@ impl HolidayCalendar {
 
     /// Business days between `from` and `to` (QuantLib `Calendar::businessDaysBetween`);
     /// negative when `from` is after `to`.
-    pub fn business_days_between(&self, from: Date, to: Date, include_first: bool, include_last: bool) -> i32 {
-        let count = |a: Date, b: Date, first: bool, last: bool| -> i32 {
-            let mut res = (last && self.is_business_day(b)) as i32;
+    pub fn business_days_between(
+        &self,
+        from: Date,
+        to: Date,
+        include_first: bool,
+        include_last: bool,
+    ) -> Result<i32, Error> {
+        let count = |a: Date, b: Date, first: bool, last: bool| -> Result<i32, Error> {
+            let mut res = (last && self.is_business_day(b)?) as i32;
             let start = if first { a.serial() } else { a.serial() + 1 };
             for s in start..b.serial() {
                 let d = Date::from_serial(s as i64).expect("between two valid dates");
-                res += self.is_business_day(d) as i32;
+                res += self.is_business_day(d)? as i32;
             }
-            res
+            Ok(res)
         };
         if from < to {
             count(from, to, include_first, include_last)
         } else if from > to {
-            -count(to, from, include_last, include_first)
+            Ok(-count(to, from, include_last, include_first)?)
         } else {
-            (include_first && include_last && self.is_business_day(from)) as i32
+            Ok((include_first && include_last && self.is_business_day(from)?) as i32)
         }
     }
 }

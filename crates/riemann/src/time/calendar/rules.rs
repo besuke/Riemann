@@ -20,7 +20,14 @@
 //! The Japan rules are QuantLib's representation, not the text of the Japanese public
 //! holiday law (see `docs/spec_dates_calendars.md`, section 3.3).
 
-use super::easter::easter_monday_day_of_year;
+pub(super) mod americas;
+pub(super) mod asia_pacific;
+pub(super) mod europe;
+pub(super) mod middle_east_africa;
+pub(super) mod special;
+mod tables;
+
+use super::easter::{easter_monday_day_of_year, orthodox_easter_monday_day_of_year};
 use crate::time::{Date, Weekday};
 
 /// The parts of a date the rules look at.
@@ -49,6 +56,10 @@ fn is_weekend(w: Weekday) -> bool {
 
 fn easter_monday(y: i32) -> i32 {
     easter_monday_day_of_year(y) as i32
+}
+
+fn orthodox_easter_monday(y: i32) -> i32 {
+    orthodox_easter_monday_day_of_year(y) as i32
 }
 
 pub(super) fn japan(x: &Day) -> bool {
@@ -206,6 +217,124 @@ fn is_veterans_day_no_saturday(d: i32, m: i32, y: i32, w: Weekday) -> bool {
 fn is_juneteenth(d: i32, m: i32, y: i32, w: Weekday) -> bool {
     // declared in 2021, but only observed by exchanges since 2022
     (d == 19 || (d == 20 && w == Monday) || (d == 18 && w == Friday)) && m == 6 && y >= 2022
+}
+
+/// Juneteenth moved to Monday if on Sunday, but not to Friday if on Saturday.
+fn is_juneteenth_no_friday(d: i32, m: i32, y: i32, w: Weekday) -> bool {
+    (d == 19 || (d == 20 && w == Monday)) && m == 6 && y >= 2022
+}
+
+pub(super) fn us_nyse(x: &Day) -> bool {
+    let (d, m, y, w, dd) = (x.d, x.m, x.y, x.w, x.dd);
+    let em = easter_monday(y);
+    let holiday = is_weekend(w)
+        // New Year's Day (possibly moved to Monday if on Sunday)
+        || ((d == 1 || (d == 2 && w == Monday)) && m == 1)
+        // Washington's birthday (third Monday in February)
+        || is_washington_birthday(d, m, y, w)
+        // Good Friday
+        || (dd == em - 3)
+        // Memorial Day (last Monday in May)
+        || is_memorial_day(d, m, y, w)
+        // Juneteenth (Monday if Sunday or Friday if Saturday)
+        || is_juneteenth(d, m, y, w)
+        // Independence Day (Monday if Sunday or Friday if Saturday)
+        || ((d == 4 || (d == 5 && w == Monday) || (d == 3 && w == Friday)) && m == 7)
+        // Labor Day (first Monday in September)
+        || is_labor_day(d, m, w)
+        // Thanksgiving Day (fourth Thursday in November)
+        || ((22..=28).contains(&d) && w == Thursday && m == 11)
+        // Christmas (Monday if Sunday or Friday if Saturday)
+        || ((d == 25 || (d == 26 && w == Monday) || (d == 24 && w == Friday)) && m == 12);
+    if holiday {
+        return false;
+    }
+    // Martin Luther King's birthday (third Monday in January)
+    if y >= 1998 && (15..=21).contains(&d) && w == Monday && m == 1 {
+        return false;
+    }
+    // Presidential election days
+    if (y <= 1968 || (y <= 1980 && y % 4 == 0)) && m == 11 && d <= 7 && w == Tuesday {
+        return false;
+    }
+    // Special closings
+    let special = (y == 2025 && m == 1 && d == 9) // President Carter's Funeral
+        || (y == 2018 && m == 12 && d == 5) // President Bush's Funeral
+        || (y == 2012 && m == 10 && (d == 29 || d == 30)) // Hurricane Sandy
+        || (y == 2007 && m == 1 && d == 2) // President Ford's funeral
+        || (y == 2004 && m == 6 && d == 11) // President Reagan's funeral
+        || (y == 2001 && m == 9 && (11..=14).contains(&d)) // September 11-14, 2001
+        || (y == 1994 && m == 4 && d == 27) // President Nixon's funeral
+        || (y == 1985 && m == 9 && d == 27) // Hurricane Gloria
+        || (y == 1977 && m == 7 && d == 14) // 1977 Blackout
+        || (y == 1973 && m == 1 && d == 25) // Funeral of former President Lyndon B. Johnson
+        || (y == 1972 && m == 12 && d == 28) // Funeral of former President Harry S. Truman
+        || (y == 1969 && m == 7 && d == 21) // National Day of Participation for the lunar exploration
+        || (y == 1969 && m == 3 && d == 31) // Funeral of former President Eisenhower
+        || (y == 1969 && m == 2 && d == 10) // Closed all day - heavy snow
+        || (y == 1968 && m == 7 && d == 5) // Day after Independence Day
+        // June 12-Dec. 31, 1968: four day week (closed on Wednesdays) - Paperwork Crisis
+        || (y == 1968 && dd >= 163 && w == Wednesday)
+        || (y == 1968 && m == 4 && d == 9) // Day of mourning for Martin Luther King Jr.
+        || (y == 1963 && m == 11 && d == 25) // Funeral of President Kennedy
+        || (y == 1961 && m == 5 && d == 29) // Day before Decoration Day
+        || (y == 1958 && m == 12 && d == 26) // Day after Christmas
+        || ((y == 1954 || y == 1956 || y == 1965) && m == 12 && d == 24); // Christmas Eve
+    !special
+}
+
+pub(super) fn us_nerc(x: &Day) -> bool {
+    let (d, m, y, w) = (x.d, x.m, x.y, x.w);
+    let holiday = is_weekend(w)
+        // New Year's Day (possibly moved to Monday if on Sunday)
+        || ((d == 1 || (d == 2 && w == Monday)) && m == 1)
+        // Memorial Day (last Monday in May)
+        || is_memorial_day(d, m, y, w)
+        // Independence Day (Monday if Sunday)
+        || ((d == 4 || (d == 5 && w == Monday)) && m == 7)
+        // Labor Day (first Monday in September)
+        || is_labor_day(d, m, w)
+        // Thanksgiving Day (fourth Thursday in November)
+        || ((22..=28).contains(&d) && w == Thursday && m == 11)
+        // Christmas (Monday if Sunday)
+        || ((d == 25 || (d == 26 && w == Monday)) && m == 12);
+    !holiday
+}
+
+pub(super) fn us_libor_impact(x: &Day) -> bool {
+    // Since 2015 Independence Day only impacts Libor if it falls on a weekday
+    if ((x.d == 5 && x.w == Monday) || (x.d == 3 && x.w == Friday)) && x.m == 7 && x.y >= 2015 {
+        return true;
+    }
+    us_settlement(x)
+}
+
+pub(super) fn us_federal_reserve(x: &Day) -> bool {
+    let (d, m, y, w) = (x.d, x.m, x.y, x.w);
+    let holiday = is_weekend(w)
+        // New Year's Day (possibly moved to Monday if on Sunday)
+        || ((d == 1 || (d == 2 && w == Monday)) && m == 1)
+        // Martin Luther King's birthday (third Monday in January)
+        || ((15..=21).contains(&d) && w == Monday && m == 1 && y >= 1983)
+        // Washington's birthday (third Monday in February)
+        || is_washington_birthday(d, m, y, w)
+        // Memorial Day (last Monday in May)
+        || is_memorial_day(d, m, y, w)
+        // Juneteenth (Monday if Sunday)
+        || is_juneteenth_no_friday(d, m, y, w)
+        // Independence Day (Monday if Sunday)
+        || ((d == 4 || (d == 5 && w == Monday)) && m == 7)
+        // Labor Day (first Monday in September)
+        || is_labor_day(d, m, w)
+        // Columbus Day (second Monday in October)
+        || is_columbus_day(d, m, y, w)
+        // Veteran's Day (Monday if Sunday)
+        || is_veterans_day_no_saturday(d, m, y, w)
+        // Thanksgiving Day (fourth Thursday in November)
+        || ((22..=28).contains(&d) && w == Thursday && m == 11)
+        // Christmas (Monday if Sunday)
+        || ((d == 25 || (d == 26 && w == Monday)) && m == 12);
+    !holiday
 }
 
 pub(super) fn us_settlement(x: &Day) -> bool {

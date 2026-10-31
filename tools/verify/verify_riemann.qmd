@@ -16,20 +16,58 @@ execute:
 #| label: setup
 #| include: false
 
+source("verify_common.R")
 source("verify_bonds.R")
+source("verify_ois.R")
+source("verify_calendars.R")
 results <- verify_bonds()
 summary_table <- summarise_verification(results)
+ois_results <- verify_ois()
+ois_summary <- summarise_ois(ois_results)
+ois_compare <- compare_interpolations(ois_results)
+ois_curve_values <- ois_curves(ois_results)
+calendar_results <- verify_calendars()
+
+# Series colours and a recessive theme shared by the figures.
+series_colours <- c(LogLinear = "#2a78d6", MonotonicLogCubic = "#eb6834")
+theme_verify <- function() {
+  theme_minimal(base_size = 11) +
+    theme(
+      panel.grid.major = element_line(colour = "#e1e0d9", linewidth = 0.3),
+      panel.grid.minor = element_blank(),
+      legend.position = "top",
+      strip.text = element_text(face = "bold", hjust = 0),
+      axis.title = element_text(colour = "#52514e"),
+      axis.text = element_text(colour = "#52514e")
+    )
+}
+pass_label <- function(pass) if_else(pass, "PASS", "FAIL")
 ```
 
 ## この文書について
 
-Riemann の実装済みの計算を、合成データで QuantLib と比べる検証です。計算と照合はすべて `verify_bonds.R` の関数で行い、この文書はその結果を表と図で示します。
+Riemann の実装済みの計算を、合成データで QuantLib と比べる検証です。計算と照合はすべて `verify_common.R`、`verify_bonds.R`、`verify_ois.R`、`verify_calendars.R` の関数で行い、この文書はその結果を表と図で示します。
 
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
-- **Riemann の呼び方**：R の入口（P4）はまだないので、Rust の `crates/riemann/examples/verify_bonds.rs` を実行し、CSV で受け渡します。数値は文字列を経由するので、最下位の桁に丸めの差が入る可能性があります。
-- **データ**：すべて乱数で作った合成の値で、市場データは使っていません（種は `20261110`）。
-- **対象**：債券の価格と利回り（P2-1・P2-2）。
-- **ダーティ価格**：R パッケージに対応する `dirtyPrice` の呼び方がないので、QuantLib 側はクリーン価格と経過利子の和で求めています。
+- **Riemann の呼び方**：R の入口（P4）はまだないので、Rust の `crates/riemann/examples/` の `verify_bonds.rs`、`verify_ois.rs`、`verify_calendars.rs` を実行し、CSV で受け渡します。数値は文字列を経由するので、R での読み取りで最下位の桁に丸めの差が入る可能性があります。
+- **データ**：すべて合成の値で、市場データは使っていません。
+- **対象**：債券の価格と利回り（P2-1・P2-2）、TONAR の OIS カーブ（P3-1・P3-3）、全カレンダー。€STR・SOFR・SONIA（P3-2）は、まだ実装していません。
+
+## 総合判定
+
+```{r}
+#| label: overall
+#| output: asis
+bond_ok <- sum(summary_table$failed) == 0 && nrow(results$settlement_mismatches) == 0
+ois_ok <- sum(ois_summary$failed) == 0 && all(ois_results$quotes$pass)
+calendar_ok <- all(calendar_results$by_market$result == "PASS") && sum(calendar_results$by_market$r_diff, na.rm = TRUE) == 0
+cat(sprintf("- 債券：**%s**\n- TONAR の OIS カーブ：**%s**\n- カレンダー（QuantLib との一致）：**%s**\n",
+            pass_label(bond_ok), pass_label(ois_ok), pass_label(calendar_ok)))
+```
+
+# 債券
+
+**ダーティ価格**：R パッケージに対応する `dirtyPrice` の呼び方がないので、QuantLib 側はクリーン価格と経過利子の和で求めています。入力は乱数で作りました（種は `20261110`）。
 
 ## 入力条件
 
@@ -105,11 +143,12 @@ results$comparison |>
   mutate(plot_diff = pmax(measured_diff, 1e-18)) |>
   ggplot(aes(measure, plot_diff, colour = compounding)) +
   geom_jitter(width = 0.2, height = 0, alpha = 0.6, size = 1.3) +
-  geom_hline(yintercept = c(1e-15, 1e-12, 1e-10), linetype = "dashed") +
+  geom_hline(yintercept = c(1e-15, 1e-12, 1e-10), linetype = "dashed", colour = "#898781") +
   scale_y_log10() +
+  scale_colour_manual(values = c(Compounded = "#2a78d6", Continuous = "#eb6834", Simple = "#1baf7a")) +
   coord_flip() +
   labs(x = NULL, y = "Difference (relative; absolute for yield)", colour = "Compounding") +
-  theme_minimal()
+  theme_verify()
 ```
 
 ## 価格の一致
@@ -122,10 +161,10 @@ results$comparison |>
 results$comparison |>
   filter(measure == "clean_price", status == "value") |>
   ggplot(aes(quantlib, riemann)) +
-  geom_abline(linetype = "dashed") +
-  geom_point(alpha = 0.6, colour = "steelblue") +
+  geom_abline(linetype = "dashed", colour = "#898781") +
+  geom_point(alpha = 0.6, colour = "#2a78d6") +
   labs(x = "QuantLib clean price", y = "Riemann clean price") +
-  theme_minimal()
+  theme_verify()
 ```
 
 ## 差の大きい例
@@ -145,11 +184,282 @@ results$comparison |>
   knitr::kable()
 ```
 
-## OIS について（未実施）
+# TONAR の OIS カーブ
 
-OIS カーブ（割引係数、ゼロ金利、フォワード金利、入力気配の再現）は、P3 の実装後にこの文書へ追加します。補間は仕様（`docs/spec_ois.md` 2.7 節）のとおり、QuantLib C++ の `MonotonicLogCubic`（Spline、単調化あり、両端の 2 階微分 0）を対象とします。
+## 補間の方式
 
-## 実行環境
+Riemann が仕様として採用する補間は **`MonotonicLogCubic`** です。比較のために対数線形も載せています。
+
+| 名前 | 方式 | Riemann | QuantLib R パッケージの関数 |
+|---|---|---|---|
+| `MonotonicLogCubic` | 割引係数の対数を 3 次スプラインで補間。Hyman の単調化あり。両端の 2 階微分は 0 | `OisInterpolation::MonotonicLogCubic` | `PiecewiseLogCubicDiscount` |
+| `LogLinear` | 割引係数の対数を線形補間 | `OisInterpolation::LogLinear` | `PiecewiseLogLinearDiscount` |
+
+R の `PiecewiseLogCubicDiscount` は名前が違いますが、設定は C++ の `MonotonicLogCubic` と同じです。これを実行でも確かめるため、できた節点を QuantLib の `MonotonicLogCubicDiscountCurve` に渡し、同じ日付の割引係数を比べました。
+
+```{r}
+#| label: method-check
+ois_results$method_check |>
+  mutate(max_rel_diff = sprintf("%.2e", max_rel_diff)) |>
+  knitr::kable(col.names = c("Scenario", "Dates", "Max relative diff"))
+```
+
+## 入力条件
+
+数式から作った 4 つの曲線形で、市場データではありません。指標は TONAR（日本のカレンダー、Actual/365 Fixed）、カーブの日数計算も Actual/365 Fixed、基準日は評価日です。受渡日数などは、QuantLib の既定ではなく、ここで明示した値です。市場の規約を表すものではありません。
+
+```{r}
+#| label: ois-inputs
+ois_results$scenarios |>
+  transmute(scenario, evaluation_date, settlement_days, payment_lag, payment_frequency,
+            shortest = map_dbl(rates, first), longest = map_dbl(rates, last),
+            lowest = map_dbl(rates, min), highest = map_dbl(rates, max)) |>
+  mutate(across(c(shortest, longest, lowest, highest), \(x) sprintf("%.3f%%", x * 100))) |>
+  knitr::kable(col.names = c("Scenario", "Evaluation date", "Settlement days", "Payment lag", "Payments per year",
+                             "ON quote", "30Y quote", "Lowest quote", "Highest quote"))
+```
+
+商品は `r paste(ois_tenors()$label, collapse = "、")` の `r nrow(ois_tenors())` 本です。評価日には、日本の休日（2026-04-29）、2 月 29 日、月末を含めました。
+
+## 項目ごとの結果
+
+ゼロ金利は連続複利、1 日フォワードは 1 暦日の単利（`forward_1d_simple`）、`forward_instantaneous` は QuantLib の同じ日付を指定したフォワード（0.0001 年の連続複利）です。
+
+許容誤差は、割引係数が相対 1e-12、金利が絶対 1e-10（仕様書 7.3 節）です。`forward_instantaneous` は 0.0001 年で割るので、割引係数の相対 1e-12 に対応する絶対 1e-8 としました。
+
+```{r}
+#| label: ois-summary
+ois_summary |>
+  mutate(tolerance = sprintf("%.0e", tolerance), max_diff = sprintf("%.2e", max_diff)) |>
+  select(interpolation, kind, compared, exact, within_tolerance, failed, max_diff, tolerance, diff_type, result) |>
+  knitr::kable(col.names = c("Interpolation", "Measure", "Compared", "Exact", "Within tol.", "Failed", "Max diff", "Tolerance", "Diff type", "Result"))
+```
+
+この文書の 4 つの曲線形は、すべて作成に成功しています。エラーの一致は、ここでは確かめていません。作成の失敗とその原因、失敗した反復の回数と商品の位置は、`cargo test --test golden_ois_tonar` で照合しています。
+
+## カーブの図
+
+図の線はすべて Riemann の値です。QuantLib との差は前の表のとおりで、この縮尺では見分けられません。
+
+```{r}
+#| label: fig-ois-discount
+#| fig-cap: "割引係数：対数線形と MonotonicLogCubic"
+#| fig-width: 9
+#| fig-height: 5
+ois_curve_values |>
+  filter(kind == "discount") |>
+  ggplot(aes(years, value, colour = interpolation)) +
+  geom_line(linewidth = 0.7) +
+  facet_wrap(vars(scenario)) +
+  scale_colour_manual(values = series_colours) +
+  labs(x = "Years from the reference date", y = "Discount factor", colour = NULL) +
+  theme_verify()
+```
+
+```{r}
+#| label: fig-ois-zero
+#| fig-cap: "ゼロ金利（連続複利）：対数線形と MonotonicLogCubic"
+#| fig-width: 9
+#| fig-height: 5
+ois_curve_values |>
+  filter(kind == "zero_continuous") |>
+  ggplot(aes(years, value * 100, colour = interpolation)) +
+  geom_line(linewidth = 0.7) +
+  facet_wrap(vars(scenario), scales = "free_y") +
+  scale_colour_manual(values = series_colours) +
+  labs(x = "Years from the reference date", y = "Zero rate (%)", colour = NULL) +
+  theme_verify()
+```
+
+```{r}
+#| label: fig-ois-forward
+#| fig-cap: "1 日フォワード金利（単利）：対数線形と MonotonicLogCubic"
+#| fig-width: 9
+#| fig-height: 5
+ois_curve_values |>
+  filter(kind == "forward_1d_simple") |>
+  ggplot(aes(years, value * 100, colour = interpolation)) +
+  geom_line(linewidth = 0.7) +
+  facet_wrap(vars(scenario), scales = "free_y") +
+  scale_colour_manual(values = series_colours) +
+  labs(x = "Years from the reference date", y = "1-day forward rate (%)", colour = NULL) +
+  theme_verify()
+```
+
+## 対数線形とスプラインの違い
+
+対数線形のフォワード金利は、節点の間で一定に近く、節点で階段状に飛びます。`MonotonicLogCubic` は節点でも連続した線になります。一方、気配が上下する Jagged では、節点の間で対数線形より大きく振れます。単調化が抑えるのは割引係数の対数の動きで、フォワード金利の山や谷をなくすものではありません。どちらの補間も入力の気配を再現するので、この差は気配では見えません。
+
+```{r}
+#| label: fig-ois-gap
+#| fig-cap: "MonotonicLogCubic と対数線形の差（bp）"
+#| fig-width: 9
+#| fig-height: 5
+ois_compare$differences |>
+  mutate(kind = recode_values(kind, "zero_continuous" ~ "Zero rate", "forward_1d_simple" ~ "1-day forward")) |>
+  ggplot(aes(years, bp)) +
+  geom_hline(yintercept = 0, colour = "#c3c2b7") +
+  geom_line(colour = "#2a78d6", linewidth = 0.6) +
+  facet_grid(rows = vars(kind), cols = vars(scenario), scales = "free_y") +
+  labs(x = "Years from the reference date", y = "MonotonicLogCubic minus LogLinear (bp)") +
+  theme_verify()
+```
+
+```{r}
+#| label: ois-method-table
+ois_compare$summary |>
+  transmute(scenario,
+            zero = sprintf("%.2f", max_gap_bp_zero_continuous),
+            forward = sprintf("%.2f", max_gap_bp_forward_1d_simple),
+            jump_linear = sprintf("%.1f", jump_bp_LogLinear),
+            jump_cubic = sprintf("%.1f", jump_bp_MonotonicLogCubic),
+            min_linear = sprintf("%.3f%%", min_forward_LogLinear * 100),
+            min_cubic = sprintf("%.3f%%", min_forward_MonotonicLogCubic * 100)) |>
+  knitr::kable(col.names = c("Scenario", "Max zero gap (bp)", "Max forward gap (bp)",
+                             "Largest forward move, LogLinear (bp)", "Largest forward move, Cubic (bp)",
+                             "Lowest forward, LogLinear", "Lowest forward, Cubic"))
+```
+
+「Largest forward move」は、読み取った隣り合う日付（1 年までは 7 日、以後は 30 日ごと）の間での 1 日フォワードの動きの最大です。滑らかさの目安で、日付の間隔に依存します。
+
+## 入力気配の再現
+
+カーブで計算し直した気配と、入力の気配の差です。許容誤差は `r sprintf("%.0e", quote_reproduction_tolerance())`（金利）です。`MonotonicLogCubic` の誤差は対数線形より大きくなりますが、QuantLib でも同じ大きさです。
+
+```{r}
+#| label: ois-quote-summary
+ois_results$quotes |>
+  group_by(scenario, interpolation) |>
+  summarise(instruments = n(), quantlib = max(error_quantlib), riemann = max(error_riemann),
+            failed = sum(!pass), .groups = "drop") |>
+  mutate(result = pass_label(failed == 0),
+         tolerance = sprintf("%.0e", quote_reproduction_tolerance()),
+         across(c(quantlib, riemann), \(x) sprintf("%.2e", x))) |>
+  select(scenario, interpolation, instruments, quantlib, riemann, tolerance, failed, result) |>
+  knitr::kable(col.names = c("Scenario", "Interpolation", "Instruments", "Max error, QuantLib", "Max error, Riemann", "Tolerance", "Failed", "Result"))
+```
+
+```{r}
+#| label: fig-ois-quotes
+#| fig-cap: "入力気配の再現誤差（破線は許容誤差。差が 0 の値は 1e-18 に置く）"
+#| fig-width: 9
+#| fig-height: 5
+ois_results$quotes |>
+  mutate(label = factor(label, ois_tenors()$label), plot_error = pmax(error_riemann, 1e-18)) |>
+  ggplot(aes(label, plot_error, colour = interpolation, group = interpolation)) +
+  geom_hline(yintercept = quote_reproduction_tolerance(), linetype = "dashed", colour = "#898781") +
+  geom_line(linewidth = 0.5) +
+  geom_point(size = 1.6) +
+  scale_y_log10() +
+  facet_wrap(vars(scenario)) +
+  scale_colour_manual(values = series_colours) +
+  labs(x = NULL, y = "|Implied rate - quote|", colour = NULL) +
+  theme_verify() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+```
+
+商品ごとの結果です（`MonotonicLogCubic`）。
+
+```{r}
+#| label: ois-quote-detail
+ois_results$quotes |>
+  filter(interpolation == "MonotonicLogCubic") |>
+  transmute(scenario, label, quote = sprintf("%.5f%%", quote * 100), quantlib = sprintf("%.14f%%", quantlib * 100),
+            riemann = sprintf("%.14f%%", riemann * 100), error = sprintf("%.2e", error_riemann),
+            tolerance = sprintf("%.0e", tolerance), result = pass_label(pass)) |>
+  knitr::kable(col.names = c("Scenario", "Instrument", "Quote", "QuantLib implied", "Riemann implied", "Error", "Tolerance", "Result"))
+```
+
+# カレンダー
+
+## 比較の相手と範囲
+
+QuantLib の全カレンダー・全市場区分を実装し、**全有効日付（1901-01-01〜2199-12-31 の `r format(calendar_results$by_market$dates[1], big.mark = ",")` 日）**で休日判定を比べました。
+
+- **基準**：QuantLib C++ v1.42（コミット `41b0e14`）の必要なソースを、そのままビルドして実行した値です（`tools/golden/p1_all_calendars.cpp`）。上の債券や TONAR の照合と違い、C++ そのものとの照合です。
+- **R パッケージ**：Version 1.42 の `holidayList` でも突き合わせました。正確な C++ のコミットは分かりません。`Germany::Euwax` と `Indonesia::IDX` は R パッケージから作れないので、C++ だけと比べています。
+- **この文書で比べるもの**：営業日・休日・エラーの判定です。週末の曜日、カレンダーの名前、エラーの原因は `cargo test --test golden_all_calendars` で比べています。
+- **用途の範囲**：新興国のカレンダーは、当面は債券の受渡日と利払日の営業日判定に使う想定です。スワップの規約や金利カーブは追加していません。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限定しています。
+
+::: {.callout-warning}
+**QuantLib との一致は、実際の市場休日の検証ではありません。** ここでの PASS は「QuantLib と同じ判定を返す」という意味です。どのカレンダーも、取引所や中央銀行の公表資料とは照合していません。
+:::
+
+## 地域ごとの結果
+
+```{r}
+#| label: calendar-regions
+calendar_table <- calendar_status(calendar_results$by_market)
+calendar_table |>
+  group_by(region) |>
+  summarise(classes = n_distinct(class), markets = n(), dates = n() * calendar_results$by_market$dates[1],
+            differences = sum(differences), failed = sum(result == "FAIL"), .groups = "drop") |>
+  mutate(result = pass_label(failed == 0), dates = format(dates, big.mark = ",")) |>
+  knitr::kable(col.names = c("Region", "Classes", "Markets", "Dates compared", "Differences from C++", "Failed", "Result"))
+
+calendar_results$by_market |>
+  filter(region == "common") |>
+  transmute(key, class, market, holidays = cpp_H, errors = cpp_E, differences, result) |>
+  knitr::kable(col.names = c("Common calendar", "Class", "Rule", "Holidays", "Error days", "Differences from C++", "Result"))
+```
+
+Joint は 3 つのカレンダーの組み合わせと、エラーの伝わり方を確かめる日本と MOEX の組み合わせで比べています。Bespoke は水曜日と木曜日を週末にした例です。
+
+## 対応一覧と照合結果
+
+「種類」は休日の決め方です。「年別データ」のカレンダーは、記載した範囲の外では年別の休日が入りません。「実市場」はすべて未検証です。
+
+```{r}
+#| label: calendar-all
+calendar_table |>
+  transmute(region, class, market, riemann = paste0("`", riemann, "`"), kind, years, note,
+            holidays = format(holidays, big.mark = ","), error_days, differences, r_package, result, market_check = "未検証") |>
+  knitr::kable(col.names = c("Region", "QuantLib class", "Market", "Riemann", "種類", "年別データ・一度きりの休日", "注記",
+                             "Holidays", "Error days", "Diff. from C++", "R package", "Result", "実市場"))
+```
+
+「Holidays」は週末以外の休日の数です。サウジアラビアは週末の変更（2013-06-29）の前の土曜日が営業日で、MOEX と中国 IB にも週末の営業日があります。これらも比較に含めています。
+
+## 収録期間の制限
+
+年別データの範囲の外では、休日が減ります。減り方はカレンダーによって違います。下の図の破線が、ソースにある年別データの最後の年です。サウジアラビアの 2013 年の急減は、データの終わりではなく週末の変更によるものです（変更前の木曜日が「週末以外の休日」に数えられています）。
+
+```{r}
+#| label: fig-calendar-years
+#| fig-cap: "週末以外の休日の数（QuantLib C++ v1.42）。破線は年別データの最後の年"
+#| fig-width: 10
+#| fig-height: 7
+year_table_keys <- calendar_results$by_market |>
+  filter(data_kind == "year_tables") |>
+  group_by(class) |>
+  slice(1) |>
+  ungroup() |>
+  select(key, class, last_year)
+calendar_results$per_year |>
+  inner_join(year_table_keys, by = "key") |>
+  complete(nesting(key, class, last_year), year = 1995:2060, fill = list(holidays = 0L)) |>
+  filter(year >= 1995, year <= 2060) |>
+  ggplot(aes(year, holidays)) +
+  geom_vline(aes(xintercept = last_year), linetype = "dashed", colour = "#898781") +
+  geom_line(colour = "#2a78d6", linewidth = 0.6) +
+  facet_wrap(vars(class), ncol = 4) +
+  labs(x = NULL, y = "Holidays on non-weekend days per year") +
+  theme_verify()
+```
+
+```{r}
+#| label: calendar-limits
+calendar_results$by_market |>
+  filter(data_kind == "year_tables") |>
+  distinct(class, first_year, last_year, note) |>
+  arrange(last_year) |>
+  mutate(note = replace_na(note, "")) |>
+  knitr::kable(col.names = c("QuantLib class", "First year", "Last year", "注記"))
+```
+
+範囲の外でも、Riemann は QuantLib と同じくエラーにせず営業日の判定を返します（MOEX の 2012 年より前を除く）。そのため、範囲の外の日付では、祝日が営業日と判定されることがあります。実際の休日が分かっている場合は、`with_holiday` で例外日として追加できます。
+
+# 実行環境
 
 ```{r}
 #| label: session

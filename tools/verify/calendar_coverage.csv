@@ -1,0 +1,46 @@
+class,data_kind,first_year,last_year,note
+Argentina,rules,,,
+Australia,rules_and_one_offs,2022,2022,
+Austria,rules,,,
+Botswana,rules,,,
+Brazil,rules,,,年の条件は規則の変更だけ（例：11/20）。年別の表なし
+Canada,rules,,,
+Chile,rules_and_one_offs,2017,2022,先住民の日は 2021〜2199 年の表で全期間をカバー
+China,year_tables,2004,2026,IB の振替営業日は 2005〜2026 年
+CzechRepublic,rules_and_one_offs,2004,2004,
+Denmark,rules,,,
+Finland,rules,,,
+France,rules,,,
+Germany,rules,,,
+HongKong,year_tables,2004,2025,
+Hungary,rules,,,
+Iceland,rules,,,
+India,year_tables,2005,2025,2024〜2025 年の Ramzan Id・Bakri Id・Id-E-Milad は推定とソースに記載
+Indonesia,year_tables,2005,2014,
+Israel,year_tables,2000,2050,範囲の両端の日付は QuantLib も Riemann もエラー
+Italy,rules_and_one_offs,1999,1999,
+Japan,rules_and_one_offs,1959,2021,春分・秋分は近似式
+Mexico,rules,,,
+NewZealand,year_tables,2022,2052,年別は Matariki だけで、他は規則
+Norway,rules,,,
+Poland,rules,,,
+Romania,rules_and_one_offs,2014,2014,
+Russia,year_tables,2012,2020,追加の休日と振替営業日は 2020 年まで。MOEX は 2012 年より前がエラー
+SaudiArabia,year_tables,1998,2029,犠牲祭は 2022 年まで、断食明けは 2029 年まで
+Singapore,year_tables,2004,2026,
+Slovakia,rules_and_one_offs,2004,2005,
+SouthAfrica,rules_and_one_offs,2004,2024,
+SouthKorea,year_tables,2004,2050,
+Sweden,rules,,,
+Switzerland,rules,,,
+Taiwan,year_tables,2002,2026,
+TARGET,rules_and_one_offs,1998,2001,
+Thailand,year_tables,2000,2025,
+Turkey,year_tables,2004,2034,2024 年以降は要検証とソースに記載
+Ukraine,rules,,,
+UnitedKingdom,rules_and_one_offs,1995,2023,
+UnitedStates,rules_and_one_offs,1954,2025,
+NullCalendar,none,,,
+WeekendsOnly,none,,,
+BespokeCalendar,none,,,休日は利用者が追加する
+JointCalendar,none,,,構成するカレンダーに従う

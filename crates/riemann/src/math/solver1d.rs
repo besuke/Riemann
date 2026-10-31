@@ -1,8 +1,10 @@
 //! One-dimensional root finding: QuantLib's bracketing search followed by NewtonSafe.
 //!
 //! Derived from QuantLib v1.42 `ql/math/solver1d.hpp`, `ql/math/solvers1d/newtonsafe.hpp` and
-//! `ql/math/solvers1d/brent.hpp` (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl) and `ql/math/comparison.hpp`
-//! (Copyright (C) 2003, 2004, 2005, 2007 StatPro Italia srl); modified BSD license.
+//! `ql/math/solvers1d/brent.hpp` (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl),
+//! `ql/math/solvers1d/finitedifferencenewtonsafe.hpp` (Copyright (C) 2011 Ferdinando Ametrano)
+//! and `ql/math/comparison.hpp` (Copyright (C) 2003, 2004, 2005, 2007 StatPro Italia srl);
+//! modified BSD license.
 //! See THIRD_PARTY_NOTICES. The same steps are taken so that results match QuantLib exactly.
 //!
 //! The solver is a pure function: the objective and its derivative are passed in,
@@ -17,6 +19,19 @@ pub fn close(x: f64, y: f64) -> bool {
     }
     let diff = (x - y).abs();
     let tolerance = 42.0 * f64::EPSILON;
+    if x == 0.0 || y == 0.0 {
+        return diff < tolerance * tolerance;
+    }
+    diff <= tolerance * x.abs() && diff <= tolerance * y.abs()
+}
+
+/// QuantLib `close(x, y, n)`, with a tolerance of `n` machine epsilons.
+pub fn close_with(x: f64, y: f64, n: u32) -> bool {
+    if x == y {
+        return true;
+    }
+    let diff = (x - y).abs();
+    let tolerance = f64::from(n) * f64::EPSILON;
     if x == 0.0 || y == 0.0 {
         return diff < tolerance * tolerance;
     }
@@ -106,6 +121,8 @@ where
         let x_acc1 = 2.0 * f64::EPSILON * root.abs() + 0.5 * accuracy;
         let x_mid = (x_max - root) / 2.0;
         if x_mid.abs() <= x_acc1 || close(froot, 0.0) {
+            // as in QuantLib, so that the last value passed to `f` is the root
+            f(root)?;
             return Ok(root);
         }
         if e.abs() >= x_acc1 && fx_min.abs() > froot.abs() {
@@ -148,6 +165,96 @@ where
         }
         froot = f(root)?;
         evaluations += 1;
+    }
+    Err(Error::NoConvergence { reason: format!("maximum number of function evaluations ({max_evaluations}) exceeded") })
+}
+
+/// Finds a root of `f` inside the bracket `[x_min, x_max]` (QuantLib
+/// `Solver1D::solve(f, accuracy, guess, xMin, xMax)` with `FiniteDifferenceNewtonSafe`).
+/// Reproduces QuantLib v1.42 `ql/math/solvers1d/finitedifferencenewtonsafe.hpp`. As in QuantLib,
+/// the root returned on convergence has not been passed to `f`.
+pub fn finite_difference_newton_safe<F>(
+    f: F,
+    accuracy: f64,
+    guess: f64,
+    x_min: f64,
+    x_max: f64,
+    max_evaluations: usize,
+) -> Result<f64, Error>
+where
+    F: Fn(f64) -> Result<f64, Error>,
+{
+    if accuracy <= 0.0 {
+        return Err(Error::InvalidInput { reason: format!("accuracy ({accuracy}) must be positive") });
+    }
+    let accuracy = accuracy.max(f64::EPSILON);
+    if x_min >= x_max {
+        return Err(Error::InvalidInput { reason: format!("invalid range: xMin ({x_min}) >= xMax ({x_max})") });
+    }
+    let fx_min = f(x_min)?;
+    if close(fx_min, 0.0) {
+        return Ok(x_min);
+    }
+    let fx_max = f(x_max)?;
+    if close(fx_max, 0.0) {
+        return Ok(x_max);
+    }
+    if fx_min * fx_max >= 0.0 {
+        return Err(Error::NoConvergence {
+            reason: format!("root not bracketed: f[{x_min},{x_max}] -> [{fx_min:e},{fx_max:e}]"),
+        });
+    }
+    if guess <= x_min {
+        return Err(Error::InvalidInput { reason: format!("guess ({guess}) < xMin ({x_min})") });
+    }
+    if guess >= x_max {
+        return Err(Error::InvalidInput { reason: format!("guess ({guess}) > xMax ({x_max})") });
+    }
+
+    // Orient the search so that f(xl) < 0
+    let (mut xl, mut xh) = if fx_min < 0.0 { (x_min, x_max) } else { (x_max, x_min) };
+    let mut root = guess;
+    let mut froot = f(root)?;
+    let mut evaluations = 3;
+    // first order finite difference derivative
+    let mut dfroot = if x_max - root < root - x_min {
+        (fx_max - froot) / (x_max - root)
+    } else {
+        (fx_min - froot) / (x_min - root)
+    };
+    let mut dx = x_max - x_min;
+    while evaluations <= max_evaluations {
+        let mut frootold = froot;
+        let mut rootold = root;
+        let dxold = dx;
+        // Bisect if (out of range || not decreasing fast enough)
+        if ((root - xh) * dfroot - froot) * ((root - xl) * dfroot - froot) > 0.0
+            || (2.0 * froot).abs() > (dxold * dfroot).abs()
+        {
+            dx = (xh - xl) / 2.0;
+            root = xl + dx;
+            // when the new root is close to the previous one, the derivative is taken at
+            // the root and xh instead
+            if close_with(root, rootold, 2500) {
+                rootold = xh;
+                frootold = f(xh)?;
+            }
+        } else {
+            dx = froot / dfroot;
+            root -= dx;
+        }
+        // Convergence criterion
+        if dx.abs() < accuracy {
+            return Ok(root);
+        }
+        froot = f(root)?;
+        evaluations += 1;
+        dfroot = (frootold - froot) / (rootold - root);
+        if froot < 0.0 {
+            xl = root;
+        } else {
+            xh = root;
+        }
     }
     Err(Error::NoConvergence { reason: format!("maximum number of function evaluations ({max_evaluations}) exceeded") })
 }

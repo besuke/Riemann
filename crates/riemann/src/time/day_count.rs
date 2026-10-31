@@ -327,9 +327,9 @@ fn actual_365_canadian(d1: Date, d2: Date, ref_start: Option<Date>, ref_end: Opt
 
 impl DayCount {
     /// Number of days in the period according to the convention (QuantLib `dayCount`).
-    pub fn day_count(&self, d1: Date, d2: Date) -> i64 {
+    pub fn day_count(&self, d1: Date, d2: Date) -> Result<i64, Error> {
         let actual = d1.days_until(d2) as i64;
-        match self {
+        Ok(match self {
             DayCount::Actual360 { include_last_day }
             | DayCount::Actual36525 { include_last_day }
             | DayCount::Actual366 { include_last_day } => actual + *include_last_day as i64,
@@ -344,9 +344,9 @@ impl DayCount {
                     -1
                 }
             }
-            DayCount::Business252(cal) => cal.business_days_between(d1, d2, true, false) as i64,
+            DayCount::Business252(cal) => cal.business_days_between(d1, d2, true, false)? as i64,
             DayCount::Actual364 | DayCount::Actual365Fixed(_) | DayCount::ActualActual(_) => actual,
-        }
+        })
     }
 
     /// Period length in years (QuantLib `yearFraction`). The reference period is used by
@@ -372,7 +372,7 @@ impl DayCount {
             DayCount::ActualActual(ActualActualKind::Afb) => act_act_afb(d1, d2)?,
             DayCount::Thirty360(kind) => thirty_360(d1, d2, *kind) as f64 / 360.0,
             DayCount::Thirty365 => thirty_365(d1, d2) as f64 / 365.0,
-            DayCount::One => self.day_count(d1, d2) as f64,
+            DayCount::One => self.day_count(d1, d2)? as f64,
             DayCount::Simple => {
                 let (dm1, dm2) = (d1.day_of_month(), d2.day_of_month());
                 if dm1 == dm2 || (dm1 > dm2 && d2.is_end_of_month()) || (dm1 < dm2 && d1.is_end_of_month()) {
@@ -381,7 +381,7 @@ impl DayCount {
                     thirty_360(d1, d2, Thirty360Kind::BondBasis) as f64 / 360.0
                 }
             }
-            DayCount::Business252(_) => self.day_count(d1, d2) as f64 / 252.0,
+            DayCount::Business252(_) => self.day_count(d1, d2)? as f64 / 252.0,
         })
     }
 }
@@ -402,7 +402,7 @@ mod tests {
         // QuantLib prints 0.50555555555555554, i.e. 182 / 360 in double precision.
         assert_eq!(act360.year_fraction(a, b, None, None).unwrap(), 182.0 / 360.0);
         let bond = DayCount::Thirty360(Thirty360Kind::BondBasis);
-        assert_eq!(bond.day_count(a, b), 180);
+        assert_eq!(bond.day_count(a, b).unwrap(), 180);
         let isma = DayCount::ActualActual(ActualActualKind::Isma);
         assert_eq!(isma.year_fraction(a, b, None, None).unwrap(), 0.5);
     }

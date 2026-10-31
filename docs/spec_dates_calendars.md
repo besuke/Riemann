@@ -112,7 +112,7 @@
   - 追加・取り消しの決まり（取り消しの取り消しなど）も QuantLib と同じにし、「新しい `CalendarAdjustments` を返す関数」として作る。
   - QuantLib と違い、例外日はプログラム全体で共有しない。カレンダーと例外日の組（`HolidayCalendar { calendar, adjustments }`）を値として、評価の入力に明示的に渡す（R8）。
   - R・TypeScript からは、例外日を表（CSV・JSON）で渡す。政府が発表した臨時休日や、近似式と実際の春分・秋分の日がずれる年は、この例外日のデータで補う。
-- 最初に用意するカレンダー：日本、TARGET、米国（SOFR、国債）、英国（Settlement）。必要に応じて足す。
+- 最初に用意するカレンダー：日本、TARGET、米国（SOFR、国債）、英国（Settlement）。その後、QuantLib の全カレンダー・全市場区分を実装した（3.5 節）。
 
 ### 3.3 日本の休日：QuantLib 互換の実装
 
@@ -164,6 +164,131 @@ Riemann の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql
 
 - 「全日付」は、シリアル 367〜109574 の 109,208 日すべてである。各カレンダーの週末の曜日も一致した。
 - 例外日：日本のカレンダーに、追加・取り消し・取り消しの取り消し・週末の取り消しなど 9 つの操作を順に重ねて行い、各段階で 6 つの日付の営業日判定を比べた（54 件）。すべて一致した。
+
+### 3.5 全カレンダー・全市場区分の対応一覧と照合結果【実行照合済み】
+
+QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した（41 の国・地域と 69 の市場区分、ほかに `NullCalendar`、`WeekendsOnly`、`BespokeCalendar`、`JointCalendar`）。
+
+**用途の範囲**：新興国のカレンダーは、当面は債券の受渡日と利払日の営業日判定に使う。スワップの規約や金利カーブは追加しない。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限定する。
+
+**QuantLib との一致と、実際の市場休日の検証は別である。** この節の「一致」は、QuantLib と同じ判定を返すことだけを意味する。どのカレンダーも、取引所や中央銀行の公表資料とは照合していない（一覧の「実市場」はすべて未検証）。
+
+**実装**
+
+- `Calendar` に国ごとの値、複数の市場区分がある国に `BrazilMarket` などの値を追加した。市場区分が一つの国は、区分の値を持たない（`Calendar::Argentina` は Merval）。`Calendar::name` は QuantLib の名前を返す。
+- `calendar/rules/{americas,europe,middle_east_africa,asia_pacific,tables}.rs` は、`tools/golden/port_calendars.R` が QuantLib v1.42 のソースから機械的に変換した。条件式と比較しやすいよう、QuantLib の形とコメントを保ち、月は数字で書く。`special.rs`（イスラエル、サウジアラビア、ロシア、中国 IB）と米国の追加市場は手で書いた。
+- **共有している規則**：日付の要素（`Day`）、週末の判定、西方と東方の復活祭、日付の表の検索。同じ規則の市場は同じ関数を使う（英国の 3 市場、イスラエルの Settlement と TASE、インドネシアの 3 市場）。規則を土台にする市場はその関数を呼ぶ（米国 SOFR と LiborImpact、ポーランド WSE、ルーマニア BVB、韓国 KRX、ニュージーランド、中国 IB）。国をまたぐ休日の条件は、年の条件が国ごとに違い、ソースと比べにくくなるので共通にしていない。
+- 東方の復活祭は、QuantLib の表を持たず、ユリウス暦の Meeus の計算式で求める。全日付の照合で表との一致を確かめた。
+- **`Result` への変更**：QuantLib が例外を投げる日付があるので、`is_business_day`、`is_holiday`、`with_holiday`、`without_holiday`、`holidays`、`business_days_between`、`DayCount::day_count` の戻り値を `Result` にした。既存の計算は変えていない。
+
+**照合の条件**：2026-11-01、**QuantLib C++ v1.42 そのもの**（コミット `41b0e14`。カレンダーに必要なソースを無修正でビルド。g++ 14.3.0、Boost は Rtools 4.5 のヘッダー）。`tools/golden/p1_all_calendars.{cpp,sh}`、`cargo test --test golden_all_calendars`。シリアル 367〜109574 の 109,208 日すべてで、営業日の判定、エラーの有無と原因、週末の曜日、名前を比べた。
+
+**R パッケージとの突き合わせ**：Version 1.42（正確な C++ コミットは不明）の `holidayList` を、作れる 67 カレンダーで比べ、差は 0 件だった（週末以外の休日。例外になる範囲と末日 2199-12-31 を除く。`tools/verify/verify_calendars.R`）。`Germany::Euwax` と `Indonesia::IDX` は R パッケージの enum になく作れないので、C++ だけと比べた。
+
+| 地域 | クラス | 市場 | 比べた日数の合計 | C++ との差 |
+|---|---|---|---:|---:|
+| 南北アメリカ | 6 | 14 | 1,528,912 | 0 |
+| 欧州 | 19 | 31 | 3,385,448 | 0 |
+| 中東・アフリカ | 5 | 7 | 764,456 | 0 |
+| アジア太平洋 | 11 | 17 | 1,856,536 | 0 |
+
+共通のカレンダー（Joint は 3 つの組み合わせと、エラーの伝わり方を見る日本と MOEX の組み合わせ。Bespoke は水曜日と木曜日を週末にした例）：
+
+| キー | 週末以外の休日 | 週末の営業日 | エラーの日 | C++ との差 |
+|---|---:|---:|---:|---:|
+| `null_calendar` | 0 | 0 | 0 | 0 |
+| `weekends_only` | 0 | 0 | 0 | 0 |
+| `bespoke_wednesday_thursday` | 0 | 0 | 0 | 0 |
+| `joint_three_holidays` | 8,288 | 0 | 0 | 0 |
+| `joint_three_business_days` | 220 | 0 | 0 | 0 |
+| `joint_japan_moex_holidays` | 5,402 | 0 | 27452 | 0 |
+| `joint_japan_moex_business_days` | 313 | 9 | 13090 | 0 |
+
+**例外になる日付**（QuantLib と Riemann で同じ。Riemann は `Err` を返す）
+
+| カレンダー | 日付 | 原因 |
+|---|---|---|
+| `Russia(MOEX)` | 1901-01-01〜2011-12-31（40,542 日） | 2012 年より前のデータがない |
+| `Israel(Settlement, TASE)` | 1901-01-01〜1901-01-21 の平日など 15 日と 2199-12-31 | 規則が前後の日付を参照し、有効範囲を外れる |
+| `Israel(SHIR)` | 1901-01-01〜1901-01-21 の平日など 15 日と 2199-12-31 | 同上 |
+
+**収録期間の制限**：「年別データ」のカレンダーは、下の範囲の外では年別の休日が入らず、固定日と規則だけになる。エラーにはならないので（MOEX の 2012 年より前を除く）、範囲の外では祝日が営業日と判定されることがある。実際の休日が分かっていれば `with_holiday` で例外日として補える。「規則のみ」も、将来の臨時休日は入らない。範囲は、ソースの年の記述と、基準値の年ごとの休日数から確かめた。
+
+**対応一覧**
+
+| 地域 | QuantLib のクラス | 市場 | Riemann | 種類 | 年別データ・一度きりの休日 | 注記 | 週末以外の休日 | エラーの日 | C++ との差 | R パッケージ | 実市場 |
+|---|---|---|---|---|---|---|---:|---:|---:|---|---|
+| 南北アメリカ | `Argentina` | Merval | `Calendar::Argentina` | 規則のみ | — |  | 2,948 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `Brazil` | Settlement | `Calendar::Brazil(BrazilMarket::Settlement)` | 規則のみ | — | 年の条件は規則の変更だけ（例：11/20）。年別の表なし | 3,024 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `Brazil` | Exchange | `Calendar::Brazil(BrazilMarket::Exchange)` | 規則のみ | — | 年の条件は規則の変更だけ（例：11/20）。年別の表なし | 3,721 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `Canada` | Settlement | `Calendar::Canada(CanadaMarket::Settlement)` | 規則のみ | — |  | 3,361 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `Canada` | TSX | `Calendar::Canada(CanadaMarket::Tsx)` | 規則のみ | — |  | 2,883 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `Chile` | SSE | `Calendar::Chile` | 規則と一度きりの休日 | 2017〜2022 | 先住民の日は 2021〜2199 年の表で全期間をカバー | 3,455 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `Mexico` | BMV | `Calendar::Mexico` | 規則のみ | — |  | 2,708 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `UnitedStates` | Settlement | `Calendar::UnitedStates(UsMarket::Settlement)` | 規則と一度きりの休日 | 1954〜2025 |  | 3,016 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `UnitedStates` | NYSE | `Calendar::UnitedStates(UsMarket::Nyse)` | 規則と一度きりの休日 | 1954〜2025 |  | 2,853 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `UnitedStates` | GovernmentBond | `Calendar::UnitedStates(UsMarket::GovernmentBond)` | 規則と一度きりの休日 | 1954〜2025 |  | 3,189 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `UnitedStates` | NERC | `Calendar::UnitedStates(UsMarket::Nerc)` | 規則と一度きりの休日 | 1954〜2025 |  | 1,667 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `UnitedStates` | LiborImpact | `Calendar::UnitedStates(UsMarket::LiborImpact)` | 規則と一度きりの休日 | 1954〜2025 |  | 2,963 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `UnitedStates` | FederalReserve | `Calendar::UnitedStates(UsMarket::FederalReserve)` | 規則と一度きりの休日 | 1954〜2025 |  | 2,823 | 0 | 0 | 差 0 | 未検証 |
+| 南北アメリカ | `UnitedStates` | SOFR | `Calendar::UnitedStates(UsMarket::Sofr)` | 規則と一度きりの休日 | 1954〜2025 |  | 3,235 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Austria` | Settlement | `Calendar::Austria(AustriaMarket::Settlement)` | 規則のみ | — |  | 3,079 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Austria` | Exchange | `Calendar::Austria(AustriaMarket::Exchange)` | 規則のみ | — |  | 2,358 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `CzechRepublic` | PSE | `Calendar::CzechRepublic` | 規則と一度きりの休日 | 2004 |  | 2,835 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Denmark` | （区分なし） | `Calendar::Denmark` | 規則のみ | — |  | 3,081 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Finland` | （区分なし） | `Calendar::Finland` | 規則のみ | — |  | 2,689 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `France` | Settlement | `Calendar::France(FranceMarket::Settlement)` | 規則のみ | — |  | 2,436 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `France` | Exchange | `Calendar::France(FranceMarket::Exchange)` | 規則のみ | — |  | 1,882 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Germany` | Settlement | `Calendar::Germany(GermanyMarket::Settlement)` | 規則のみ | — |  | 2,776 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Germany` | FrankfurtStockExchange | `Calendar::Germany(GermanyMarket::FrankfurtStockExchange)` | 規則のみ | — |  | 1,668 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Germany` | Xetra | `Calendar::Germany(GermanyMarket::Xetra)` | 規則のみ | — |  | 1,668 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Germany` | Eurex | `Calendar::Germany(GermanyMarket::Eurex)` | 規則のみ | — |  | 1,882 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Germany` | Euwax | `Calendar::Germany(GermanyMarket::Euwax)` | 規則のみ | — |  | 1,967 | 0 | 0 | R で作れない | 未検証 |
+| 欧州 | `Hungary` | （区分なし） | `Calendar::Hungary` | 規則のみ | — |  | 2,491 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Iceland` | ICEX | `Calendar::Iceland` | 規則のみ | — |  | 3,141 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Italy` | Settlement | `Calendar::Italy(ItalyMarket::Settlement)` | 規則と一度きりの休日 | 1999 |  | 2,362 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Italy` | Exchange | `Calendar::Italy(ItalyMarket::Exchange)` | 規則と一度きりの休日 | 1999 |  | 2,096 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Norway` | （区分なし） | `Calendar::Norway` | 規則のみ | — |  | 2,689 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Poland` | Settlement | `Calendar::Poland(PolandMarket::Settlement)` | 規則のみ | — |  | 2,443 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Poland` | WSE | `Calendar::Poland(PolandMarket::Wse)` | 規則のみ | — |  | 2,871 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Romania` | Public | `Calendar::Romania(RomaniaMarket::Public)` | 規則と一度きりの休日 | 2014 |  | 2,635 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Romania` | BVB | `Calendar::Romania(RomaniaMarket::Bvb)` | 規則と一度きりの休日 | 2014 |  | 2,637 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Russia` | Settlement | `Calendar::Russia(RussiaMarket::Settlement)` | 年別データ | 2012〜2020 | 追加の休日と振替営業日は 2020 年まで。MOEX は 2012 年より前がエラー | 2,959 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Russia` | MOEX | `Calendar::Russia(RussiaMarket::Moex)` | 年別データ | 2012〜2020 | 追加の休日と振替営業日は 2020 年まで。MOEX は 2012 年より前がエラー | 1,140 | 40542 | 0 | 差 0 | 未検証 |
+| 欧州 | `Slovakia` | BSSE | `Calendar::Slovakia` | 規則と一度きりの休日 | 2004〜2005 |  | 3,383 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Sweden` | （区分なし） | `Calendar::Sweden` | 規則のみ | — |  | 2,934 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Switzerland` | （区分なし） | `Calendar::Switzerland` | 規則のみ | — |  | 2,477 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `TARGET` | （区分なし） | `Calendar::Target` | 規則と一度きりの休日 | 1998〜2001 |  | 1,118 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `Ukraine` | USE | `Calendar::Ukraine` | 規則のみ | — |  | 2,786 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `UnitedKingdom` | Settlement | `Calendar::UnitedKingdom(UkMarket::Settlement)` | 規則と一度きりの休日 | 1995〜2023 |  | 2,399 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `UnitedKingdom` | Exchange | `Calendar::UnitedKingdom(UkMarket::Exchange)` | 規則と一度きりの休日 | 1995〜2023 |  | 2,399 | 0 | 0 | 差 0 | 未検証 |
+| 欧州 | `UnitedKingdom` | Metals | `Calendar::UnitedKingdom(UkMarket::Metals)` | 規則と一度きりの休日 | 1995〜2023 |  | 2,399 | 0 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Botswana` | （区分なし） | `Calendar::Botswana` | 規則のみ | — |  | 2,989 | 0 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Israel` | Settlement | `Calendar::Israel(IsraelMarket::Settlement)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も Riemann もエラー | 679 | 16 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Israel` | TASE | `Calendar::Israel(IsraelMarket::Tase)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も Riemann もエラー | 679 | 16 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Israel` | SHIR | `Calendar::Israel(IsraelMarket::Shir)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も Riemann もエラー | 1,797 | 16 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `SaudiArabia` | Tadawul | `Calendar::SaudiArabia` | 年別データ | 1998〜2029 | 犠牲祭は 2022 年まで、断食明けは 2029 年まで | 6,278 | 0 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `SouthAfrica` | （区分なし） | `Calendar::SouthAfrica` | 規則と一度きりの休日 | 2004〜2024 |  | 3,123 | 0 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Turkey` | （区分なし） | `Calendar::Turkey` | 年別データ | 2004〜2034 | 2024 年以降は要検証とソースに記載 | 1,576 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Australia` | Settlement | `Calendar::Australia(AustraliaMarket::Settlement)` | 規則と一度きりの休日 | 2022 |  | 2,903 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Australia` | ASX | `Calendar::Australia(AustraliaMarket::Asx)` | 規則と一度きりの休日 | 2022 |  | 2,305 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `China` | SSE | `Calendar::China(ChinaMarket::Sse)` | 年別データ | 2004〜2026 | IB の振替営業日は 2005〜2026 年 | 1,872 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `China` | IB | `Calendar::China(ChinaMarket::Ib)` | 年別データ | 2004〜2026 | IB の振替営業日は 2005〜2026 年 | 1,871 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `HongKong` | HKEx | `Calendar::HongKong` | 年別データ | 2004〜2025 |  | 2,201 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `India` | NSE | `Calendar::India` | 年別データ | 2005〜2025 | 2024〜2025 年の Ramzan Id・Bakri Id・Id-E-Milad は推定とソースに記載 | 1,736 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Indonesia` | BEJ | `Calendar::Indonesia(IndonesiaMarket::Bej)` | 年別データ | 2005〜2014 |  | 1,358 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Indonesia` | JSX | `Calendar::Indonesia(IndonesiaMarket::Jsx)` | 年別データ | 2005〜2014 |  | 1,358 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Indonesia` | IDX | `Calendar::Indonesia(IndonesiaMarket::Idx)` | 年別データ | 2005〜2014 |  | 1,358 | 0 | 0 | R で作れない | 未検証 |
+| アジア太平洋 | `Japan` | （区分なし） | `Calendar::Japan` | 規則と一度きりの休日 | 1959〜2021 | 春分・秋分は近似式 | 4,575 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `NewZealand` | Wellington | `Calendar::NewZealand(NewZealandMarket::Wellington)` | 年別データ | 2022〜2052 | 年別は Matariki だけで、他は規則 | 3,252 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `NewZealand` | Auckland | `Calendar::NewZealand(NewZealandMarket::Auckland)` | 年別データ | 2022〜2052 | 年別は Matariki だけで、他は規則 | 3,252 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Singapore` | SGX | `Calendar::Singapore` | 年別データ | 2004〜2026 |  | 1,337 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `SouthKorea` | Settlement | `Calendar::SouthKorea(SouthKoreaMarket::Settlement)` | 年別データ | 2004〜2050 |  | 2,592 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `SouthKorea` | KRX | `Calendar::SouthKorea(SouthKoreaMarket::Krx)` | 年別データ | 2004〜2050 |  | 2,893 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Taiwan` | TSEC | `Calendar::Taiwan` | 年別データ | 2002〜2026 |  | 1,100 | 0 | 0 | 差 0 | 未検証 |
+| アジア太平洋 | `Thailand` | （区分なし） | `Calendar::Thailand` | 年別データ | 2000〜2025 |  | 3,879 | 0 | 0 | 差 0 | 未検証 |
+
+**確かめていないこと**：実際の市場休日との一致。例外日は、日本での 54 件の照合（3.4 節）とトルコの簡単なテストだけで、全カレンダーでは確かめていない。Joint の例外日の扱いは 3.4 節の【設計案】のままである。
 
 ## 4. 営業日調整
 

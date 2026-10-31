@@ -1,73 +1,40 @@
 //! Compares TONAR OIS curves with golden values from the QuantLib R package Version 1.42,
-//! whose exact C++ commit is unknown (`tools/golden/p3_tonar_ois.R`). Dates must match exactly
-//! and errors by cause. Node discount factors, discounts and implied rates must match within
-//! a relative 1e-12 (specification 7.3), and the curve must reprice each quote within 1e-9.
+//! whose exact C++ commit is unknown (`tools/golden/p3_tonar_ois.R` for log-linear and
+//! `tools/golden/p3_tonar_log_cubic.R` for monotonic log-cubic). Dates must match exactly and
+//! errors by cause. Node discount factors, discounts and implied rates must match within the
+//! relative tolerance of each test, and the curve must reprice each quote within 1e-9.
 
 mod common;
 
-use common::{date, day_count, golden_rows, Stats};
-use riemann::ois::{
-    build_ois_curve, tonar, OisCurve, OisCurveInstrument, OisCurveSpec, OisInterpolation,
-};
-use riemann::{Error, Period, TimeUnit};
+use common::{date, day_count, golden_rows, tonar_curve_spec, Stats};
+use riemann::interest_rate::Compounding;
+use riemann::ois::{build_ois_curve, OisCurve, OisInterpolation};
+use riemann::Error;
 use std::collections::BTreeMap;
 
-fn tenor(label: &str) -> Period {
-    let (n, unit) = label.split_at(label.len() - 1);
-    let unit = match unit {
-        "W" => TimeUnit::Weeks,
-        "M" => TimeUnit::Months,
-        "Y" => TimeUnit::Years,
-        other => panic!("unknown unit {other}"),
-    };
-    Period::new(n.parse().unwrap(), unit)
-}
-
-fn spec(r: &[String]) -> OisCurveSpec {
-    let instruments = r[8]
-        .split(' ')
-        .map(|item| {
-            let (label, rate) = item.split_once(':').unwrap();
-            let rate = rate.parse().unwrap();
-            if label == "ON" {
-                OisCurveInstrument::OvernightDeposit { rate }
-            } else {
-                OisCurveInstrument::Ois {
-                    tenor: tenor(label),
-                    rate,
-                    settlement_days: r[5].parse().unwrap(),
-                    payment_frequency: r[7].parse().unwrap(),
-                    payment_lag: r[6].parse().unwrap(),
-                }
-            }
-        })
-        .collect();
-    OisCurveSpec {
-        evaluation_date: date(&r[1]),
-        reference_date: date(&r[2]),
-        index: tonar(),
-        curve_day_count: day_count(&r[3]),
-        instruments,
-        interpolation: OisInterpolation::LogLinear,
-        accuracy: 1.0e-12,
-    }
-}
-
 /// Maps a QuantLib error message to the matching Riemann error.
-fn same_cause(status: &str, got: &Error) -> bool {
-    let text = got.to_string();
-    let key = if status.contains("root not bracketed") {
-        "root not bracketed"
-    } else if status.contains("more than one instrument") {
-        "more than one instrument"
-    } else if status.contains("all instruments expired") {
-        "all instruments expired"
-    } else if status.contains("negative time") {
-        "negative time"
-    } else {
+fn same_cause(row: &[String], got: &Error) -> bool {
+    let (status, text) = (row[9].as_str(), got.to_string());
+    let keys = [
+        "root not bracketed",
+        "more than one instrument",
+        "all instruments expired",
+        "negative time",
+        "convergence not reached",
+        "invalid value",
+        "maximum number of function evaluations",
+    ];
+    let Some(key) = keys.iter().find(|k| status.contains(**k)) else {
         return false;
     };
-    text.contains(key)
+    // the log-cubic golden file also tells where the bootstrap stopped
+    let same_place = match (row.get(10), row.get(11)) {
+        (Some(iteration), Some(alive)) if iteration != "0" => text.contains(&format!(
+            "iteration {iteration}: failed at alive instrument {alive},"
+        )),
+        _ => true,
+    };
+    text.contains(key) && same_place
 }
 
 fn group(rows: &[Vec<String>]) -> BTreeMap<&str, Vec<&Vec<String>>> {
@@ -78,12 +45,46 @@ fn group(rows: &[Vec<String>]) -> BTreeMap<&str, Vec<&Vec<String>>> {
     map
 }
 
-#[test]
-fn tonar_curves_match_quantlib_r_package() {
-    let cases = golden_rows("ois_tonar_cases.csv");
-    let instruments_rows = golden_rows("ois_tonar_instruments.csv");
-    let nodes_rows = golden_rows("ois_tonar_nodes.csv");
-    let discounts_rows = golden_rows("ois_tonar_discounts.csv");
+/// Compares a rate or an error; the size of the difference is kept in `stats`.
+fn check_rate(
+    name: &str,
+    golden: &str,
+    got: Result<f64, Error>,
+    stats: &mut Stats,
+    bad: &mut Vec<String>,
+    case: &str,
+    d: &str,
+) {
+    match (golden, got) {
+        ("ERROR", Err(_)) => {}
+        ("ERROR", Ok(v)) => bad.push(format!(
+            "case {case} date {d} {name}: QuantLib error, Riemann {v}"
+        )),
+        (g, Err(e)) => bad.push(format!(
+            "case {case} date {d} {name}: QuantLib {g}, Riemann {e}"
+        )),
+        (g, Ok(v)) => {
+            stats.close(g, v, f64::INFINITY);
+        }
+    }
+}
+
+/// `relative` applies to discount factors. Rates are compared by absolute difference where
+/// the field says so, because a relative test on a small short rate only measures its size.
+struct Tolerances {
+    relative: f64,
+    implied_relative: f64,
+    implied_absolute: f64,
+    zero: f64,
+    forward_1d: f64,
+    forward_instantaneous: f64,
+}
+
+fn check_curves(prefix: &str, interpolation: OisInterpolation, tolerances: Tolerances) {
+    let cases = golden_rows(&format!("{prefix}_cases.csv"));
+    let instruments_rows = golden_rows(&format!("{prefix}_instruments.csv"));
+    let nodes_rows = golden_rows(&format!("{prefix}_nodes.csv"));
+    let discounts_rows = golden_rows(&format!("{prefix}_discounts.csv"));
     let (instruments, nodes, discounts) = (
         group(&instruments_rows),
         group(&nodes_rows),
@@ -95,12 +96,14 @@ fn tonar_curves_match_quantlib_r_package() {
     let (mut built, mut date_checks, mut errors_in_discounts) = (0, 0, 0);
     let (mut s_nodes, mut s_discounts, mut s_implied) =
         (Stats::default(), Stats::default(), Stats::default());
+    let (mut s_zero, mut s_forward, mut s_instantaneous) =
+        (Stats::default(), Stats::default(), Stats::default());
     let (mut max_repricing_ql, mut max_repricing) = (0.0_f64, 0.0_f64);
 
     for r in &cases {
         let case = r[0].as_str();
         let status = r[9].as_str();
-        let result = build_ois_curve(&spec(r));
+        let result = build_ois_curve(&tonar_curve_spec(r, interpolation));
         *causes
             .entry(status.split(':').next().unwrap().chars().take(40).collect())
             .or_default() += 1;
@@ -116,7 +119,7 @@ fn tonar_curves_match_quantlib_r_package() {
                 continue;
             }
             (s, Err(e)) => {
-                if !same_cause(s, &e) {
+                if !same_cause(r, &e) {
                     bad.push(format!("case {case}: QuantLib `{s}`, Riemann `{e}`"));
                 }
                 continue;
@@ -153,7 +156,7 @@ fn tonar_curves_match_quantlib_r_package() {
                     let golden: f64 = implied.parse().unwrap();
                     max_repricing_ql = max_repricing_ql.max((golden - q.rate).abs());
                     max_repricing = max_repricing.max((v - q.rate).abs());
-                    if !s_implied.close(implied, v, 1e-12) {
+                    if !s_implied.close(implied, v, tolerances.implied_relative) {
                         bad.push(format!(
                             "case {case}: implied rate: QuantLib {implied}, Riemann {v}"
                         ));
@@ -179,7 +182,7 @@ fn tonar_curves_match_quantlib_r_package() {
                     date(&g[1])
                 ));
             }
-            if !s_nodes.close(&g[2], *v, 1e-12) {
+            if !s_nodes.close(&g[2], *v, tolerances.relative) {
                 bad.push(format!(
                     "case {case} node {d}: QuantLib {}, Riemann {v}",
                     g[2]
@@ -187,26 +190,53 @@ fn tonar_curves_match_quantlib_r_package() {
             }
         }
 
+        let dc = day_count(&r[3]);
         for g in discounts.get(case).into_iter().flatten() {
-            let got = curve.discount(date(&g[1]));
+            let d = date(&g[1]);
+            let got = curve.discount(d);
             errors_in_discounts += usize::from(g[2] == "ERROR");
             let ok = match (g[2].as_str(), &got) {
                 // the golden file has no messages: before the reference date the time is
                 // negative, otherwise the date is past the curve without extrapolation
                 ("ERROR", Err(Error::InvalidInput { reason })) => {
-                    date(&g[1]) < date(&r[2]) && reason.contains("negative time")
+                    d < date(&r[2]) && reason.contains("negative time")
                 }
-                ("ERROR", Err(Error::OutsideCurveRange { .. })) => {
-                    date(&g[1]) >= date(&r[2]) && r[4] == "0"
-                }
+                ("ERROR", Err(Error::OutsideCurveRange { .. })) => d >= date(&r[2]) && r[4] == "0",
                 ("ERROR", _) | (_, Err(_)) => false,
-                (golden, Ok(v)) => s_discounts.close(golden, *v, 1e-12),
+                (golden, Ok(v)) => s_discounts.close(golden, *v, tolerances.relative),
             };
             if !ok {
                 bad.push(format!(
                     "case {case} date {}: QuantLib {}, Riemann {got:?}",
                     g[1], g[2]
                 ));
+            }
+            if g.len() > 3 {
+                let rate =
+                    |x: Result<riemann::interest_rate::InterestRate, Error>| x.map(|i| i.rate);
+                let next = date(&(g[1].parse::<i64>().unwrap() + 1).to_string());
+                let zero = rate(curve.zero_rate(d, &dc, Compounding::Continuous, 1));
+                check_rate("zero", &g[3], zero, &mut s_zero, &mut bad, case, &g[1]);
+                let forward = rate(curve.forward_rate(d, next, &dc, Compounding::Simple, 1));
+                check_rate(
+                    "forward",
+                    &g[4],
+                    forward,
+                    &mut s_forward,
+                    &mut bad,
+                    case,
+                    &g[1],
+                );
+                let instantaneous = rate(curve.forward_rate(d, d, &dc, Compounding::Continuous, 1));
+                check_rate(
+                    "forward at a date",
+                    &g[5],
+                    instantaneous,
+                    &mut s_instantaneous,
+                    &mut bad,
+                    case,
+                    &g[1],
+                );
             }
         }
     }
@@ -217,6 +247,9 @@ fn tonar_curves_match_quantlib_r_package() {
         ("nodes", &s_nodes),
         ("discounts", &s_discounts),
         ("implied", &s_implied),
+        ("zero", &s_zero),
+        ("forward 1d", &s_forward),
+        ("forward at", &s_instantaneous),
     ] {
         eprintln!(
             "{name:10} {:6} exact {:6} inexact (max rel {:e}, max abs {:e})",
@@ -227,9 +260,63 @@ fn tonar_curves_match_quantlib_r_package() {
     eprintln!("max |implied - quote|: QuantLib {max_repricing_ql:e}, Riemann {max_repricing:e}");
     assert!(max_repricing <= 1e-9, "repricing error {max_repricing:e}");
     assert!(
+        s_implied.max_abs <= tolerances.implied_absolute,
+        "implied {:e}",
+        s_implied.max_abs
+    );
+    assert!(
+        s_zero.max_abs <= tolerances.zero,
+        "zero rate {:e}",
+        s_zero.max_abs
+    );
+    assert!(
+        s_forward.max_abs <= tolerances.forward_1d,
+        "forward {:e}",
+        s_forward.max_abs
+    );
+    assert!(
+        s_instantaneous.max_abs <= tolerances.forward_instantaneous,
+        "forward at a date {:e}",
+        s_instantaneous.max_abs
+    );
+    assert!(
         bad.is_empty(),
         "{} mismatches; first:\n{}",
         bad.len(),
         bad[..bad.len().min(10)].join("\n")
+    );
+}
+
+#[test]
+fn log_linear_curves_match_quantlib_r_package() {
+    check_curves(
+        "ois_tonar",
+        OisInterpolation::LogLinear,
+        Tolerances {
+            relative: 1e-12,
+            implied_relative: 1e-12,
+            implied_absolute: 1e-10,
+            zero: 0.0,
+            forward_1d: 0.0,
+            forward_instantaneous: 0.0,
+        },
+    );
+}
+
+#[test]
+fn monotonic_log_cubic_curves_match_quantlib_r_package() {
+    check_curves(
+        "ois_tonar_log_cubic",
+        OisInterpolation::MonotonicLogCubic,
+        // rates: absolute 1e-10 (specification 7.3). The forward at a date divides by 0.0001
+        // years, so the relative 1e-12 of discount factors becomes 1e-8.
+        Tolerances {
+            relative: 1e-12,
+            implied_relative: f64::INFINITY,
+            implied_absolute: 1e-10,
+            zero: 1e-10,
+            forward_1d: 1e-10,
+            forward_instantaneous: 1e-8,
+        },
     );
 }

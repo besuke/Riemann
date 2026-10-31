@@ -74,9 +74,9 @@ fn holidays_match_quantlib_for_every_date() {
         let mut mismatches = Vec::new();
         for s in Date::MIN_SERIAL..=Date::MAX_SERIAL {
             let d = Date::from_serial(s as i64).unwrap();
-            let riemann = cal.is_holiday(d) && !cal.is_weekend(d.weekday());
+            let riemann = cal.is_holiday(d).unwrap() && !cal.is_weekend(d.weekday());
             let quantlib = holidays.contains(&s);
-            let weekend_ok = !cal.is_weekend(d.weekday()) || cal.is_holiday(d);
+            let weekend_ok = !cal.is_weekend(d.weekday()) || cal.is_holiday(d).unwrap();
             if riemann != quantlib || !weekend_ok {
                 mismatches.push(format!("{d} ({:?}): QuantLib holiday={quantlib}, Riemann holiday={riemann}", d.weekday()));
             }
@@ -101,15 +101,15 @@ fn holiday_adjustments_match_quantlib() {
         let date = Date::from_serial(r[2].parse().unwrap()).unwrap();
         if k != step {
             cal = match r[1].as_str() {
-                "add" => cal.with_holiday(date),
-                "remove" => cal.without_holiday(date),
+                "add" => cal.with_holiday(date).unwrap(),
+                "remove" => cal.without_holiday(date).unwrap(),
                 other => panic!("unknown op {other}"),
             };
             step = k;
         }
         let probe = Date::from_serial(r[3].parse().unwrap()).unwrap();
         let expected = r[4] == "1";
-        if cal.is_business_day(probe) != expected {
+        if cal.is_business_day(probe).unwrap() != expected {
             mismatches.push(format!("step {k} {} {date}: probe {probe} QuantLib business={expected}", r[1]));
         }
     }

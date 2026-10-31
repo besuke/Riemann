@@ -24,7 +24,7 @@
 //! and the base curve is held by value. Extrapolation is a field of the curve.
 
 use crate::interest_rate::{Compounding, InterestRate};
-use crate::math::interpolation::Linear;
+use crate::math::interpolation::{Linear, MonotonicCubicSpline};
 use crate::math::solver1d::close;
 use crate::math::solver1d::close_enough;
 use crate::time::{Date, DayCount};
@@ -49,11 +49,11 @@ enum Shape {
     Flat { rate: InterestRate },
     /// QuantLib `ZeroCurve` (`InterpolatedZeroCurve<Linear>`): continuous zero rates.
     Zero { dates: Vec<Date>, zeros: Linear },
-    /// QuantLib `DiscountCurve` (`InterpolatedDiscountCurve<LogLinear>`): linear on log discounts.
+    /// QuantLib `InterpolatedDiscountCurve`: an interpolation of the log discounts.
     Discount {
         dates: Vec<Date>,
         discounts: Vec<f64>,
-        log_discounts: Linear,
+        log_discounts: LogDiscounts,
     },
     /// QuantLib `ZeroSpreadedTermStructure`: a spread added to the base zero rate.
     ZeroSpreaded {
@@ -62,6 +62,61 @@ enum Shape {
         compounding: Compounding,
         frequency: u32,
     },
+}
+
+/// How log discount factors are interpolated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogDiscountInterpolation {
+    /// QuantLib `LogLinear`.
+    LogLinear,
+    /// QuantLib `MonotonicLogCubic`: spline, monotonic, second derivative 0 at both ends.
+    MonotonicLogCubic,
+}
+
+/// An interpolation of log discount factors, fixed when it is built.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum LogDiscounts {
+    Linear(Linear),
+    MonotonicCubic(MonotonicCubicSpline),
+}
+
+impl LogDiscounts {
+    pub(crate) fn new(
+        interpolation: LogDiscountInterpolation,
+        times: Vec<f64>,
+        logs: Vec<f64>,
+    ) -> Result<LogDiscounts, Error> {
+        Ok(match interpolation {
+            LogDiscountInterpolation::LogLinear => {
+                LogDiscounts::Linear(Linear::new(times, logs)?)
+            }
+            LogDiscountInterpolation::MonotonicLogCubic => {
+                LogDiscounts::MonotonicCubic(MonotonicCubicSpline::new(times, logs)?)
+            }
+        })
+    }
+
+    pub(crate) fn value(&self, t: f64) -> f64 {
+        match self {
+            LogDiscounts::Linear(i) => i.value(t),
+            LogDiscounts::MonotonicCubic(i) => i.value(t),
+        }
+    }
+
+    fn derivative(&self, t: f64) -> f64 {
+        match self {
+            LogDiscounts::Linear(i) => i.derivative(t),
+            LogDiscounts::MonotonicCubic(i) => i.derivative(t),
+        }
+    }
+
+    fn last_time(&self) -> f64 {
+        let times = match self {
+            LogDiscounts::Linear(i) => i.xs(),
+            LogDiscounts::MonotonicCubic(i) => i.xs(),
+        };
+        *times.last().expect("at least 2 points")
+    }
 }
 
 /// Times from `dates[0]` (QuantLib `InterpolatedCurve::setupTimes`).
@@ -156,6 +211,22 @@ impl YieldCurve {
         discounts: Vec<f64>,
         day_count: DayCount,
     ) -> Result<YieldCurve, Error> {
+        YieldCurve::interpolated_discounts(
+            dates,
+            discounts,
+            day_count,
+            LogDiscountInterpolation::LogLinear,
+        )
+    }
+
+    /// Discount factors with the given interpolation (QuantLib `InterpolatedDiscountCurve`).
+    /// The first date is the reference date and its discount factor must be 1.
+    pub fn interpolated_discounts(
+        dates: Vec<Date>,
+        discounts: Vec<f64>,
+        day_count: DayCount,
+        interpolation: LogDiscountInterpolation,
+    ) -> Result<YieldCurve, Error> {
         check_points(&dates, &discounts)?;
         if discounts[0] != 1.0 {
             return Err(Error::InvalidInput {
@@ -174,7 +245,7 @@ impl YieldCurve {
             day_count,
             extrapolate: false,
             shape: Shape::Discount {
-                log_discounts: Linear::new(times, logs)?,
+                log_discounts: LogDiscounts::new(interpolation, times, logs)?,
                 discounts,
                 dates,
             },
@@ -288,7 +359,7 @@ impl YieldCurve {
                 log_discounts,
                 ..
             } => {
-                let t_max = *log_discounts.xs().last().expect("at least 2 points");
+                let t_max = log_discounts.last_time();
                 if t <= t_max {
                     return Ok(log_discounts.value(t).exp());
                 }
@@ -340,6 +411,65 @@ impl YieldCurve {
             }
             Shape::Flat { .. } | Shape::Discount { .. } => unreachable!("not a zero-yield curve"),
         }
+    }
+
+    /// Zero rate to the date `d` (QuantLib `zeroRate(d, dayCounter, comp, freq)`); on the
+    /// reference date the rate over 0.0001 years is returned.
+    pub fn zero_rate(
+        &self,
+        d: Date,
+        day_count: &DayCount,
+        compounding: Compounding,
+        frequency: u32,
+    ) -> Result<InterestRate, Error> {
+        let t = self.time_from_reference(d)?;
+        if t == 0.0 {
+            let compound = 1.0 / self.discount_at(DT, false)?;
+            return InterestRate::implied_rate(
+                compound,
+                day_count.clone(),
+                compounding,
+                frequency,
+                DT,
+            );
+        }
+        let compound = 1.0 / self.discount_at(t, false)?;
+        let t = day_count.year_fraction(self.reference_date, d, None, None)?;
+        InterestRate::implied_rate(compound, day_count.clone(), compounding, frequency, t)
+    }
+
+    /// Forward rate from `d1` to `d2` (QuantLib `forwardRate(d1, d2, dayCounter, comp, freq)`);
+    /// when the dates are equal, the rate over 0.0001 years around `d1`.
+    pub fn forward_rate(
+        &self,
+        d1: Date,
+        d2: Date,
+        day_count: &DayCount,
+        compounding: Compounding,
+        frequency: u32,
+    ) -> Result<InterestRate, Error> {
+        if d1 == d2 {
+            let t = self.time_from_reference(d1)?;
+            self.check_range(t, false)?;
+            let t1 = (t - DT / 2.0).max(0.0);
+            let t2 = t1 + DT;
+            let compound = self.discount_at(t1, true)? / self.discount_at(t2, true)?;
+            return InterestRate::implied_rate(
+                compound,
+                day_count.clone(),
+                compounding,
+                frequency,
+                DT,
+            );
+        }
+        if d1 > d2 {
+            return Err(Error::InvalidInput {
+                reason: format!("{d1} later than {d2}"),
+            });
+        }
+        let compound = self.discount(d1)? / self.discount(d2)?;
+        let t = day_count.year_fraction(d1, d2, None, None)?;
+        InterestRate::implied_rate(compound, day_count.clone(), compounding, frequency, t)
     }
 
     /// Zero rate at time `t` in the given compounding (QuantLib `zeroRate(t, comp, freq,

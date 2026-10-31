@@ -1,0 +1,78 @@
+# QuantLib C++ 1.42 (v1.42 tag commit 41b0e14), built from source; weekend days are numbers with Sunday = 1
+key,region,class,market,name,weekend
+null_calendar,common,NullCalendar,,Null,
+weekends_only,common,WeekendsOnly,,weekends only,1 7
+bespoke_wednesday_thursday,common,BespokeCalendar,,Riemann test,4 5
+joint_three_holidays,common,JointCalendar,JoinHolidays,JoinHolidays(Japan; Xetra; BOVESPA),1 7
+joint_three_business_days,common,JointCalendar,JoinBusinessDays,JoinBusinessDays(Japan; Xetra; BOVESPA),1 7
+joint_japan_moex_holidays,common,JointCalendar,JoinHolidays,JoinHolidays(Japan; Moscow exchange),1 7
+joint_japan_moex_business_days,common,JointCalendar,JoinBusinessDays,JoinBusinessDays(Japan; Moscow exchange),1 7
+argentina_merval,americas,Argentina,Merval,Buenos Aires stock exchange,1 7
+brazil_settlement,americas,Brazil,Settlement,Brazil,1 7
+brazil_exchange,americas,Brazil,Exchange,BOVESPA,1 7
+canada_settlement,americas,Canada,Settlement,Canada,1 7
+canada_tsx,americas,Canada,TSX,TSX,1 7
+chile_sse,americas,Chile,SSE,Santiago Stock Exchange,1 7
+mexico_bmv,americas,Mexico,BMV,Mexican stock exchange,1 7
+us_settlement,americas,UnitedStates,Settlement,US settlement,1 7
+us_nyse,americas,UnitedStates,NYSE,New York stock exchange,1 7
+us_government_bond,americas,UnitedStates,GovernmentBond,US government bond market,1 7
+us_nerc,americas,UnitedStates,NERC,North American Energy Reliability Council,1 7
+us_libor_impact,americas,UnitedStates,LiborImpact,US with Libor impact,1 7
+us_federal_reserve,americas,UnitedStates,FederalReserve,Federal Reserve Bankwire System,1 7
+us_sofr,americas,UnitedStates,SOFR,SOFR fixing calendar,1 7
+target,europe,TARGET,,TARGET,1 7
+austria_settlement,europe,Austria,Settlement,Austrian settlement,1 7
+austria_exchange,europe,Austria,Exchange,Vienna stock exchange,1 7
+czech_republic_pse,europe,CzechRepublic,PSE,Prague stock exchange,1 7
+denmark,europe,Denmark,,Denmark,1 7
+finland,europe,Finland,,Finland,1 7
+france_settlement,europe,France,Settlement,French settlement,1 7
+france_exchange,europe,France,Exchange,Paris stock exchange,1 7
+germany_settlement,europe,Germany,Settlement,German settlement,1 7
+germany_frankfurt_stock_exchange,europe,Germany,FrankfurtStockExchange,Frankfurt stock exchange,1 7
+germany_xetra,europe,Germany,Xetra,Xetra,1 7
+germany_eurex,europe,Germany,Eurex,Eurex,1 7
+germany_euwax,europe,Germany,Euwax,Euwax,1 7
+hungary,europe,Hungary,,Hungary,1 7
+iceland_icex,europe,Iceland,ICEX,Iceland stock exchange,1 7
+italy_settlement,europe,Italy,Settlement,Italian settlement,1 7
+italy_exchange,europe,Italy,Exchange,Milan stock exchange,1 7
+norway,europe,Norway,,Norway,1 7
+poland_settlement,europe,Poland,Settlement,Poland Settlement,1 7
+poland_wse,europe,Poland,WSE,Warsaw stock exchange,1 7
+romania_public,europe,Romania,Public,Romania,1 7
+romania_bvb,europe,Romania,BVB,Bucharest stock exchange,1 7
+russia_settlement,europe,Russia,Settlement,Russian settlement,1 7
+russia_moex,europe,Russia,MOEX,Moscow exchange,1 7
+slovakia_bsse,europe,Slovakia,BSSE,Bratislava stock exchange,1 7
+sweden,europe,Sweden,,Sweden,1 7
+switzerland,europe,Switzerland,,Switzerland,1 7
+ukraine_use,europe,Ukraine,USE,Ukrainian stock exchange,1 7
+uk_settlement,europe,UnitedKingdom,Settlement,UK settlement,1 7
+uk_exchange,europe,UnitedKingdom,Exchange,London stock exchange,1 7
+uk_metals,europe,UnitedKingdom,Metals,London metals exchange,1 7
+botswana,middle_east_africa,Botswana,,Botswana,1 7
+israel_settlement,middle_east_africa,Israel,Settlement,Tel Aviv stock exchange,6 7
+israel_tase,middle_east_africa,Israel,TASE,Tel Aviv stock exchange,6 7
+israel_shir,middle_east_africa,Israel,SHIR,SHIR fixing calendar,1 7
+saudi_arabia_tadawul,middle_east_africa,SaudiArabia,Tadawul,Tadawul,6 7
+south_africa,middle_east_africa,SouthAfrica,,South Africa,1 7
+turkey,middle_east_africa,Turkey,,Turkey,1 7
+japan,asia_pacific,Japan,,Japan,1 7
+australia_settlement,asia_pacific,Australia,Settlement,Australia settlement,1 7
+australia_asx,asia_pacific,Australia,ASX,Australia exchange,1 7
+china_sse,asia_pacific,China,SSE,Shanghai stock exchange,1 7
+china_ib,asia_pacific,China,IB,China inter bank market,1 7
+hong_kong_hkex,asia_pacific,HongKong,HKEx,Hong Kong stock exchange,1 7
+india_nse,asia_pacific,India,NSE,National Stock Exchange of India,1 7
+indonesia_bej,asia_pacific,Indonesia,BEJ,Jakarta stock exchange,1 7
+indonesia_jsx,asia_pacific,Indonesia,JSX,Jakarta stock exchange,1 7
+indonesia_idx,asia_pacific,Indonesia,IDX,Jakarta stock exchange,1 7
+new_zealand_wellington,asia_pacific,NewZealand,Wellington,New Zealand (Wellington),1 7
+new_zealand_auckland,asia_pacific,NewZealand,Auckland,New Zealand (Auckland),1 7
+singapore_sgx,asia_pacific,Singapore,SGX,Singapore exchange,1 7
+south_korea_settlement,asia_pacific,SouthKorea,Settlement,South-Korean settlement,1 7
+south_korea_krx,asia_pacific,SouthKorea,KRX,South-Korea exchange,1 7
+taiwan_tsec,asia_pacific,Taiwan,TSEC,Taiwan stock exchange,1 7
+thailand,asia_pacific,Thailand,,Thailand stock exchange,1 7

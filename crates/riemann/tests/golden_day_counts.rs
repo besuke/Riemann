@@ -73,7 +73,7 @@ fn day_counts_match_quantlib() {
         let dc = day_counter(&r[0], termination);
         let (d1, d2) = (date(&r[1]).unwrap(), date(&r[2]).unwrap());
         let (rs, re) = (date(&r[3]), date(&r[4]));
-        let count = dc.day_count(d1, d2).to_string();
+        let count = dc.day_count(d1, d2).unwrap().to_string();
         if r[5] != count {
             bad.push(format!("{} {d1}->{d2}: dayCount QuantLib {} Riemann {count}", r[0], r[5]));
         }

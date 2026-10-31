@@ -54,7 +54,18 @@ used for verification:
   ql/termstructures/iterativebootstrap.hpp, ql/termstructures/yield/bootstraptraits.hpp,
   ql/termstructures/yield/piecewiseyieldcurve.hpp,
   ql/pricingengines/swap/discountingswapengine.cpp
+- crates/riemann/src/time/calendar/rules/ (americas.rs, europe.rs, middle_east_africa.rs,
+  asia_pacific.rs, special.rs, tables.rs) and crates/riemann/src/time/calendar/rules.rs:
+  the corresponding ql/time/calendars/*.cpp of QuantLib v1.42 (commit 41b0e14), with their
+  copyright holders listed at the top of each Riemann file
 - crates/riemann/src/math/solver1d.rs (brent): ql/math/solvers1d/brent.hpp
+- crates/riemann/src/math/solver1d.rs (finite_difference_newton_safe):
+  ql/math/solvers1d/finitedifferencenewtonsafe.hpp
+- crates/riemann/src/math/interpolation.rs (MonotonicCubicSpline):
+  ql/math/interpolations/cubicinterpolation.hpp,
+  ql/methods/finitedifferences/tridiagonaloperator.cpp
+- crates/riemann/src/curves.rs (zero_rate, forward_rate):
+  ql/termstructures/yieldtermstructure.cpp
 - crates/riemann/src/instruments/fixed_rate_bond.rs (value_on_curve):
   ql/pricingengines/bond/discountingbondengine.cpp (Copyright (C) 2007 Giorgio
   Facchinetti; (C) 2009 StatPro Italia srl) and ql/instruments/bond.cpp

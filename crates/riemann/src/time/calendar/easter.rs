@@ -23,9 +23,35 @@ pub fn easter_monday_day_of_year(year: i32) -> u32 {
     (day_of_year_of_sunday + 1) as u32
 }
 
+/// Day of the year (January 1st = 1) of Orthodox Easter Monday, on the Gregorian calendar. The
+/// date comes from Meeus's Julian algorithm; the Julian calendar is 13 days behind until 2099
+/// and 14 days behind from 2100. QuantLib keeps the same dates as a table for 1901-2199;
+/// agreement is checked against QuantLib by the golden calendar tests.
+pub fn orthodox_easter_monday_day_of_year(year: i32) -> u32 {
+    let a = year % 4;
+    let b = year % 7;
+    let c = year % 19;
+    let d = (19 * c + 15) % 30;
+    let e = (2 * a + 4 * b - d + 34) % 7;
+    let month = (d + e + 114) / 31; // 3 = March, 4 = April
+    let day = (d + e + 114) % 31 + 1; // Easter Sunday on the Julian calendar
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let offset = if year < 2100 { 13 } else { 14 };
+    let day_of_year_of_sunday = if month == 3 { 59 } else { 90 } + leap as i32 + day + offset;
+    (day_of_year_of_sunday + 1) as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn orthodox_matches_quantlib_table_samples() {
+        // QuantLib's Orthodox EasterMonday table: 1901 -> 105, 1902 -> 118, 1910 -> 122.
+        assert_eq!(orthodox_easter_monday_day_of_year(1901), 105);
+        assert_eq!(orthodox_easter_monday_day_of_year(1902), 118);
+        assert_eq!(orthodox_easter_monday_day_of_year(1910), 122);
+    }
 
     #[test]
     fn matches_quantlib_table_samples() {

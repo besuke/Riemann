@@ -21,6 +21,8 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 - **照合の正**：QuantLib R バインディング 1.42。仕様を読むソースは `70f240f`（1.45-dev）だが、計算が変わっている部分は v1.42（`41b0e146`）に合わせる。
 - **P3 の基準**：QuantLib C++ `v1.42`。R パッケージとの照合は「正確な C++ コミットが不明な Version 1.42 との照合」と記録し、C++ `v1.42` そのものとの実行照合とは区別する（`docs/spec_ois.md` 1 章）。
 - **日本式債券計算の規則**：`docs/spec_bonds.md` 5.1 節の規則を採用し、GaussQuant の `R/bond_yen_GQL.R`（コミット `4ff081c`）と照合する。文書では計算規則を直接説明し、VBA を根拠にしない（「VBA 互換」などと書かない）。二次情報の「市場慣行」だけを根拠に別の規則へ変えない。2 月 29 日の応当日が平年になる場合は 2 月 28 日とし、その期間を 1 年とする（例：2024-02-29 から 2025-02-28 は残存 1 年）。この規則は日本式債券計算だけのもので、QuantLib 互換の日付・日数計算には適用しない。
+- **新興国カレンダーの用途**：当面は債券の受渡日と利払日の営業日判定に使う。スワップの規約や金利カーブには広げない。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限定する。
+- **カレンダーの照合の正**：QuantLib C++ v1.42 をビルドした値（`tools/golden/p1_all_calendars.sh`）。R パッケージは突き合わせに使う（`Germany::Euwax` と `Indonesia::IDX` は R から作れない）。
 - **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。`Operand` trait は AD-1 の段階で入れる。
 - **ライセンス**：MIT と Apache-2.0 の併用。QuantLib から移したコードは、著作権表示をソースから写し（記憶で書かない）、ファイルの先頭と `THIRD_PARTY_NOTICES` に載せる。
 
@@ -48,12 +50,12 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 
 | 段階 | 内容 | 状態 |
 |---|---|---|
-| P1 | 日付、カレンダー、営業日調整、スケジュール、日数計算 | 完了 |
+| P1 | 日付、カレンダー、営業日調整、スケジュール、日数計算 | 完了。カレンダーは QuantLib C++ v1.42 の全カレンダー・全市場区分（41 の国・地域、69 市場）を全日付で照合済み（`docs/spec_dates_calendars.md` 3.5 節）。一致は QuantLib とのもので、実際の市場休日は未検証 |
 | P2-1 | 固定利付債のキャッシュフロー、経過利子 | 完了 |
 | P2-2 | 利回りと価格、デュレーション、コンベクシティ、BPV | 完了 |
 | P2-3 | 割引カーブによる評価（フラット、ゼロ、割引係数、ゼロスプレッド） | 完了 |
 | P2-4 | 日本式の単利・複利利回りとリスク指標（`yen_bond.rs`） | 完了 |
-| P3 | OIS のブートストラップ | **TONARの対数線形まで完了（`docs/spec_ois.md` 8 章）。仕様で採用した `MonotonicLogCubic` は未実装。次は P3-3（`MonotonicLogCubic` を TONAR で照合）で、P3-2（€STR・SOFR・SONIA）はその確認後に行う。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
+| P3 | OIS のブートストラップ | **TONARの対数線形と `MonotonicLogCubic` まで照合済み（`docs/spec_ois.md` 8 章、9 章）。€STR・SOFR・SONIA（P3-2）は未着手で、`MonotonicLogCubic` の確認後に行う。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
 | P4 | R の入口 | 未着手 |
 | P5 | OIS の ASW と円ベーシス込み ASW | 未着手 |
 | P6・P7 | TypeScript の Node 版、ブラウザー版 | 未着手 |
@@ -72,8 +74,9 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 - 新しいテストの実行ファイルで LNK1104 が一時的に出ることがある。もう一度実行すれば通る。
 - R は PATH にないので、フルパスで実行する：`"C:/Program Files/R/R-4.6.0/bin/Rscript.exe"`。R の中のパスは `C:/...` の形で書く（`/c/...` は使えない）。
 - 照合用の値は Riemann のルートから `tools/golden/*.R` を実行し、`tests/golden/` に書き出す。仕様が変わらなければ作り直さない。
-- 検証レポート：`tools/verify/verify_riemann.qmd`（`quarto render`）と `verify_bonds.R`。R の入口（P4）ができるまで、`crates/riemann/examples/verify_bonds.rs` と CSV で受け渡す。OIS は P3 の実装後に `MonotonicLogCubic` で追加する。
+- 検証レポート：`tools/verify/verify_riemann.qmd`（`quarto render`）と `verify_common.R`、`verify_bonds.R`、`verify_ois.R`、`verify_calendars.R`。R の入口（P4）ができるまで、`crates/riemann/examples/` の `verify_bonds.rs`、`verify_ois.rs`、`verify_calendars.rs` と CSV で受け渡す。OIS は TONAR の `MonotonicLogCubic` と対数線形を比べる。
 - `Rscript -e` は引用符で失敗しやすいので、スクリプトファイルにする。パッケージのインストールは `devtools::install` ではなく `R CMD INSTALL`（pak の DLL がアプリ制御で止められる）。
 - `rustfmt` にファイルを渡すと `mod` 先まで整形する。テストのファイルでは `tests/common/mod.rs` まで変わるので、`--config skip_children=true` を付けて確かめる。
 - CRLF のファイルは MSYS の sed で CR が消える。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。
+- カレンダーの規則は `tools/golden/port_calendars.R` が生成する（`rules/` の `special.rs` 以外）。生成後に rustfmt をかける。C++ のビルドは Rtools の g++ を PATH に入れて、bash から実行する。
 - QuantLib のソース（v1.42 の確認用）は以前の会話の一時フォルダーにあり、新しい会話では使えない。必要なら一時フォルダーに clone し直す。

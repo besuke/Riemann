@@ -30,17 +30,18 @@
 //!
 //! Differences from QuantLib: the evaluation date, reference date and all conventions are
 //! explicit values (no global settings, handles or observers); no past fixings, lookback,
-//! lockout, arithmetic averaging, spread, forward start or separate discount curve.
+//! lockout, arithmetic averaging, spread, forward start or separate discount curve; no retry
+//! after a failed search (QuantLib's default `maxAttempts` of 1).
 //! Conventions have no defaults, because QuantLib's defaults are not market conventions.
 
-use crate::curves::YieldCurve;
-use crate::math::interpolation::Linear;
-use crate::math::solver1d::{brent, close_enough};
+use crate::curves::{LogDiscountInterpolation, LogDiscounts, YieldCurve};
+use crate::math::solver1d::{brent, close_enough, finite_difference_newton_safe};
 use crate::time::{
     generate_schedule, Actual365Kind, BusinessDayConvention, Calendar, Date, DateGenerationRule,
     DayCount, HolidayCalendar, Period, ScheduleSpec, TimeUnit,
 };
 use crate::Error;
+use std::cell::Cell;
 use BusinessDayConvention::{Following, ModifiedFollowing};
 
 /// Bounds of the bootstrap's search (QuantLib `detail::avgRate` and `detail::maxRate`).
@@ -48,6 +49,8 @@ const AVG_RATE: f64 = 0.05;
 const MAX_RATE: f64 = 1.0;
 /// Maximum evaluations of the root finder per node (QuantLib `MAX_FUNCTION_EVALUATIONS`).
 const MAX_FUNCTION_EVALUATIONS: usize = 100;
+/// Maximum passes over the nodes (QuantLib `Discount::maxIterations`).
+const MAX_ITERATIONS: usize = 100;
 
 /// An overnight index: fixed on its calendar with no fixing delay, for one business day.
 #[derive(Debug, Clone, PartialEq)]
@@ -84,6 +87,27 @@ pub enum OisCurveInstrument {
 pub enum OisInterpolation {
     /// Linear on the logarithm of the discount factor (QuantLib `LogLinear`).
     LogLinear,
+    /// Cubic spline on the logarithm of the discount factor, monotonic, with a second
+    /// derivative of 0 at both ends (QuantLib `MonotonicLogCubic`).
+    MonotonicLogCubic,
+}
+
+impl OisInterpolation {
+    fn log_discounts(self) -> LogDiscountInterpolation {
+        match self {
+            OisInterpolation::LogLinear => LogDiscountInterpolation::LogLinear,
+            OisInterpolation::MonotonicLogCubic => LogDiscountInterpolation::MonotonicLogCubic,
+        }
+    }
+
+    /// Whether changing one node moves the curve before it (QuantLib `Interpolator::global`);
+    /// such a curve is bootstrapped over repeated passes.
+    fn is_global(self) -> bool {
+        match self {
+            OisInterpolation::LogLinear => false,
+            OisInterpolation::MonotonicLogCubic => true,
+        }
+    }
 }
 
 /// Everything needed to build an OIS curve.
@@ -289,10 +313,11 @@ impl Helper {
     }
 }
 
-/// Bootstraps the curve (QuantLib `IterativeBootstrap` with `Discount` traits), one Brent
-/// search per node from the shortest pillar; a local interpolation needs one pass only.
+/// Bootstraps the curve (QuantLib `IterativeBootstrap` with `Discount` traits), one search per
+/// node from the shortest pillar. The first pass uses Brent and only the nodes found so far. A
+/// global interpolation repeats the pass over all nodes with `FiniteDifferenceNewtonSafe`, from
+/// the previous values, until no node moves by more than the accuracy.
 pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
-    let OisInterpolation::LogLinear = spec.interpolation;
     if spec.instruments.is_empty() {
         return Err(Error::InvalidInput {
             reason: "no bootstrap helpers given".into(),
@@ -354,56 +379,117 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
     }
     let max_time = times[times.len() - 1];
 
+    let interpolation = spec.interpolation.log_discounts();
     let mut data = vec![1.0; dates.len()];
-    for (position, &i) in order.iter().enumerate() {
-        let node = position + 1;
-        let dt = times[node] - times[node - 1];
-        let min = data[node - 1] * (-MAX_RATE * dt).exp();
-        let max = data[node - 1] * (MAX_RATE * dt).exp();
-        let mut guess = if node == 1 {
-            1.0 / (1.0 + AVG_RATE * times[1])
-        } else {
-            let r = -data[node - 1].ln() / times[node - 1];
-            (-r * times[node]).exp()
-        };
-        if guess >= max {
-            guess = max - (max - min) / 5.0;
-        } else if guess <= min {
-            guess = min + (max - min) / 5.0;
-        }
-        let logs: Vec<f64> = data[..=node].iter().map(|d| d.ln()).collect();
-        let knots = &times[..=node];
-        let error = |x: f64| {
-            let mut y = logs.clone();
-            y[node] = x.ln();
-            let line = Linear::new(knots.to_vec(), y)?;
-            let discount = |d: Date| {
-                let t = time(d)?;
-                if t < 0.0 {
-                    return Err(Error::InvalidInput {
-                        reason: format!("negative time ({t}) given"),
-                    });
-                }
-                if !(t <= max_time || close_enough(t, max_time)) {
-                    return Err(Error::OutsideCurveRange {
-                        reason: format!("time ({t}) is past max curve time ({max_time})"),
-                    });
-                }
-                Ok(line.value(t).exp())
+    for iteration in 0..MAX_ITERATIONS {
+        let valid_data = iteration > 0;
+        let previous = data.clone();
+        for (position, &i) in order.iter().enumerate() {
+            let node = position + 1;
+            let dt = times[node] - times[node - 1];
+            let min = if valid_data {
+                data.iter().copied().fold(f64::INFINITY, f64::min) / 2.0
+            } else {
+                data[node - 1] * (-MAX_RATE * dt).exp()
             };
-            Ok(rate_of(i) - helpers[i].implied_quote(reference, &discount)?)
-        };
-        data[node] = brent(
-            error,
-            spec.accuracy,
-            guess,
-            min,
-            max,
-            MAX_FUNCTION_EVALUATIONS,
-        )?;
+            let max = data[node - 1] * (MAX_RATE * dt).exp();
+            let mut guess = if valid_data {
+                data[node]
+            } else if node == 1 {
+                1.0 / (1.0 + AVG_RATE * times[1])
+            } else {
+                let r = -data[node - 1].ln() / times[node - 1];
+                (-r * times[node]).exp()
+            };
+            if guess >= max {
+                guess = max - (max - min) / 5.0;
+            } else if guess <= min {
+                guess = min + (max - min) / 5.0;
+            }
+            let known = if valid_data { data.len() } else { node + 1 };
+            let logs: Vec<f64> = data[..known].iter().map(|d| d.ln()).collect();
+            let knots = &times[..known];
+            // QuantLib keeps the value last passed to the objective, not the returned root;
+            // FiniteDifferenceNewtonSafe does not evaluate its final root
+            let last_tried = Cell::new(guess);
+            let error = |x: f64| {
+                last_tried.set(x);
+                if x <= 0.0 {
+                    return Err(Error::InvalidInput {
+                        reason: format!("invalid value ({x}) at index {node}"),
+                    });
+                }
+                let mut y = logs.clone();
+                y[node] = x.ln();
+                let curve_logs = LogDiscounts::new(interpolation, knots.to_vec(), y)?;
+                let discount = |d: Date| {
+                    let t = time(d)?;
+                    if t < 0.0 {
+                        return Err(Error::InvalidInput {
+                            reason: format!("negative time ({t}) given"),
+                        });
+                    }
+                    if !(t <= max_time || close_enough(t, max_time)) {
+                        return Err(Error::OutsideCurveRange {
+                            reason: format!("time ({t}) is past max curve time ({max_time})"),
+                        });
+                    }
+                    Ok(curve_logs.value(t).exp())
+                };
+                Ok(rate_of(i) - helpers[i].implied_quote(reference, &discount)?)
+            };
+            let solved = if valid_data {
+                finite_difference_newton_safe(
+                    error,
+                    spec.accuracy,
+                    guess,
+                    min,
+                    max,
+                    MAX_FUNCTION_EVALUATIONS,
+                )
+            } else {
+                brent(
+                    error,
+                    spec.accuracy,
+                    guess,
+                    min,
+                    max,
+                    MAX_FUNCTION_EVALUATIONS,
+                )
+            };
+            if let Err(e) = solved {
+                return Err(Error::NoConvergence {
+                    reason: format!(
+                        "iteration {}: failed at alive instrument {node}, pillar {}: {e}",
+                        iteration + 1,
+                        dates[node]
+                    ),
+                });
+            }
+            data[node] = last_tried.get();
+        }
+        if !spec.interpolation.is_global() {
+            break;
+        }
+        let change = data
+            .iter()
+            .zip(&previous)
+            .fold(0.0_f64, |change, (d, p)| change.max((d - p).abs()));
+        if valid_data && change <= spec.accuracy {
+            break;
+        }
+        if iteration == MAX_ITERATIONS - 1 {
+            return Err(Error::NoConvergence {
+                reason: format!(
+                    "convergence not reached after {iteration} iterations; last improvement \
+                     {change}, required accuracy {}",
+                    spec.accuracy
+                ),
+            });
+        }
     }
 
-    let curve = YieldCurve::discount_factors(dates, data, day_count.clone())?;
+    let curve = YieldCurve::interpolated_discounts(dates, data, day_count.clone(), interpolation)?;
     let quote_repricing = helpers
         .iter()
         .enumerate()

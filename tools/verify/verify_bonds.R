@@ -6,26 +6,8 @@
 # until the R entry point of P4 exists.
 #
 # Usage from an R session started anywhere in the repository:
-#   source("tools/verify/verify_bonds.R"); results <- verify_bonds(); print(summarise_verification(results))
-
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(QuantLib)
-})
-
-# ---- paths and small helpers ------------------------------------------------------------
-
-find_riemann_root <- function(start = getwd()) {
-  candidates <- accumulate(seq_len(8), \(path, i) dirname(path), .init = normalizePath(start, winslash = "/"))
-  root <- detect(candidates, \(path) file.exists(file.path(path, "Cargo.toml")))
-  if (is.null(root)) stop("Riemann root not found from: ", start, call. = FALSE)
-  root
-}
-
-date_to_serial <- function(d) as.integer(as.numeric(d) + 25569)
-ql_date <- function(serial) QuantLib::Date(as.integer(serial))
-format_number <- function(x) sprintf("%.17g", x)
-to_number <- function(x) suppressWarnings(as.numeric(x)) # ERROR becomes NA
+#   source("tools/verify/verify_common.R"); source("tools/verify/verify_bonds.R")
+#   results <- verify_bonds(); print(summarise_verification(results))
 
 # The tolerances of docs/specification.md 7.3, as applied in docs/spec_bonds.md 3.3.
 bond_tolerances <- function() {
@@ -157,25 +139,6 @@ quantlib_bond_values <- function(inputs) {
 
 # ---- Riemann ----------------------------------------------------------------------------
 
-cargo_path <- function() {
-  on_path <- Sys.which("cargo")
-  if (nzchar(on_path)) return(unname(on_path))
-  file.path(Sys.getenv("USERPROFILE"), ".cargo", "bin", "cargo.exe")
-}
-
-# Windows can report a transient LNK1104 for a new executable; one retry is enough.
-run_riemann_example <- function(input_path, output_path, root, attempts = 2L) {
-  arguments <- c("run", "--release", "--quiet", "--example", "verify_bonds", "--", input_path, output_path)
-  owd <- setwd(root)
-  on.exit(setwd(owd), add = TRUE)
-  log <- map(seq_len(attempts), \(i) {
-    if (file.exists(output_path)) return(0L)
-    suppressWarnings(system2(cargo_path(), arguments, stdout = FALSE, stderr = FALSE))
-  })
-  if (!file.exists(output_path)) stop("verify_bonds example failed after ", attempts, " attempts.", call. = FALSE)
-  invisible(log)
-}
-
 riemann_bond_values <- function(inputs, root = find_riemann_root()) {
   input_path <- tempfile(fileext = ".csv")
   output_path <- tempfile(fileext = ".csv")
@@ -187,7 +150,7 @@ riemann_bond_values <- function(inputs, root = find_riemann_root()) {
            settlement_days, face_amount, issue_date, built, evaluation_date, rate, yield_day_counter, compounding,
            frequency, price, price_type, row) |>
     write_csv(input_path)
-  run_riemann_example(input_path, output_path, root)
+  run_riemann_example("verify_bonds", input_path, output_path, root)
   read_csv(output_path, col_types = cols(.default = col_character())) |>
     mutate(across(everything(), to_number)) |>
     mutate(row = as.integer(row), settlement_date = as.integer(settlement_date))
