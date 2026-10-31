@@ -73,6 +73,19 @@ fn allows_end_of_month(tenor: Period) -> bool {
     }
 }
 
+/// The tenor and end-of-month flag that QuantLib stores in a generated `Schedule`:
+/// a zero tenor or the Zero rule gives a tenor of 0 years, and end of month is only kept
+/// for tenors of at least one month.
+pub(crate) fn effective_tenor_and_end_of_month(spec: &ScheduleSpec) -> (Period, bool) {
+    let end_of_month = allows_end_of_month(spec.tenor) && spec.end_of_month;
+    let tenor = if spec.tenor.length == 0 || spec.rule == DateGenerationRule::Zero {
+        Period::new(0, TimeUnit::Years)
+    } else {
+        spec.tenor
+    };
+    (tenor, end_of_month)
+}
+
 /// Generates the schedule described by `spec` (QuantLib `Schedule` constructor).
 pub fn generate(spec: &ScheduleSpec) -> Result<Schedule, Error> {
     use BusinessDayConvention::Unadjusted;

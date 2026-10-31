@@ -2,9 +2,11 @@ THIRD-PARTY NOTICES
 ===================
 
 Riemann contains code derived from QuantLib (commit
-70f240f29ddb84927ff654502f1d75b3de24ba43). Since v1.42 the source files below changed only
+70f240f29ddb84927ff654502f1d75b3de24ba43). Judging from the source diff, since v1.42 the files
+below changed only
 in ways that do not affect results (ext::optional -> std::optional in schedule.cpp,
-make_shared and the removal of an unused helper in the day counters):
+make_shared and the removal of an unused helper in the day counters, coupon_cast and a
+rewritten BPS calculator in cashflows.cpp):
 
 - crates/riemann/src/time/calendar/rules.rs: holiday rules from
   ql/time/calendars/japan.cpp, target.cpp, unitedstates.cpp and unitedkingdom.cpp
@@ -15,6 +17,11 @@ make_shared and the removal of an unused helper in the day counters):
 - crates/riemann/src/time/day_count.rs: day count formulas from
   ql/time/daycounters/ (actual360, actual364, actual36525, actual365fixed, actual366,
   actualactual, thirty360, thirty365, one, simpledaycounter, business252)
+- crates/riemann/src/cashflows.rs: fixed-rate coupons, legs and accrued amounts from
+  ql/cashflows/fixedratecoupon.cpp, ql/cashflows/cashflows.cpp, ql/cashflow.cpp, ql/event.cpp
+- crates/riemann/src/instruments/fixed_rate_bond.rs: fixed-rate bonds from
+  ql/instruments/bonds/fixedratebond.cpp, ql/instruments/bond.cpp,
+  ql/pricingengines/bond/bondfunctions.cpp
 
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.

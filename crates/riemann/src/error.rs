@@ -16,6 +16,8 @@ pub enum Error {
     Unsupported { feature: String },
     /// A reference period that a day count convention cannot use.
     InvalidReferencePeriod { reason: String },
+    /// Cash flow inputs that cannot be valued.
+    InvalidCashFlow { reason: String },
 }
 
 impl fmt::Display for Error {
@@ -34,6 +36,7 @@ impl fmt::Display for Error {
             Error::InvalidSchedule { reason } => write!(f, "invalid schedule: {reason}"),
             Error::Unsupported { feature } => write!(f, "not implemented yet: {feature}"),
             Error::InvalidReferencePeriod { reason } => write!(f, "invalid reference period: {reason}"),
+            Error::InvalidCashFlow { reason } => write!(f, "invalid cash flow: {reason}"),
         }
     }
 }

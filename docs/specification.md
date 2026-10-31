@@ -22,7 +22,7 @@ Riemann は、Rust で一から作る金融計算ライブラリーである。�
 | 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
 | 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点（2026-10-31）で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、4.3、5.3、6.3 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点（2026-11-01）で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、4.3、5.3、6.3 節）と、P2-1 の固定利付債のキャッシュフローと経過利子（[spec_bonds.md](spec_bonds.md) の 2.2 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
 
 
 ## 1. 何から脱却するのか
@@ -232,7 +232,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 | 段階 | 作るもの | 照合する既存の計算 |
 |---|---|---|
 | P1 | 日付、カレンダー（東京・TARGET・米国 SOFR・英国）、日数計算、営業日調整、スケジュール生成 | QuantLib の R バインディングで、同じ規約の日付列と年数を出す。日付は完全一致、年数は 7.3 の基準で照合する。**2026-10-31 に完了**（【実行照合済み】。結果は spec_dates_calendars.md） |
-| P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1 |
+| P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1。進行中：P2-1（キャッシュフローと経過利子）は 2026-11-01 に QuantLib と照合済み（[spec_bonds.md](spec_bonds.md)） |
 | P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値、LagrangeFinance II-3.2・II-3.4、EONIA ベンチマーク |
 | P4 | R からの入口（`riemann-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、6.3 の逐次と並列の一致テストを置く | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる |
 | P5 | OIS の ASW と円ベーシス込み ASW | GaussQuant の `ois_asset_swap_GQL` と回帰テストの基準値、LagrangeFinance II-3.7 |
@@ -292,5 +292,6 @@ Riemann/
 ## 参考資料
 
 - [日付・カレンダー・日付規約の仕様](spec_dates_calendars.md)
+- [債券の仕様](spec_bonds.md)
 - [自動微分の仕様](spec_autodiff.md)
 - [QuantLib と finmath-lib の比較](library_comparison.md)：対応商品・モデル・カーブ・グリークス・設計の、本体ソースによる比較（QuantLib `70f240f`、finmath-lib `9bd054f`）。商品の範囲や数式・規約を調べるときに使う。

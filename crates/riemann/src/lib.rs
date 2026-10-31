@@ -4,7 +4,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cashflows;
 pub mod error;
+pub mod instruments;
 pub mod time;
 
 pub use error::Error;
