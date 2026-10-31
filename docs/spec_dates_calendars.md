@@ -12,7 +12,7 @@
 | 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
 | 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点（2026-10-31）で【実行照合済み】の項目は、日付（本書の 2 章）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）と休日カレンダー（3.4 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
 
 ## 0. 参照した QuantLib
 
@@ -138,6 +138,32 @@ Riemann の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql
 - 1月2日・3日と12月31日は、国民の祝日ではなく、金融機関の休業日として休日に含めている。
 - QuantLib の判定と、祝日法・政府の公表・実際の市場の休業日が、すべての年で一致するかは確かめていない（未確認）。
 - Riemann はまず QuantLib との一致を目標とする（照合の基準が QuantLib のため）。実際の休業日と違う日が分かった場合は、規則を変えずに、例外日のデータ（`CalendarAdjustments`）で補う。規則そのものを祝日法に合わせて書き直す場合は、QuantLib 互換とは別の種類（例：`Calendar::JapanStatutory`）として足し、`Calendar::Japan` は QuantLib 互換のまま残す。
+
+### 3.4 実装と QuantLib との照合結果【実行照合済み】
+
+**実装（`crates/riemann/src/time/calendar/`）**
+
+- `Calendar`（規則の種類）：`NullCalendar`、`WeekendsOnly`、`Japan`、`Target`、`UnitedStates(Settlement / GovernmentBond / Sofr)`、`UnitedKingdom(Settlement)`、`Joint(..., JoinHolidays / JoinBusinessDays)`。
+- 規則（`rules.rs`）は QuantLib の条件式を移したもので、ファイルの先頭に移植元・コミット・著作権表示を書き、`THIRD_PARTY_NOTICES` に QuantLib のライセンス全文を置いた。
+- 復活祭（TARGET・米国国債・SOFR・英国の Good Friday と Easter Monday）は、QuantLib のように表を持たず、グレゴリオ暦の計算式（Meeus/Jones/Butcher）で求める。表と一致することは、下の照合で確かめた。
+- 例外日は `HolidayCalendar { calendar, adjustments }` に値として持つ。`with_holiday`・`without_holiday` は QuantLib の `addHoliday`・`removeHoliday` と同じ決まりで、新しい値を返す（元の値は変わらない）。
+- 【設計案】QuantLib の `JointCalendar` は、構成するカレンダーそれぞれの例外日を参照する。Riemann では、例外日は合成したカレンダー全体に付ける形にしている。構成するカレンダーごとの例外日が必要になったら、照合を足して扱いを決める。
+
+**照合結果**（2026-10-31、QuantLib R バインディング 1.42、`tools/golden/p1_calendars.R`、`cargo test --test golden_calendars`）
+
+| カレンダー | 週末以外の休日の数（1901〜2199 年） | 結果 |
+|---|---|---|
+| 日本 | 4,575 | 全日付で完全一致 |
+| TARGET | 1,118 | 全日付で完全一致 |
+| 米国 Settlement | 3,016 | 全日付で完全一致 |
+| 米国 国債 | 3,189 | 全日付で完全一致 |
+| 米国 SOFR | 3,235 | 全日付で完全一致 |
+| 英国 Settlement | 2,399 | 全日付で完全一致 |
+| 週末のみ、NullCalendar | 0 | 全日付で完全一致 |
+| 日本と米国 SOFR の合成（休日の和／営業日の和） | 7,298 ／ 512 | 全日付で完全一致 |
+
+- 「全日付」は、シリアル 367〜109574 の 109,208 日すべてである。各カレンダーの週末の曜日も一致した。
+- 例外日：日本のカレンダーに、追加・取り消し・取り消しの取り消し・週末の取り消しなど 9 つの操作を順に重ねて行い、各段階で 6 つの日付の営業日判定を比べた（54 件）。すべて一致した。
 
 ## 4. 営業日調整
 
