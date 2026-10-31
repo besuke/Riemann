@@ -12,7 +12,7 @@
 | 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
 | 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）と休日カレンダー（3.4 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）、休日カレンダー（3.4 節）、営業日調整（4.3 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
 
 ## 0. 参照した QuantLib
 
@@ -189,6 +189,26 @@ Riemann の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql
 | Months・Years | 暦で進め（2.1 の月・年の加算）、月末の扱い（`endOfMonth`）が有効なら、次のどちらかにする。そうでなければ調整する。<br>・規約が Unadjusted で、元の日付が暦の月末なら、進めた先の暦の月末<br>・それ以外で、元の日付が営業日の月末なら、進めた先の営業日の月末 |
 
 【設計案】Riemann では、`adjust(cal, d, bdc) -> Result<Date>` と `advance(cal, d, period, bdc, end_of_month) -> Result<Date>` を、QuantLib と同じ動作の関数として作る。上の 4.1・4.2 の表は【ソース確認】である。`cal` は `HolidayCalendar`（例外日付き）である。
+
+### 4.3 実装と QuantLib との照合結果【実行照合済み】
+
+**実装（`crates/riemann/src/time/business_day.rs`）**
+
+- `BusinessDayConvention`：Following、ModifiedFollowing、Preceding、ModifiedPreceding、Unadjusted、HalfMonthModifiedFollowing、Nearest。
+- `HolidayCalendar` の関数として、`adjust`、`advance`、営業日の月末・月初（`end_of_month`・`is_end_of_month`・`start_of_month`・`is_start_of_month`）、`business_days_between` を持つ。例外日も判定に含まれる。
+- 日付の範囲（1901-01-01〜2199-12-31）を越える調整は、QuantLib が例外にする場合と同じく `Err` を返す。
+- 調整と日付の進め方の処理は `ql/time/calendar.cpp` から移したものとして扱い、ファイルの先頭に移植元と著作権表示を書いた（`THIRD_PARTY_NOTICES` にも記載）。
+
+**照合結果**（2026-10-31、QuantLib R バインディング 1.42、`tools/golden/p1_business_days.R`、`cargo test --test golden_business_days`）
+
+対象のカレンダーは、日本、TARGET、米国 SOFR、英国 Settlement の 4 つである。
+
+| 対象 | 内容 | 件数 | 結果 |
+|---|---|---|---|
+| 調整 | 2023〜2026 年のすべての日と範囲の両端 15 日ずつ × 7 規約 | 41,748 件（QuantLib のエラー 21 件を含む） | すべて一致 |
+| 営業日の月末・月初 | 同じ日付について、月末・月末かどうか・月初・月初かどうか | 5,964 件 | すべて一致 |
+| 日付を進める | 39 の基準日（月末、営業日の月末、休日、範囲の端など）× 日・週・月・年の 29 通りの期間 × 7 規約 × 月末の扱いの有無（日単位は Following・月末なしのみ） | 47,112 件（QuantLib のエラー 2,281 件を含む） | すべて一致。エラーになる組み合わせも一致した |
+| 営業日数 | 10 組の日付（同日、逆順、年をまたぐ組を含む）× 両端を含むかどうか 4 通り | 160 件 | すべて一致 |
 
 ## 5. スケジュール生成
 

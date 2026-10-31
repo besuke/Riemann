@@ -1,11 +1,16 @@
 THIRD-PARTY NOTICES
 ===================
 
-Riemann reproduces holiday rules from QuantLib in
-crates/riemann/src/time/calendar/rules.rs (derived from ql/time/calendars/japan.cpp,
-target.cpp, unitedstates.cpp and unitedkingdom.cpp at QuantLib commit
-70f240f29ddb84927ff654502f1d75b3de24ba43). The copyright holders of those files are
-listed at the top of rules.rs. QuantLib is distributed under the following license.
+Riemann contains code derived from QuantLib (commit
+70f240f29ddb84927ff654502f1d75b3de24ba43; the files below are unchanged since v1.42):
+
+- crates/riemann/src/time/calendar/rules.rs: holiday rules from
+  ql/time/calendars/japan.cpp, target.cpp, unitedstates.cpp and unitedkingdom.cpp
+- crates/riemann/src/time/business_day.rs: date adjustment and advance from
+  ql/time/calendar.cpp
+
+The copyright holders of those files are listed at the top of each Riemann file.
+QuantLib is distributed under the following license.
 
 ----------------------------------------------------------------------------------
 QuantLib license (LICENSE.TXT)

@@ -149,6 +149,12 @@ impl Date {
         Date(serial_from_civil(y, m, month_length(m, is_leap(y))) as i32)
     }
 
+    /// First calendar day of the month this date belongs to.
+    pub fn start_of_month(self) -> Date {
+        let (y, m, _) = self.ymd();
+        Date(serial_from_civil(y, m, 1) as i32)
+    }
+
     /// Whether this date is the last calendar day of its month.
     pub fn is_end_of_month(self) -> bool {
         let (y, m, d) = self.ymd();
