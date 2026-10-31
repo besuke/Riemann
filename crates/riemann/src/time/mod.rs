@@ -4,8 +4,10 @@ mod business_day;
 pub mod calendar;
 mod date;
 mod period;
+pub mod schedule;
 
 pub use business_day::BusinessDayConvention;
+pub use schedule::{generate as generate_schedule, DateGenerationRule, Schedule, ScheduleSpec};
 pub use calendar::{Calendar, CalendarAdjustments, HolidayCalendar, JointRule, UkMarket, UsMarket};
 pub use date::{is_leap, Date, Month, Weekday};
 pub use period::{Period, TimeUnit};

@@ -12,7 +12,7 @@
 | 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
 | 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）、休日カレンダー（3.4 節）、営業日調整（4.3 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）、休日カレンダー（3.4 節）、営業日調整（4.3 節）、スケジュール生成（5.3 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
 
 ## 0. 参照した QuantLib
 
@@ -224,6 +224,28 @@ Riemann の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql
 - `ScheduleSpec`（上の入力をすべて持つ値）を受け取り、`Schedule { dates, is_regular }` を返す関数 `generate(&ScheduleSpec) -> Result<Schedule>` とする。日付を直接並べて作るスケジュールも受け付ける。
 - 生成規則は段階的に足す：まず Backward・Forward・Zero（債券・OIS に必要）、CDS の段階で Twentieth・IMM・CDS 系。
 - 入力の矛盾（first date が範囲外など）は、QuantLib が例外にする条件と同じ条件で `Err` を返す。
+
+### 5.3 実装と QuantLib との照合結果【実行照合済み】
+
+**実装（`crates/riemann/src/time/schedule.rs`）**
+
+- `ScheduleSpec`（開始日、終了日、期間、カレンダー、営業日調整、終了日の営業日調整、生成規則、月末の扱い、first date、next-to-last date）を受け取り、`Schedule { dates, is_regular }` を返す関数 `generate`。
+- 生成規則は Backward・Forward・Zero を実装した。ThirdWednesday・Twentieth・IMM・CDS 系は `Error::Unsupported` を返す（CDS の段階で足す）。
+- QuantLib との違い：
+  - 開始日は必須とした。QuantLib は、開始日がなく Backward の場合に、グローバルな評価日から仮の開始日を作るが、Riemann はグローバル状態を持たない。
+  - QuantLib の最後の安全確認には、日付が 2 つのときに `isRegular_[1]` を書き換える箇所がある（配列の範囲外）。Riemann は、その要素があるときだけ書き換える。
+- 処理は `ql/time/schedule.cpp` から移したものとして扱い、ファイルの先頭に移植元と著作権表示を書いた（`THIRD_PARTY_NOTICES` にも記載）。
+
+**照合結果**（2026-10-31、QuantLib R バインディング 1.42、`tools/golden/p1_schedules.R`、`cargo test --test golden_schedules`）
+
+入力の組み合わせを、乱数の種を固定して 4,000 通り選んだ（開始日 14 種類、期間は日・週・月・年と 0、カレンダー 5 種類、営業日調整 5 種類、生成規則 3 種類、月末の扱いの有無、端数期間の指定と範囲外の指定）。
+
+| 対象 | 件数 | 結果 |
+|---|---|---|
+| スケジュールが作られた組み合わせ（日付と `isRegular` を比較） | 2,003 件（first date あり 668 件、next-to-last date あり 646 件、月末の扱いあり 912 件、規則どおりでない期間を含むもの 1,441 件） | すべて一致 |
+| QuantLib がエラーにした組み合わせ | 1,997 件 | Riemann もすべてエラーを返した。エラーの理由までは比べていない |
+
+エラーの大半は、Zero の規則に端数期間を指定した場合と、範囲外の端数期間を意図的に指定した場合である。
 
 ## 6. 日数計算
 

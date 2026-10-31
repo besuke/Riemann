@@ -10,6 +10,10 @@ pub enum Error {
     InvalidDate { year: i32, month: u32, day: u32 },
     /// A year outside the range supported for the given operation.
     YearOutOfRange { year: i32 },
+    /// Inconsistent schedule inputs (the same conditions QuantLib rejects).
+    InvalidSchedule { reason: String },
+    /// A feature specified but not implemented yet.
+    Unsupported { feature: String },
 }
 
 impl fmt::Display for Error {
@@ -25,6 +29,8 @@ impl fmt::Display for Error {
             Error::YearOutOfRange { year } => {
                 write!(f, "year {year} out of bounds; it must be in [1901, 2199]")
             }
+            Error::InvalidSchedule { reason } => write!(f, "invalid schedule: {reason}"),
+            Error::Unsupported { feature } => write!(f, "not implemented yet: {feature}"),
         }
     }
 }
