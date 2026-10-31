@@ -23,6 +23,18 @@ rewritten BPS calculator in cashflows.cpp):
   ql/instruments/bonds/fixedratebond.cpp, ql/instruments/bond.cpp,
   ql/pricingengines/bond/bondfunctions.cpp
 
+The following files reproduce QuantLib v1.42 (tag v1.42, commit
+41b0e1460f3e4991087917707ca29a9125e200db), because QuantLib changed these calculations
+after v1.42 and v1.42 is the version used for verification:
+
+- crates/riemann/src/interest_rate.rs: ql/interestrate.cpp
+  (Copyright (C) 2004 Ferdinando Ametrano)
+- crates/riemann/src/math/solver1d.rs: ql/math/solver1d.hpp and
+  ql/math/solvers1d/newtonsafe.hpp (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl),
+  ql/math/comparison.hpp (Copyright (C) 2003, 2004, 2005, 2007 StatPro Italia srl)
+- crates/riemann/src/cashflow_analysis.rs: yield-based functions of
+  ql/cashflows/cashflows.cpp (copyright holders listed in the file header)
+
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.
 

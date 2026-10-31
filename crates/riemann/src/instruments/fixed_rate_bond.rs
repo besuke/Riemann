@@ -9,7 +9,9 @@
 //! Differences from QuantLib: the evaluation date is an argument (no global settings);
 //! a single coupon rate and notional; no amortization, ex-coupon period or payment lag.
 
+use crate::cashflow_analysis::{self as analysis, DurationType, YieldConvention, YieldSolver};
 use crate::cashflows::{self, CashFlow, FixedRateLegSpec};
+use crate::interest_rate::InterestRate;
 use crate::time::{
     generate_schedule, BusinessDayConvention, Date, DayCount, HolidayCalendar, Period, Schedule,
     ScheduleSpec, TimeUnit,
@@ -105,4 +107,74 @@ impl FixedRateBond {
         }
         Ok(cashflows::accrued_amount(&self.cashflows, settlement, false)? * 100.0 / notional)
     }
+
+    fn tradable_notional(&self, settlement: Date) -> Result<f64, Error> {
+        let notional = self.notional(settlement);
+        if notional == 0.0 {
+            return Err(Error::InvalidInput {
+                reason: format!("non tradable at {settlement} (maturity being {})", self.maturity_payment_date),
+            });
+        }
+        Ok(notional)
+    }
+
+    /// Dirty price per 100 at yield `y` (QuantLib `BondFunctions::dirtyPrice`).
+    pub fn dirty_price(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
+        let notional = self.tradable_notional(settlement)?;
+        Ok(analysis::npv(&self.cashflows, y, false, settlement, settlement)? * 100.0 / notional)
+    }
+
+    /// Clean price per 100 at yield `y` (QuantLib `BondFunctions::cleanPrice`).
+    pub fn clean_price(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
+        Ok(self.dirty_price(y, settlement)? - self.accrued_amount(settlement)?)
+    }
+
+    /// Yield giving `price` (QuantLib `BondFunctions::yield` with NewtonSafe).
+    pub fn yield_from_price(
+        &self,
+        price: f64,
+        price_type: PriceType,
+        convention: &YieldConvention,
+        settlement: Date,
+        solver: YieldSolver,
+    ) -> Result<f64, Error> {
+        let notional = self.tradable_notional(settlement)?;
+        let mut amount = price;
+        if price_type == PriceType::Clean {
+            amount += self.accrued_amount(settlement)?;
+        }
+        amount /= 100.0 / notional;
+        analysis::irr(&self.cashflows, amount, convention, false, settlement, settlement, solver)
+    }
+
+    /// Duration at yield `y` (QuantLib `BondFunctions::duration`).
+    pub fn duration(&self, y: &InterestRate, kind: DurationType, settlement: Date) -> Result<f64, Error> {
+        self.tradable_notional(settlement)?;
+        analysis::duration(&self.cashflows, y, kind, false, settlement, settlement)
+    }
+
+    /// Convexity at yield `y` (QuantLib `BondFunctions::convexity`).
+    pub fn convexity(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
+        self.tradable_notional(settlement)?;
+        analysis::convexity(&self.cashflows, y, false, settlement, settlement)
+    }
+
+    /// Basis point value at yield `y`, for the whole notional (QuantLib `BondFunctions::basisPointValue`).
+    pub fn basis_point_value(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
+        self.tradable_notional(settlement)?;
+        analysis::basis_point_value(&self.cashflows, y, false, settlement, settlement)
+    }
+
+    /// Yield value of a basis point at yield `y` (QuantLib `BondFunctions::yieldValueBasisPoint`).
+    pub fn yield_value_basis_point(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
+        self.tradable_notional(settlement)?;
+        analysis::yield_value_basis_point(&self.cashflows, y, false, settlement, settlement)
+    }
+}
+
+/// Whether a quoted price includes accrued interest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PriceType {
+    Clean,
+    Dirty,
 }

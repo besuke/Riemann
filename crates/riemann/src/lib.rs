@@ -4,9 +4,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cashflow_analysis;
 pub mod cashflows;
 pub mod error;
 pub mod instruments;
+pub mod interest_rate;
+pub mod math;
 pub mod time;
 
 pub use error::Error;

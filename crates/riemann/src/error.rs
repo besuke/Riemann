@@ -18,6 +18,10 @@ pub enum Error {
     InvalidReferencePeriod { reason: String },
     /// Cash flow inputs that cannot be valued.
     InvalidCashFlow { reason: String },
+    /// An input outside the domain of a calculation.
+    InvalidInput { reason: String },
+    /// An iterative calculation that did not converge.
+    NoConvergence { reason: String },
 }
 
 impl fmt::Display for Error {
@@ -37,6 +41,8 @@ impl fmt::Display for Error {
             Error::Unsupported { feature } => write!(f, "not implemented yet: {feature}"),
             Error::InvalidReferencePeriod { reason } => write!(f, "invalid reference period: {reason}"),
             Error::InvalidCashFlow { reason } => write!(f, "invalid cash flow: {reason}"),
+            Error::InvalidInput { reason } => write!(f, "invalid input: {reason}"),
+            Error::NoConvergence { reason } => write!(f, "no convergence: {reason}"),
         }
     }
 }
