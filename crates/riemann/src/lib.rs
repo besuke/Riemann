@@ -11,6 +11,7 @@ pub mod error;
 pub mod instruments;
 pub mod interest_rate;
 pub mod math;
+pub mod ois;
 pub mod time;
 pub mod yen_bond;
 

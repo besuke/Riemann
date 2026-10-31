@@ -4,3 +4,7 @@ Cargo.lock.bak
 .Rproj.user/
 .Rhistory
 .RData
+/tools/verify/*.html
+/tools/verify/*_files/
+/tools/verify/.quarto/
+/tools/verify/*.knit.md

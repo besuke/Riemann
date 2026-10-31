@@ -222,6 +222,14 @@ impl YieldCurve {
         &self.day_count
     }
 
+    /// Node dates and discount factors of a discount-factor curve.
+    pub fn discount_nodes(&self) -> Option<(&[Date], &[f64])> {
+        match &self.shape {
+            Shape::Discount { dates, discounts, .. } => Some((dates, discounts)),
+            _ => None,
+        }
+    }
+
     /// Last date of the curve (the largest date for a flat curve).
     pub fn max_date(&self) -> Date {
         match &self.shape {

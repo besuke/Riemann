@@ -1,0 +1,162 @@
+---
+title: "Riemann の検証"
+subtitle: "QuantLib R パッケージ Version 1.42 との照合"
+lang: ja
+format:
+  html:
+    toc: true
+    embed-resources: true
+    code-fold: true
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+source("verify_bonds.R")
+results <- verify_bonds()
+summary_table <- summarise_verification(results)
+```
+
+## この文書について
+
+Riemann の実装済みの計算を、合成データで QuantLib と比べる検証です。計算と照合はすべて `verify_bonds.R` の関数で行い、この文書はその結果を表と図で示します。
+
+- **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
+- **Riemann の呼び方**：R の入口（P4）はまだないので、Rust の `crates/riemann/examples/verify_bonds.rs` を実行し、CSV で受け渡します。数値は文字列を経由するので、最下位の桁に丸めの差が入る可能性があります。
+- **データ**：すべて乱数で作った合成の値で、市場データは使っていません（種は `20261110`）。
+- **対象**：債券の価格と利回り（P2-1・P2-2）。
+- **ダーティ価格**：R パッケージに対応する `dirtyPrice` の呼び方がないので、QuantLib 側はクリーン価格と経過利子の和で求めています。
+
+## 入力条件
+
+```{r}
+#| label: inputs
+inputs <- results$inputs
+input_overview <- tribble(
+  ~item, ~value,
+  "bonds", as.character(n_distinct(inputs$case)),
+  "scenarios", as.character(nrow(inputs)),
+  "start date", paste(range(inputs$start), collapse = " to "),
+  "maturity (years)", paste(sort(unique(inputs$years)), collapse = ", "),
+  "coupon", paste(sort(unique(inputs$coupon)), collapse = ", "),
+  "yield", paste(sort(unique(inputs$rate)), collapse = ", "),
+  "compounding", paste(sort(unique(inputs$compounding)), collapse = ", "),
+  "calendars", paste(sort(unique(inputs$calendar)), collapse = ", "),
+  "bond day counts", paste(sort(unique(inputs$day_counter)), collapse = ", "),
+  "price input (min to max)", paste(range(inputs$price), collapse = " to ")
+)
+knitr::kable(input_overview, col.names = c("Item", "Value"))
+```
+
+入力の先頭の例です。
+
+```{r}
+#| label: input-sample
+inputs |>
+  select(row, start, years, tenor_n, calendar, coupon, day_counter, rate, compounding, frequency, price, price_type) |>
+  head(8) |>
+  knitr::kable()
+```
+
+## 結論
+
+```{r}
+#| label: verdict
+#| output: asis
+failed <- sum(summary_table$failed)
+mismatches <- nrow(results$settlement_mismatches)
+verdict <- if (failed == 0 && mismatches == 0) "PASS" else "FAIL"
+cat(sprintf("**判定：%s**。%s 個の値を比べ、許容誤差を超えたものは %d 個、受渡日の不一致は %d 件でした。\n",
+            verdict, format(sum(summary_table$compared), big.mark = ","), failed, mismatches))
+```
+
+## 項目ごとの結果
+
+差は、価格などは相対差、利回りは絶対差です。許容誤差は仕様書 7.3 節と `docs/spec_bonds.md` 3.3 節のとおりで、単利の値と経過利子は相対 1e-15、複利と連続複利の値は相対 1e-12、利回りは求根の精度の絶対 1e-10 です。同じ項目に 2 つの許容誤差があるときは、行を分けています。
+
+```{r}
+#| label: summary
+summary_table |>
+  mutate(
+    tolerance = sprintf("%.0e", tolerance),
+    max_diff = sprintf("%.2e", max_diff)
+  ) |>
+  select(measure, compared, exact, within_tolerance, both_error, failed, max_diff, tolerance, kind, result) |>
+  knitr::kable(col.names = c("Measure", "Compared", "Exact", "Within tol.", "Both error", "Failed", "Max diff", "Tolerance", "Diff type", "Result"))
+```
+
+「Both error」は、QuantLib と Riemann の両方がエラーにした件数です。この文書ではエラーの原因までは比べていません。原因を含む照合は、`cargo test` の照合テストで行います。
+
+## 差の分布
+
+差が 0 の値は対数の図に出せないので、下限の 1e-18 に置いています。破線は許容誤差（1e-15、1e-12、1e-10）です。
+
+```{r}
+#| label: fig-diff
+#| fig-cap: "Riemann と QuantLib の差（項目別）"
+#| fig-width: 8
+#| fig-height: 4.5
+results$comparison |>
+  filter(status == "value") |>
+  mutate(plot_diff = pmax(measured_diff, 1e-18)) |>
+  ggplot(aes(measure, plot_diff, colour = compounding)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6, size = 1.3) +
+  geom_hline(yintercept = c(1e-15, 1e-12, 1e-10), linetype = "dashed") +
+  scale_y_log10() +
+  coord_flip() +
+  labs(x = NULL, y = "Difference (relative; absolute for yield)", colour = "Compounding") +
+  theme_minimal()
+```
+
+## 価格の一致
+
+```{r}
+#| label: fig-prices
+#| fig-cap: "クリーン価格：Riemann と QuantLib"
+#| fig-width: 6
+#| fig-height: 4.5
+results$comparison |>
+  filter(measure == "clean_price", status == "value") |>
+  ggplot(aes(quantlib, riemann)) +
+  geom_abline(linetype = "dashed") +
+  geom_point(alpha = 0.6, colour = "steelblue") +
+  labs(x = "QuantLib clean price", y = "Riemann clean price") +
+  theme_minimal()
+```
+
+## 差の大きい例
+
+許容誤差に対する差の比が大きい順です。
+
+```{r}
+#| label: largest
+results$comparison |>
+  filter(status == "value") |>
+  arrange(desc(measured_diff / tolerance)) |>
+  head(8) |>
+  transmute(row, measure, compounding,
+            quantlib = sprintf("%.17g", quantlib), riemann = sprintf("%.17g", riemann),
+            diff = sprintf("%.2e", measured_diff), tolerance = sprintf("%.0e", tolerance),
+            result = if_else(pass, "PASS", "FAIL")) |>
+  knitr::kable()
+```
+
+## OIS について（未実施）
+
+OIS カーブ（割引係数、ゼロ金利、フォワード金利、入力気配の再現）は、P3 の実装後にこの文書へ追加します。補間は仕様（`docs/spec_ois.md` 2.7 節）のとおり、QuantLib C++ の `MonotonicLogCubic`（Spline、単調化あり、両端の 2 階微分 0）を対象とします。
+
+## 実行環境
+
+```{r}
+#| label: session
+tibble(
+  item = c("R", "QuantLib R package", "tidyverse", "Run at"),
+  value = c(as.character(getRversion()), as.character(packageVersion("QuantLib")),
+            as.character(packageVersion("tidyverse")), format(Sys.time(), "%Y-%m-%d %H:%M %Z"))
+) |>
+  knitr::kable(col.names = c("Item", "Value"))
+```

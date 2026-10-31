@@ -46,6 +46,15 @@ used for verification:
   ql/math/interpolation.hpp
 - crates/riemann/src/cashflow_analysis.rs (npv_on_curve): CashFlows::npv with a yield term
   structure in ql/cashflows/cashflows.cpp
+- crates/riemann/src/ois.rs: ql/termstructures/yield/oisratehelper.cpp,
+  ql/termstructures/yield/ratehelpers.cpp, ql/instruments/makeois.cpp,
+  ql/instruments/overnightindexedswap.cpp, ql/instruments/fixedvsfloatingswap.cpp,
+  ql/cashflows/overnightindexedcoupon.cpp, ql/cashflows/overnightindexedcouponpricer.cpp,
+  ql/indexes/ibor/tonar.hpp, ql/indexes/iborindex.cpp,
+  ql/termstructures/iterativebootstrap.hpp, ql/termstructures/yield/bootstraptraits.hpp,
+  ql/termstructures/yield/piecewiseyieldcurve.hpp,
+  ql/pricingengines/swap/discountingswapengine.cpp
+- crates/riemann/src/math/solver1d.rs (brent): ql/math/solvers1d/brent.hpp
 - crates/riemann/src/instruments/fixed_rate_bond.rs (value_on_curve):
   ql/pricingengines/bond/discountingbondengine.cpp (Copyright (C) 2007 Giorgio
   Facchinetti; (C) 2009 StatPro Italia srl) and ql/instruments/bond.cpp

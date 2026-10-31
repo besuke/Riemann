@@ -53,7 +53,7 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 | P2-2 | 利回りと価格、デュレーション、コンベクシティ、BPV | 完了 |
 | P2-3 | 割引カーブによる評価（フラット、ゼロ、割引係数、ゼロスプレッド） | 完了 |
 | P2-4 | 日本式の単利・複利利回りとリスク指標（`yen_bond.rs`） | 完了 |
-| P3 | OIS のブートストラップ | **ソース調査と仕様の整理まで（`docs/spec_ois.md`）。実装は未着手。次は P3-1（TONAR）。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
+| P3 | OIS のブートストラップ | **TONARの対数線形まで完了（`docs/spec_ois.md` 8 章）。仕様で採用した `MonotonicLogCubic` は未実装。次は P3-3（`MonotonicLogCubic` を TONAR で照合）で、P3-2（€STR・SOFR・SONIA）はその確認後に行う。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
 | P4 | R の入口 | 未着手 |
 | P5 | OIS の ASW と円ベーシス込み ASW | 未着手 |
 | P6・P7 | TypeScript の Node 版、ブラウザー版 | 未着手 |
@@ -72,6 +72,7 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 - 新しいテストの実行ファイルで LNK1104 が一時的に出ることがある。もう一度実行すれば通る。
 - R は PATH にないので、フルパスで実行する：`"C:/Program Files/R/R-4.6.0/bin/Rscript.exe"`。R の中のパスは `C:/...` の形で書く（`/c/...` は使えない）。
 - 照合用の値は Riemann のルートから `tools/golden/*.R` を実行し、`tests/golden/` に書き出す。仕様が変わらなければ作り直さない。
+- 検証レポート：`tools/verify/verify_riemann.qmd`（`quarto render`）と `verify_bonds.R`。R の入口（P4）ができるまで、`crates/riemann/examples/verify_bonds.rs` と CSV で受け渡す。OIS は P3 の実装後に `MonotonicLogCubic` で追加する。
 - `Rscript -e` は引用符で失敗しやすいので、スクリプトファイルにする。パッケージのインストールは `devtools::install` ではなく `R CMD INSTALL`（pak の DLL がアプリ制御で止められる）。
 - `rustfmt` にファイルを渡すと `mod` 先まで整形する。テストのファイルでは `tests/common/mod.rs` まで変わるので、`--config skip_children=true` を付けて確かめる。
 - CRLF のファイルは MSYS の sed で CR が消える。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。
