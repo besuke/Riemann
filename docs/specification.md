@@ -233,7 +233,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 |---|---|---|
 | P1 | 日付、カレンダー（東京・TARGET・米国 SOFR・英国）、日数計算、営業日調整、スケジュール生成 | QuantLib の R バインディングで、同じ規約の日付列と年数を出す。日付は完全一致、年数は 7.3 の基準で照合する。**2026-10-31 に完了**（【実行照合済み】。結果は spec_dates_calendars.md） |
 | P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1。**完了**（【実行照合済み】）：P2-1（キャッシュフローと経過利子）、P2-2（利回りと価格、デュレーション、コンベクシティ、BPV）、P2-3（割引カーブによる評価）は 2026-10-31 に QuantLib と、P2-4（日本式の単利・複利利回り）は同日に GaussQuant と照合済み（[spec_bonds.md](spec_bonds.md)） |
-| P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値、LagrangeFinance II-3.2・II-3.4、EONIA ベンチマーク |
+| P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | QuantLib R バインディング 1.42（合成の気配。仕様は [spec_ois.md](spec_ois.md)）、GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値、LagrangeFinance II-3.2・II-3.4、EONIA ベンチマーク |
 | P4 | R からの入口（`riemann-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、6.3 の逐次と並列の一致テストを置く | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる |
 | P5 | OIS の ASW と円ベーシス込み ASW | GaussQuant の `ois_asset_swap_GQL` と回帰テストの基準値、LagrangeFinance II-3.7 |
 | P6 | TypeScript の Node.js 版の入口（`riemann-node`、napi-rs） | R と同じ基準値で、7.3 の「言語間・ネイティブ同士」の基準を満たすことを確かめる |
@@ -251,6 +251,19 @@ P8 以降（Black・Bachelier、MC、Hull-White、CDS など）は、P7 まで�
 - カーブなど大きな結果は、必要になったら R の外部ポインターで持つ。中身は書き換えない値なので、何度使っても安全である。
 - TypeScript の入口も、同じ決まり（7.2）で作る。Node.js 版（napi-rs）はネイティブの速度と並列計算をそのまま使い、ブラウザー版（WebAssembly）は同じ計算をブラウザーの中で動かす。
 - Python の入口は主な対象ではなく、必要になったら同じ決まりで足す。
+
+### 11.1 命名の方針
+
+| 対象 | 形 | 例 |
+|---|---|---|
+| 関数・メソッド・変数・モジュール | snake_case | `remaining_years`、`yen_bond` |
+| 型・構造体・enum・trait | PascalCase | `YieldCurve`、`DayCount` |
+| 定数 | SCREAMING_SNAKE_CASE | `MAX_SERIAL` |
+
+- R から自然に使えるよう、Rust と R で公開関数名・引数名をできるだけ揃える。
+- 言語の境界で変換が必要な場合も、不要な改名は避ける。
+
+2026 年 10 月末時点の Rust のコードは、`cargo clippy --all-targets -- -D warnings -D nonstandard_style` が通り、この方針に沿っている。
 
 ## 12. 最小構成
 
