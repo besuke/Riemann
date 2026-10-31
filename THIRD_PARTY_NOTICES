@@ -35,6 +35,21 @@ after v1.42 and v1.42 is the version used for verification:
 - crates/riemann/src/cashflow_analysis.rs: yield-based functions of
   ql/cashflows/cashflows.cpp (copyright holders listed in the file header)
 
+The following files were written from the QuantLib v1.42 sources (same tag), the version
+used for verification:
+
+- crates/riemann/src/curves.rs: ql/termstructure.cpp,
+  ql/termstructures/yieldtermstructure.cpp, ql/termstructures/interpolatedcurve.hpp and
+  ql/termstructures/yield/{zeroyieldstructure,flatforward,zerocurve,discountcurve,
+  zerospreadedtermstructure}.hpp, ql/math/interpolations/loginterpolation.hpp
+- crates/riemann/src/math/interpolation.rs: ql/math/interpolations/linearinterpolation.hpp,
+  ql/math/interpolation.hpp
+- crates/riemann/src/cashflow_analysis.rs (npv_on_curve): CashFlows::npv with a yield term
+  structure in ql/cashflows/cashflows.cpp
+- crates/riemann/src/instruments/fixed_rate_bond.rs (value_on_curve):
+  ql/pricingengines/bond/discountingbondengine.cpp (Copyright (C) 2007 Giorgio
+  Facchinetti; (C) 2009 StatPro Italia srl) and ql/instruments/bond.cpp
+
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.
 

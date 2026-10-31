@@ -20,6 +20,8 @@ pub enum Error {
     InvalidCashFlow { reason: String },
     /// An input outside the domain of a calculation.
     InvalidInput { reason: String },
+    /// A date or time outside the range of a curve that does not extrapolate.
+    OutsideCurveRange { reason: String },
     /// An iterative calculation that did not converge.
     NoConvergence { reason: String },
 }
@@ -42,6 +44,7 @@ impl fmt::Display for Error {
             Error::InvalidReferencePeriod { reason } => write!(f, "invalid reference period: {reason}"),
             Error::InvalidCashFlow { reason } => write!(f, "invalid cash flow: {reason}"),
             Error::InvalidInput { reason } => write!(f, "invalid input: {reason}"),
+            Error::OutsideCurveRange { reason } => write!(f, "outside the curve range: {reason}"),
             Error::NoConvergence { reason } => write!(f, "no convergence: {reason}"),
         }
     }

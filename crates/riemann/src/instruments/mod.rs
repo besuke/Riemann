@@ -2,4 +2,4 @@
 
 pub mod fixed_rate_bond;
 
-pub use fixed_rate_bond::{FixedRateBond, FixedRateBondSpec, PriceType};
+pub use fixed_rate_bond::{BondCurveValue, FixedRateBond, FixedRateBondSpec, PriceType};

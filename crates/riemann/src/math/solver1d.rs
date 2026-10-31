@@ -23,6 +23,20 @@ pub fn close(x: f64, y: f64) -> bool {
     diff <= tolerance * x.abs() && diff <= tolerance * y.abs()
 }
 
+/// QuantLib `close_enough(x, y)` with the default tolerance of 42 machine epsilons: like
+/// [`close`], but one of the two relative tests is enough.
+pub fn close_enough(x: f64, y: f64) -> bool {
+    if x == y {
+        return true;
+    }
+    let diff = (x - y).abs();
+    let tolerance = 42.0 * f64::EPSILON;
+    if x == 0.0 || y == 0.0 {
+        return diff < tolerance * tolerance;
+    }
+    diff <= tolerance * x.abs() || diff <= tolerance * y.abs()
+}
+
 /// Finds a root of `f` near `guess` (QuantLib `Solver1D::solve(f, accuracy, guess, step)`
 /// with `NewtonSafe`). `f` returns the value and `df` the derivative.
 pub fn newton_safe<F, D>(

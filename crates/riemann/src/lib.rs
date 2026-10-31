@@ -6,6 +6,7 @@
 
 pub mod cashflow_analysis;
 pub mod cashflows;
+pub mod curves;
 pub mod error;
 pub mod instruments;
 pub mod interest_rate;

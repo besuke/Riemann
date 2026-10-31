@@ -6,11 +6,16 @@
 //! from QuantLib source code (modified BSD license). QuantLib commit
 //! 70f240f29ddb84927ff654502f1d75b3de24ba43. See THIRD_PARTY_NOTICES.
 //!
+//! Valuation on a curve (`value_on_curve`) reproduces QuantLib v1.42
+//! `ql/pricingengines/bond/discountingbondengine.cpp` (Copyright (C) 2007 Giorgio
+//! Facchinetti; (C) 2009 StatPro Italia srl) with `Bond::isExpired/dirtyPrice/cleanPrice`.
+//!
 //! Differences from QuantLib: the evaluation date is an argument (no global settings);
 //! a single coupon rate and notional; no amortization, ex-coupon period or payment lag.
 
 use crate::cashflow_analysis::{self as analysis, DurationType, YieldConvention, YieldSolver};
 use crate::cashflows::{self, CashFlow, FixedRateLegSpec};
+use crate::curves::YieldCurve;
 use crate::interest_rate::InterestRate;
 use crate::time::{
     generate_schedule, BusinessDayConvention, Date, DayCount, HolidayCalendar, Period, Schedule,
@@ -170,6 +175,70 @@ impl FixedRateBond {
         self.tradable_notional(settlement)?;
         analysis::yield_value_basis_point(&self.cashflows, y, false, settlement, settlement)
     }
+
+    /// Value on a discount curve for trades on `evaluation_date` (QuantLib v1.42
+    /// `DiscountingBondEngine` with `Bond::NPV`, `dirtyPrice` and `cleanPrice`). The NPV is
+    /// at the curve's reference date; the prices are per 100 of notional at settlement.
+    /// Cash flows on the reference or settlement date are not included.
+    pub fn value_on_curve(
+        &self,
+        curve: &YieldCurve,
+        evaluation_date: Date,
+    ) -> Result<BondCurveValue, Error> {
+        let settlement = self.settlement_date(evaluation_date)?;
+        // QuantLib Bond::isExpired: every cash flow has occurred at the evaluation date
+        if self
+            .cashflows
+            .iter()
+            .all(|cf| cf.has_occurred(evaluation_date, false))
+        {
+            return Ok(BondCurveValue {
+                npv: 0.0,
+                settlement_value: 0.0,
+                dirty_price: 0.0,
+                clean_price: 0.0,
+            });
+        }
+        let valuation_date = curve.reference_date();
+        let npv = analysis::npv_on_curve(
+            &self.cashflows,
+            curve,
+            false,
+            valuation_date,
+            valuation_date,
+        )?;
+        let settlement_value = if valuation_date == settlement {
+            npv
+        } else {
+            analysis::npv_on_curve(&self.cashflows, curve, false, settlement, settlement)?
+        };
+        let notional = self.notional(settlement);
+        let dirty_price = if notional == 0.0 {
+            0.0
+        } else {
+            settlement_value * 100.0 / notional
+        };
+        let clean_price = dirty_price - self.accrued_amount(settlement)?;
+        Ok(BondCurveValue {
+            npv,
+            settlement_value,
+            dirty_price,
+            clean_price,
+        })
+    }
+}
+
+/// A bond's value on a discount curve.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BondCurveValue {
+    /// Present value at the curve's reference date, in currency.
+    pub npv: f64,
+    /// Present value at the settlement date, in currency.
+    pub settlement_value: f64,
+    /// Per 100 of notional.
+    pub dirty_price: f64,
+    /// Per 100 of notional.
+    pub clean_price: f64,
 }
 
 /// Whether a quoted price includes accrued interest.

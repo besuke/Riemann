@@ -55,4 +55,58 @@ impl InterestRate {
     pub fn discount_factor(&self, t: f64) -> Result<f64, Error> {
         Ok(1.0 / self.compound_factor(t)?)
     }
+
+    /// The rate that grows 1 to `compound` over `t` years (QuantLib `impliedRate`).
+    /// The frequency is ignored unless the compounding is `Compounded`.
+    pub fn implied_rate(
+        compound: f64,
+        day_count: DayCount,
+        compounding: Compounding,
+        frequency: u32,
+        t: f64,
+    ) -> Result<InterestRate, Error> {
+        if compound <= 0.0 {
+            return Err(Error::InvalidInput {
+                reason: "positive compound factor required".into(),
+            });
+        }
+        let rate = if compound == 1.0 {
+            if t < 0.0 {
+                return Err(Error::InvalidInput {
+                    reason: format!("non negative time ({t}) required"),
+                });
+            }
+            0.0
+        } else {
+            if t <= 0.0 {
+                return Err(Error::InvalidInput {
+                    reason: format!("positive time ({t}) required"),
+                });
+            }
+            let f = frequency as f64;
+            match compounding {
+                Compounding::Simple => (compound - 1.0) / t,
+                Compounding::Compounded => (compound.powf(1.0 / (f * t)) - 1.0) * f,
+                Compounding::Continuous => compound.ln() / t,
+            }
+        };
+        InterestRate::new(rate, day_count, compounding, frequency)
+    }
+
+    /// The rate with another compounding that gives the same growth over `t` years
+    /// (QuantLib `equivalentRate(comp, freq, t)`).
+    pub fn equivalent_rate(
+        &self,
+        compounding: Compounding,
+        frequency: u32,
+        t: f64,
+    ) -> Result<InterestRate, Error> {
+        InterestRate::implied_rate(
+            self.compound_factor(t)?,
+            self.day_count.clone(),
+            compounding,
+            frequency,
+            t,
+        )
+    }
 }

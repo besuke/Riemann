@@ -12,6 +12,7 @@
 //! products everywhere); v1.42, the version used for verification, is reproduced here.
 
 use crate::cashflows::CashFlow;
+use crate::curves::YieldCurve;
 use crate::interest_rate::{Compounding, InterestRate};
 use crate::math::solver1d::newton_safe;
 use crate::time::{Date, DayCount, Period, TimeUnit};
@@ -98,6 +99,25 @@ pub fn npv(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv
         npv += amount * discount;
     }
     Ok(npv)
+}
+
+/// Present value at `npv_date` of the cash flows after `settlement`, discounted on `curve`
+/// (QuantLib `CashFlows::npv` with a yield term structure).
+pub fn npv_on_curve(
+    leg: &[CashFlow],
+    curve: &YieldCurve,
+    incl: bool,
+    settlement: Date,
+    npv_date: Date,
+) -> Result<f64, Error> {
+    if leg.is_empty() {
+        return Ok(0.0);
+    }
+    let mut total = 0.0;
+    for (cf, amount) in alive(leg, settlement, incl)? {
+        total += amount * curve.discount(cf.date())?;
+    }
+    Ok(total / curve.discount(npv_date)?)
 }
 
 fn simple_duration(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
