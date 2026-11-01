@@ -707,7 +707,7 @@ fn monte_carlo_on_workers(
 
 /// The standard error of the mean. With `pairs`, the first half and the second half of the paths
 /// are antithetic pairs, and each pair counts as one sample.
-fn standard_error_of(payoff: &Value, pairs: Option<u64>) -> f64 {
+pub(crate) fn standard_error_of(payoff: &Value, pairs: Option<u64>) -> f64 {
     let Value::Paths(paths) = payoff else {
         return 0.0;
     };

@@ -1,6 +1,6 @@
 Package: RiemannFinMath
 Type: Package
-Title: Bond, OIS Curve and Option Calculations from a Rust Library
+Title: Bond, Curve, Option, Credit and Rate Model Calculations from a Rust Library
 Version: 0.1.0
 Authors@R: c(
     person("Eiichi", "Horigome", role = c("aut", "cre", "cph"), email = "besuke.poripori@gmail.com"),
@@ -8,7 +8,8 @@ Authors@R: c(
     person("The authors of the bundled Rust crates", role = "cph", comment = "Bundled in src/rust/vendor.tar.xz of a source package"))
 Description: R entry point of the RiemannFinMath financial library. The calculations are
     in Rust; the R functions convert dates and return tibbles. Dates, calendars and
-    conventions follow QuantLib, and everything is passed explicitly.
+    conventions follow QuantLib, and everything is passed explicitly. Sensitivities come
+    from automatic differentiation.
 License: MIT + file LICENSE | Apache License 2.0
 URL: https://github.com/besuke/Riemann
 BugReports: https://github.com/besuke/Riemann/issues

@@ -21,6 +21,7 @@ pub mod risk;
 pub mod sabr;
 pub mod ois;
 pub mod options;
+pub mod prdc;
 pub mod time;
 pub mod yen_bond;
 

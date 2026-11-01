@@ -16,6 +16,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_asset_swaps.md` | P7 のアセットスワップと国債先物 |
 | `docs/spec_hull_white.md` | P9 の Hull-White と SABR（差の原因は 4 章、未対応は 6 章） |
 | `docs/spec_cds.md` | P8 の CDS |
+| `docs/spec_prdc.md` | P10 の PRDC（簡略モデルの範囲は 1 章、未対応は 4 章） |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
 
 ## 決定事項
@@ -70,7 +71,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P7 | 債券：ASW、円ベーシス込み ASW、国債先物と CTD | **完了**（`docs/spec_asset_swaps.md`） |
 | P9 | Hull-White、コール債、SABR、Bermudan | **主要部分が完了**（`docs/spec_hull_white.md`）。LMM、HW 校正、Longstaff–Schwartz、MBS は未対応 |
 | P8 | CDS（MidPoint、ISDA、ハザードのブートストラップ、`cds`・`cds2015` 規則） | **完了**（`docs/spec_cds.md`） |
-| P10 | PRDC の多因子 MC と自動微分 | 未着手 |
+| P10 | PRDC：解析解、MC、自動微分 | **LagrangeFinance III-7 の簡略モデルまで完了**（`docs/spec_prdc.md`）。確率的な金利、コールは未対応 |
 | L1〜L3 | TypeScript の Node 版、ブラウザー版、Excel | 未着手。目標に必須ではない。P5 の後に WebAssembly で移植性を確認 |
 
 件数と結果は各仕様書の照合結果の節にある。段階の内容は `docs/specification.md` の 7 章。

@@ -20,6 +20,7 @@ use riemann::curves::CurveInput;
 use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
 use riemann::options::{self, Greeks, MonteCarloSettings, OptionInputs};
+use riemann::prdc::{self, PrdcMonteCarlo, PrdcSensitivity, PrdcTerms};
 use riemann::risk;
 use riemann::sabr::{self, SabrParameters};
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
@@ -1315,6 +1316,80 @@ fn cds_maturity(trade_date: i32, tenor: &str, rule: &str) -> List {
     value_list(vec![run()])
 }
 
+// ---- PRDC ----------------------------------------------------------------------------------------
+
+fn prdc_list(s: PrdcSensitivity) -> List {
+    let (mut domestic, mut dates, mut times, mut d_npv) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for c in &s.curves {
+        if let CurveInput::LogDiscount { date, time } = c.input {
+            domestic.push(if c.domestic { "domestic" } else { "foreign" }.to_string());
+            dates.push(date.serial() as f64);
+            times.push(time);
+            d_npv.push(c.d_npv);
+        }
+    }
+    list!(
+        npv = s.npv,
+        standard_error = s.standard_error,
+        fx_delta = s.fx_delta,
+        fx_vega = s.fx_vega,
+        curve = domestic,
+        date = dates,
+        time = times,
+        d_npv = d_npv
+    )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn prdc_value(
+    spot: f64,
+    volatility: f64,
+    domestic_curve: ExternalPtr<OisCurve>,
+    foreign_curve: ExternalPtr<OisCurve>,
+    coupon_times: Vec<f64>,
+    accrual_fractions: Vec<f64>,
+    fixed_rates: Vec<f64>,
+    fx_base: f64,
+    leverage: f64,
+    subtraction: f64,
+    floor: f64,
+    cap: f64,
+    notional: f64,
+    redemption: f64,
+    paths: f64,
+    seed: f64,
+    antithetic: bool,
+    threads: i32,
+) -> List {
+    let terms = PrdcTerms {
+        notional,
+        redemption,
+        coupon_times,
+        accrual_fractions,
+        // NaN means the formula on this date
+        fixed_rates: fixed_rates.iter().map(|&r| if r.is_nan() { None } else { Some(r) }).collect(),
+        fx_base,
+        leverage,
+        subtraction,
+        floor,
+        cap,
+    };
+    let result = if paths > 0.0 {
+        prdc::prdc_monte_carlo(
+            &terms,
+            spot,
+            volatility,
+            &domestic_curve.curve,
+            &foreign_curve.curve,
+            &PrdcMonteCarlo { paths: paths as u64, seed: seed as u64, antithetic, threads: threads.max(0) as usize },
+        )
+    } else {
+        prdc::prdc_analytic(&terms, spot, volatility, &domestic_curve.curve, &foreign_curve.curve)
+    };
+    outcome(result.map(prdc_list))
+}
+
 // ---- options --------------------------------------------------------------------------------
 
 fn option_inputs(values: [f64; 6]) -> OptionInputs {
@@ -1804,6 +1879,7 @@ extendr_module! {
     fn bootstrap_hazard_curve;
     fn cds_quote_sensitivity;
     fn cds_maturity;
+    fn prdc_value;
     fn european_option;
     fn barrier_option;
     fn binomial_option;
