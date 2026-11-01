@@ -66,6 +66,8 @@ R CMD INSTALL crates/riemann-r
 4. 休日・営業日の判定
 5. 複数カーブのバッチ計算
 
+P5 以降に足した関数の仕様は、それぞれの文書にある：感応度は [spec_autodiff.md](spec_autodiff.md)、オプションは [spec_options.md](spec_options.md)、アセットスワップと国債先物は [spec_asset_swaps.md](spec_asset_swaps.md)、Hull-White と SABR は [spec_hull_white.md](spec_hull_white.md)、CDS は [spec_cds.md](spec_cds.md)、PRDC は [spec_prdc.md](spec_prdc.md)。
+
 ## 4. エラーと panic
 
 | 種類 | 扱い |
@@ -142,7 +144,7 @@ CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名�
 |---|---|
 | NOTE：`New submission` | CRAN に登録されていない新しいパッケージには必ず出る。CRAN に公開申請しないので対応しない |
 
-テストは 85 件成功（`FAIL 0`、`WARN 0`、`SKIP 0`）、全使用例を実行した。途中で次を直した：`rustc` の版の表示がない（WARNING）、使用例の行が 100 文字を超える（NOTE）。
+テストは 174 件成功（`FAIL 0`、`WARN 0`、`SKIP 0`）、全使用例を実行した（P10 までを含むコードで 2026-11-01 に再実行。`MAKEFLAGS=-j1`、`RAYON_NUM_THREADS=2`）。インストールと検査を分ける `--install=check:` では、シンボル表がないので DLL 全体が調べられ、`_exit` と `abort` の NOTE が余分に出る。通常の 1 段階の検査では出ない。途中で次を直した：`rustc` の版の表示がない（WARNING）、使用例の行が 100 文字を超える（NOTE）。
 
 テストの確認用に、意図的な panic を 1 回起こす。そのため、テストのログに `panicked` が 1 回出るのは正常である。
 

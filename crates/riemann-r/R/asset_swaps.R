@@ -114,7 +114,8 @@ future_basket <- function(bonds, clean_price, futures_price, conversion_factor, 
   rows <- Map(function(bond, price, factor) {
     future_basis(bond, price, futures_price, factor, funding_rate, valuation_date, delivery_date)
   }, bonds, clean_price, conversion_factor)
-  columns <- lapply(setNames(names(rows[[1]]), names(rows[[1]])), function(name) vapply(rows, function(r) r[[name]], 0))
+  columns <- lapply(names(rows[[1]]), function(name) vapply(rows, function(r) r[[name]], 0))
+  names(columns) <- names(rows[[1]])
   out <- tibble::as_tibble(c(list(clean_price = as.numeric(clean_price), conversion_factor = as.numeric(conversion_factor)), columns))
   out$ctd <- out$net_basis == min(out$net_basis)
   out

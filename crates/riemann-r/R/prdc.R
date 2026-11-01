@@ -27,10 +27,11 @@
 #'   `fx_delta` and `fx_vega`, and `curve_sensitivity`, a tibble with `curve`, `date`, `time`, `d_npv`
 #'   per unit of log discount factor, and `npv_per_bp` for +1bp on the node's continuous zero rate.
 #' @examples
-#' jpy <- build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed",
-#'                        ois_instruments(c("1Y", "3Y", "5Y", "7Y"), c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L))
-#' usd <- build_ois_curve("2026-11-02", "2026-11-02", "sofr", "actual_365_fixed",
-#'                        ois_instruments(c("1Y", "3Y", "5Y", "7Y"), c(0.04, 0.038, 0.036, 0.034), 2L, 1L, 0L))
+#' tenors <- c("1Y", "3Y", "5Y", "7Y")
+#' jpy_quotes <- ois_instruments(tenors, c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L)
+#' usd_quotes <- ois_instruments(tenors, c(0.04, 0.038, 0.036, 0.034), 2L, 1L, 0L)
+#' jpy <- build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", jpy_quotes)
+#' usd <- build_ois_curve("2026-11-02", "2026-11-02", "sofr", "actual_365_fixed", usd_quotes)
 #' prdc_value(150, 0.12, jpy, usd, 1:5, rep(1, 5), 150, 0.8, 0.78, 0, 0.08, notional = 1e8)$summary
 #' @export
 prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, coupon_times, accrual_fractions, fx_base, leverage, subtraction, floor = 0, cap = Inf,
