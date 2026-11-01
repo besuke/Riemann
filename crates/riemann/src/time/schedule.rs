@@ -9,7 +9,7 @@
 //! Differences from QuantLib:
 //! - The effective date is required. QuantLib can derive a placeholder from the global
 //!   evaluation date; Riemann has no global state.
-//! - Only the Backward, Forward and Zero rules are implemented; the other rules return
+//! - Only the Backward, Forward, Zero, Cds and Cds2015 rules are implemented; the other rules return
 //!   `Error::Unsupported`.
 
 use super::{BusinessDayConvention, Calendar, Date, HolidayCalendar, Period, TimeUnit};
@@ -86,6 +86,63 @@ pub(crate) fn effective_tenor_and_end_of_month(spec: &ScheduleSpec) -> (Period, 
     (tenor, end_of_month)
 }
 
+/// The twentieth of the current or a following main IMM month (QuantLib `nextTwentieth`).
+fn next_twentieth(d: Date) -> Result<Date, Error> {
+    let (y, m, _) = d.ymd();
+    let mut result = Date::from_ymd(y, m, 20)?;
+    if result < d {
+        result = result.add_period(Period::new(1, TimeUnit::Months))?;
+    }
+    let (_, m, _) = result.ymd();
+    if m % 3 != 0 {
+        result = result.add_period(Period::new(3 - (m % 3) as i32, TimeUnit::Months))?;
+    }
+    Ok(result)
+}
+
+/// The twentieth of the current or a preceding main IMM month (QuantLib `previousTwentieth`).
+pub(crate) fn previous_twentieth(d: Date) -> Result<Date, Error> {
+    let (y, m, _) = d.ymd();
+    let mut result = Date::from_ymd(y, m, 20)?;
+    if result > d {
+        result = result.add_period(Period::new(-1, TimeUnit::Months))?;
+    }
+    let (_, m, _) = result.ymd();
+    if m % 3 != 0 {
+        result = result.add_period(Period::new(-((m % 3) as i32), TimeUnit::Months))?;
+    }
+    Ok(result)
+}
+
+/// The maturity of a standard CDS traded on `trade_date` (QuantLib `cdsMaturity`, for the Cds and
+/// Cds2015 rules). A 0 tenor on a Cds2015 roll month has no maturity, and is an error here.
+pub fn cds_maturity(trade_date: Date, tenor: Period, rule: DateGenerationRule) -> Result<Date, Error> {
+    if !matches!(rule, DateGenerationRule::Cds | DateGenerationRule::Cds2015) {
+        return Err(invalid(format!("cds_maturity needs a CDS rule, not {rule:?}")));
+    }
+    let multiple_of_3 = match tenor.unit {
+        TimeUnit::Years => true,
+        TimeUnit::Months => tenor.length % 3 == 0,
+        _ => false,
+    };
+    if !multiple_of_3 {
+        return Err(invalid("cds_maturity expects a tenor that is a multiple of 3 months".into()));
+    }
+    let mut anchor = previous_twentieth(trade_date)?;
+    let (_, month, _) = anchor.ymd();
+    if rule == DateGenerationRule::Cds2015 && (month == 12 || month == 6) {
+        if tenor.length == 0 {
+            return Err(invalid("a 0 tenor has no maturity on a roll month".into()));
+        }
+        anchor = anchor.add_period(Period::new(-3, TimeUnit::Months))?;
+    }
+    let maturity = anchor.add_period(tenor)?.add_period(Period::new(3, TimeUnit::Months))?;
+    if maturity <= trade_date {
+        return Err(invalid(format!("the CDS maturity {maturity} is not after the trade date {trade_date}")));
+    }
+    Ok(maturity)
+}
+
 /// Generates the schedule described by `spec` (QuantLib `Schedule` constructor).
 pub fn generate(spec: &ScheduleSpec) -> Result<Schedule, Error> {
     use BusinessDayConvention::Unadjusted;
@@ -112,7 +169,14 @@ pub fn generate(spec: &ScheduleSpec) -> Result<Schedule, Error> {
     } else if tenor.length < 0 {
         return Err(invalid(format!("non positive tenor ({tenor:?}) not allowed")));
     }
-    if !matches!(rule, Backward | Forward | Zero) {
+    let cds_rule = matches!(rule, Cds | Cds2015);
+    if cds_rule && end_of_month {
+        return Err(invalid(format!("endOfMonth convention incompatible with {rule:?} date generation rule")));
+    }
+    if cds_rule && (first.is_some() || next_to_last.is_some()) {
+        return Err(invalid(format!("first and next to last dates incompatible with {rule:?} date generation rule")));
+    }
+    if !matches!(rule, Backward | Forward | Zero | Cds | Cds2015) {
         return Err(Error::Unsupported { feature: format!("date generation rule {rule:?}") });
     }
     if let Some(f) = first {
@@ -227,6 +291,40 @@ pub fn generate(spec: &ScheduleSpec) -> Result<Schedule, Error> {
                 is_regular.push(false);
             }
         }
+        Cds | Cds2015 => {
+            let previous = previous_twentieth(effective)?;
+            if cal.adjust(previous, convention)? > effective {
+                dates.push(previous.add_period(Period::new(-3, TimeUnit::Months))?);
+                is_regular.push(true);
+            }
+            dates.push(previous);
+            let mut s = previous;
+            let next = next_twentieth(effective)?;
+            if next != effective {
+                dates.push(next);
+                is_regular.push(true);
+                s = next;
+            }
+            seed = Some(s);
+            loop {
+                let temp = null_advance(s, times(periods, tenor))?;
+                if temp > termination {
+                    break;
+                }
+                let last = *dates.last().expect("non-empty");
+                if cal.adjust(last, convention)? != cal.adjust(temp, convention)? {
+                    dates.push(temp);
+                    is_regular.push(true);
+                }
+                periods += 1;
+            }
+            let last = *dates.last().expect("non-empty");
+            let tc = spec.termination_convention;
+            if cal.adjust(last, tc)? != cal.adjust(termination, tc)? {
+                dates.push(next_twentieth(termination)?);
+                is_regular.push(true);
+            }
+        }
         _ => unreachable!("checked above"),
     }
     // adjustments
@@ -234,7 +332,7 @@ pub fn generate(spec: &ScheduleSpec) -> Result<Schedule, Error> {
         dates[0] = cal.adjust(dates[0], convention)?;
     }
     let n = dates.len();
-    if spec.termination_convention != Unadjusted {
+    if spec.termination_convention != Unadjusted && !cds_rule {
         dates[n - 1] = cal.adjust(dates[n - 1], spec.termination_convention)?;
     }
     let eom_seed = if end_of_month {

@@ -9,7 +9,7 @@ pub mod schedule;
 
 pub use business_day::BusinessDayConvention;
 pub use day_count::{Actual365Kind, ActualActualKind, DayCount, Thirty360Kind};
-pub use schedule::{generate as generate_schedule, DateGenerationRule, Schedule, ScheduleSpec};
+pub use schedule::{cds_maturity, generate as generate_schedule, DateGenerationRule, Schedule, ScheduleSpec};
 pub use calendar::{
     AustraliaMarket, AustriaMarket, BrazilMarket, Calendar, CalendarAdjustments, CanadaMarket, ChinaMarket, FranceMarket,
     GermanyMarket, HolidayCalendar, IndonesiaMarket, IsraelMarket, ItalyMarket, JointRule, NewZealandMarket, PolandMarket,

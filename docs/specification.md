@@ -46,6 +46,7 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 | TypeScript（Node.js）、WebAssembly（ブラウザー） | 未実装。開発目標（7.2 節の L1・L2） |
 | Excel の Office アドイン | 未実装。開発目標（7 章） |
 | 自動微分 | 計算グラフ（確定値とパスのベクトル）、2 階微分、債券の利回り・カーブ・気配の感応度、オプションのグリークスを実装済み（[spec_autodiff.md](spec_autodiff.md) 5 章） |
+| CDS | MidPoint、ISDA、ハザードのブートストラップ、スプレッド感応度を実装済み（[spec_cds.md](spec_cds.md)） |
 | Hull-White、SABR | 割引債オプション、European と Bermudan のスワップション、コール債、SABR と校正を実装済み（[spec_hull_white.md](spec_hull_white.md)） |
 | アセットスワップ、国債先物 | OIS ASW、円ベーシス込み ASW、ベーシスと CTD を実装済み（[spec_asset_swaps.md](spec_asset_swaps.md)） |
 | オプション | ヨーロピアン、アメリカン（二項木）、バリア、Black、Bachelier、インプライド・ボラティリティを実装済み（[spec_options.md](spec_options.md)） |
@@ -61,7 +62,7 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 | 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
 | 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、3.5、4.3、5.3、6.3 節）、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）、P3 の OIS カーブ（[spec_ois.md](spec_ois.md) の 8〜10 章）、P4 の R の入口と並列バッチ（[spec_r.md](spec_r.md) の 5 章・6 章）、P5 の自動微分（[spec_autodiff.md](spec_autodiff.md) の 5 章）、P6 のオプション（[spec_options.md](spec_options.md) の 4 章・5 章）、P7 のアセットスワップ（[spec_asset_swaps.md](spec_asset_swaps.md) の 4 章）、P9 の Hull-White と SABR（[spec_hull_white.md](spec_hull_white.md) の 3 章・4 章）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、3.5、4.3、5.3、6.3 節）、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）、P3 の OIS カーブ（[spec_ois.md](spec_ois.md) の 8〜10 章）、P4 の R の入口と並列バッチ（[spec_r.md](spec_r.md) の 5 章・6 章）、P5 の自動微分（[spec_autodiff.md](spec_autodiff.md) の 5 章）、P6 のオプション（[spec_options.md](spec_options.md) の 4 章・5 章）、P7 のアセットスワップ（[spec_asset_swaps.md](spec_asset_swaps.md) の 4 章）、P9 の Hull-White と SABR（[spec_hull_white.md](spec_hull_white.md) の 3 章・4 章）、P8 の CDS（[spec_cds.md](spec_cds.md) の 2 章）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
 
 ## 2. 設計の考え方
 
@@ -298,6 +299,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 - オプション：[spec_options.md](spec_options.md)
 - アセットスワップ、国債先物：[spec_asset_swaps.md](spec_asset_swaps.md)
 - Hull-White、SABR：[spec_hull_white.md](spec_hull_white.md)
+- CDS：[spec_cds.md](spec_cds.md)
 - R の入口：[spec_r.md](spec_r.md)
 
 ## 7. 開発の段階
@@ -306,7 +308,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 
 各段階で、GaussQuant・LagrangeFinance の既存の計算を基準値として照合し、あわせて性能を測る。基準値は R のスクリプト（`tools/golden/`）で CSV に書き出し、Rust のテストで読む。現在動いている GaussQuant・LagrangeFinance・Curie は変更しない。
 
-P1〜P7 は完了した（P4 の配布整備を除く）。P9 は主要部分を実装した（残りは [spec_hull_white.md](spec_hull_white.md) 6 章）。これからの順序は P8、P10 とする（2026-11-01 の利用者の指定）。自動微分を先に進めたのは、これが設計の柱であり、後から入れると数値計算のコードの書き直しが大きくなるためである。
+P1〜P8 は完了した（P4 の配布整備を除く）。P9 は主要部分を実装した（残りは [spec_hull_white.md](spec_hull_white.md) 6 章）。残りは P9 の残りと P10 である。自動微分を先に進めたのは、これが設計の柱であり、後から入れると数値計算のコードの書き直しが大きくなるためである。
 
 | 段階 | 作るもの | 照合する既存の計算 |
 |---|---|---|
@@ -317,7 +319,7 @@ P1〜P7 は完了した（P4 の配布整備を除く）。P9 は主要部分を
 | P5 | 自動微分の基礎：`Operand` trait、確定値の計算グラフと逆伝播、2 階微分の設計の確認。債券とカーブのバケット感応度 | 数値差分、解析解。LagrangeFinance III-6 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_autodiff.md](spec_autodiff.md) 5 章） |
 | P6 | パス方向のベクトルの計算グラフ。Black・Bachelier、MC のグリークス | QuantLib R パッケージ、Black–Scholes の解析解、数値差分。LagrangeFinance II-4、III-4、III-5 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_options.md](spec_options.md)）。Sobol 列と Longstaff–Schwartz 法は P9 で扱う |
 | P7 | OIS の ASW と円ベーシス込み ASW、国債先物と CTD | GaussQuant の `ois_asset_swap_GQL`。LagrangeFinance II-2.6、II-2.7、II-3.7 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_asset_swaps.md](spec_asset_swaps.md)） |
-| P8 | CDS | GaussQuant。LagrangeFinance II-5 に相当 |
+| P8 | CDS | QuantLib R パッケージ。LagrangeFinance II-5 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_cds.md](spec_cds.md)） |
 | P9 | SABR、Hull-White、コール債、Bermudan、MBS。回帰と指示関数の近似の自動微分 | QuantLib R パッケージ、LagrangeFinance。LagrangeFinance II-6〜II-8 に相当。**2026-11-01 に主要部分が完了**（【実行照合済み】。[spec_hull_white.md](spec_hull_white.md)） |
 | P10 | PRDC の多因子 MC と自動微分 | 数値差分、GaussQuant。LagrangeFinance II-9、III-7 に相当 |
 

@@ -3,6 +3,7 @@
 //! Names are snake_case. Calendar names are the keys of `tests/golden/calendar_markets.csv`.
 
 use crate::cashflow_analysis::DurationType;
+use crate::cds::{CdsEngine, ProtectionSide};
 use crate::instruments::PriceType;
 use crate::interest_rate::Compounding;
 use crate::ois::{estr, sofr, sonia, tonar, OisInterpolation, OvernightIndex};
@@ -190,6 +191,22 @@ pub fn sabr_volatility_type(name: &str) -> Result<SabrVolatilityType, Error> {
     })
 }
 
+pub fn protection_side(name: &str) -> Result<ProtectionSide, Error> {
+    Ok(match name {
+        "buyer" => ProtectionSide::Buyer,
+        "seller" => ProtectionSide::Seller,
+        other => return unknown("protection side", other),
+    })
+}
+
+pub fn cds_engine(name: &str) -> Result<CdsEngine, Error> {
+    Ok(match name {
+        "midpoint" => CdsEngine::MidPoint,
+        "isda" => CdsEngine::Isda,
+        other => return unknown("CDS engine", other),
+    })
+}
+
 pub fn compounding(name: &str) -> Result<Compounding, Error> {
     Ok(match name {
         "simple" => Compounding::Simple,
@@ -225,6 +242,7 @@ pub fn date_generation_rule(name: &str) -> Result<DateGenerationRule, Error> {
         "twentieth_imm" => TwentiethImm,
         "old_cds" => OldCds,
         "cds" => Cds,
+        "cds2015" => Cds2015,
         other => return unknown("date generation rule", other),
     })
 }

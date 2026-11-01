@@ -12,6 +12,7 @@ use extendr_api::prelude::*;
 use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::cashflow_analysis::{YieldConvention, YieldSolver};
+use riemann::cds::{self, Cds, CdsCurve, CdsCurveSpec, CdsSpec, CdsValue, HazardCurve, SpreadQuote};
 use riemann::hull_white::{self, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
 use riemann::interest_rate::Compounding;
@@ -1138,6 +1139,182 @@ fn calibrate_sabr(kind: &str, strike: Vec<f64>, volatility: Vec<f64>, forward: f
     outcome(run())
 }
 
+// ---- credit default swaps ----------------------------------------------------------------------
+
+fn cds_value_list(v: CdsValue) -> List {
+    list!(
+        npv = v.npv,
+        coupon_leg_npv = v.coupon_leg_npv,
+        default_leg_npv = v.default_leg_npv,
+        upfront_npv = v.upfront_npv,
+        accrual_rebate_npv = v.accrual_rebate_npv,
+        fair_spread = v.fair_spread,
+        fair_upfront = v.fair_upfront.unwrap_or_else(na_real)
+    )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn credit_default_swap(
+    side: &str,
+    notional: f64,
+    running_spread: f64,
+    effective_date: i32,
+    termination_date: i32,
+    tenor: &str,
+    calendar: &str,
+    convention: &str,
+    termination_convention: &str,
+    rule: &str,
+    payment_convention: &str,
+    day_count: &str,
+    upfront: f64,
+    rebates_accrual: bool,
+) -> List {
+    let build = || -> Core<Cds> {
+        Cds::new(CdsSpec {
+            side: names::protection_side(side)?,
+            notional,
+            running_spread,
+            schedule: ScheduleSpec {
+                effective_date: date(effective_date)?,
+                termination_date: date(termination_date)?,
+                tenor: names::period(tenor)?,
+                calendar: HolidayCalendar::from(names::calendar(calendar)?),
+                convention: names::business_day_convention(convention)?,
+                termination_convention: names::business_day_convention(termination_convention)?,
+                rule: names::date_generation_rule(rule)?,
+                end_of_month: false,
+                first_date: None,
+                next_to_last_date: None,
+            },
+            payment_convention: names::business_day_convention(payment_convention)?,
+            day_count: names::day_count(day_count)?,
+            last_period_day_count: None,
+            upfront: Some(upfront),
+            protection_start: None,
+            trade_date: None,
+            cash_settlement_days: 3,
+            rebates_accrual,
+        })
+    };
+    outcome(build().map(|c| list!(value = ExternalPtr::new(c))))
+}
+
+#[extendr]
+fn hazard_curve(reference_date: i32, day_count: &str, dates: Vec<i32>, hazards: Vec<f64>) -> List {
+    let build = || -> Core<HazardCurve> {
+        let reference = date(reference_date)?;
+        let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<Date>>>()?;
+        HazardCurve::new(reference, names::day_count(day_count)?, dates, hazards.clone())
+    };
+    outcome(build().map(|c| list!(value = ExternalPtr::new(c))))
+}
+
+#[extendr]
+fn survival_probability(curve: ExternalPtr<HazardCurve>, date_serial: Vec<i32>) -> List {
+    let rows = date_serial.iter().map(|&d| curve.survival(date(d)?)).collect();
+    value_list(rows)
+}
+
+#[extendr]
+fn cds_value(
+    cds: ExternalPtr<Cds>,
+    hazard: ExternalPtr<HazardCurve>,
+    recovery: f64,
+    curve: ExternalPtr<OisCurve>,
+    evaluation_date: i32,
+    engine: &str,
+) -> List {
+    let run = || -> Core<List> {
+        let v = cds::cds_value(names::cds_engine(engine)?, &cds, &hazard, recovery, &curve.curve, date(evaluation_date)?)?;
+        Ok(cds_value_list(v))
+    };
+    outcome(run())
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn bootstrap_hazard_curve(
+    evaluation_date: i32,
+    maturity: Vec<i32>,
+    spread: Vec<f64>,
+    recovery: f64,
+    curve: ExternalPtr<OisCurve>,
+    engine: &str,
+    settlement_days: i32,
+    calendar: &str,
+    tenor: &str,
+    payment_convention: &str,
+    rule: &str,
+    day_count: &str,
+    curve_day_count: &str,
+    accuracy: f64,
+) -> List {
+    let build = || -> Core<CdsCurve> {
+        let spec = CdsCurveSpec {
+            evaluation_date: date(evaluation_date)?,
+            settlement_days: settlement_days.max(0) as u32,
+            calendar: HolidayCalendar::from(names::calendar(calendar)?),
+            tenor: names::period(tenor)?,
+            payment_convention: names::business_day_convention(payment_convention)?,
+            rule: names::date_generation_rule(rule)?,
+            day_count: names::day_count(day_count)?,
+            last_period_day_count: None,
+            rebates_accrual: true,
+            recovery,
+            engine: names::cds_engine(engine)?,
+            curve_day_count: names::day_count(curve_day_count)?,
+            accuracy,
+            quotes: maturity
+                .iter()
+                .zip(&spread)
+                .map(|(&m, &s)| Ok(SpreadQuote { maturity: date(m)?, spread: s }))
+                .collect::<Core<Vec<_>>>()?,
+        };
+        cds::bootstrap_hazard(&spec, &curve.curve)
+    };
+    outcome(build().map(|c| {
+        list!(
+            node_date = c.hazard.dates().iter().map(|d| d.serial() as f64).collect::<Vec<f64>>(),
+            hazard = c.hazard.hazards().to_vec(),
+            hazard_curve = ExternalPtr::new(c.hazard.clone()),
+            value = ExternalPtr::new(c)
+        )
+    }))
+}
+
+#[extendr]
+fn cds_quote_sensitivity(
+    cds: ExternalPtr<Cds>,
+    credit: ExternalPtr<CdsCurve>,
+    curve: ExternalPtr<OisCurve>,
+    evaluation_date: i32,
+    engine: &str,
+) -> List {
+    let run = || -> Core<List> {
+        let s = cds::cds_sensitivity(names::cds_engine(engine)?, &cds, &credit, &curve.curve, date(evaluation_date)?)?;
+        Ok(list!(
+            npv = s.value.npv,
+            d_npv_d_recovery = s.d_npv_d_recovery,
+            quote = s.quotes.iter().map(|q| q.quote as i32 + 1).collect::<Vec<i32>>(),
+            maturity = s.quotes.iter().map(|q| q.maturity.serial() as f64).collect::<Vec<f64>>(),
+            spread = s.quotes.iter().map(|q| q.spread).collect::<Vec<f64>>(),
+            d_npv = s.quotes.iter().map(|q| q.d_npv).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
+
+#[extendr]
+fn cds_maturity(trade_date: i32, tenor: &str, rule: &str) -> List {
+    let run = || -> Core<f64> {
+        let d = riemann::time::cds_maturity(date(trade_date)?, names::period(tenor)?, names::date_generation_rule(rule)?)?;
+        Ok(d.serial() as f64)
+    };
+    value_list(vec![run()])
+}
+
 // ---- options --------------------------------------------------------------------------------
 
 fn option_inputs(values: [f64; 6]) -> OptionInputs {
@@ -1620,6 +1797,13 @@ extendr_module! {
     fn hull_white_callable_bond;
     fn sabr_volatility;
     fn calibrate_sabr;
+    fn credit_default_swap;
+    fn hazard_curve;
+    fn survival_probability;
+    fn cds_value;
+    fn bootstrap_hazard_curve;
+    fn cds_quote_sensitivity;
+    fn cds_maturity;
     fn european_option;
     fn barrier_option;
     fn binomial_option;

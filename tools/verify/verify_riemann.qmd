@@ -24,6 +24,7 @@ source("verify_autodiff.R")
 source("verify_options.R")
 source("verify_asset_swaps.R")
 source("verify_hull_white.R")
+source("verify_cds.R")
 results <- verify_bonds()
 summary_table <- summarise_verification(results)
 ois_results <- verify_ois()
@@ -35,6 +36,7 @@ ad_results <- verify_autodiff()
 option_results <- verify_options()
 asw_results <- verify_asset_swaps()
 hw_quadrature <- verify_hull_white()
+cds_sensitivity <- verify_cds_sensitivity()
 ois_curve_values <- ois_curves(ois_results)
 calendar_results <- verify_calendars()
 
@@ -61,7 +63,7 @@ Riemann の実装済みの計算を、合成データで QuantLib と比べる�
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
 - **Riemann の呼び方**：R パッケージ `RiemannFinMath`（`crates/riemann-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/riemann/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
 - **データ**：すべて合成の値で、市場データは使っていません。
-- **対象**：Hull-White と SABR（P9）、OIS アセットスワップ（P7）、オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
+- **対象**：CDS（P8）、Hull-White と SABR（P9）、OIS アセットスワップ（P7）、オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 
 ## 総合判定
 
@@ -78,6 +80,7 @@ parallel_ok <- all(parallel_results$by_threads$identical_to_one_thread) && all(p
 ad_ok <- all(ad_results$yield$pass) && all(ad_results$quotes$pass)
 option_ok <- all(option_results$values$pass) && option_results$value_within && option_results$threads_identical && max(option_results$monte_carlo$rel_diff) < 0.03
 asw_ok <- all(asw_results$pass)
+cds_ok <- max(cds_sensitivity$diff) < 1e-3
 calendar_ok <- all(calendar_results$by_market$result == "PASS") && sum(calendar_results$by_market$r_diff, na.rm = TRUE) == 0
 cat(sprintf(paste0("- 債券：**%s**\n",
                   "- OIS カーブ、QuantLib との照合：**%s**\n",
@@ -87,11 +90,12 @@ cat(sprintf(paste0("- 債券：**%s**\n",
                   "- 並列バッチ（スレッド数を変えた結果と入力順の一致）：**%s**\n",
                   "- 自動微分（解析式と数値差分との一致）：**%s**\n",
                   "- オプション（QuantLib との照合と MC）：**%s**\n",
-                  "- OIS アセットスワップ（GaussQuant との照合）：**%s**\n"),
+                  "- OIS アセットスワップ（GaussQuant との照合）：**%s**\n",
+                  "- CDS の気配の感応度（カーブの作り直しとの一致）：**%s**\n"),
             pass_label(bond_ok), pass_label(ois_comparison_ok),
             if (ois_report_quotes_ok) "基準達成" else "基準未達",
             if (ois_golden_quotes_ok) "基準達成" else sprintf("基準未達（%d カーブ、%d 商品。QuantLib も同じカーブで未達）", ois_miss_curves, ois_miss_quotes),
-            pass_label(calendar_ok), pass_label(parallel_ok), pass_label(ad_ok), pass_label(option_ok), pass_label(asw_ok)))
+            pass_label(calendar_ok), pass_label(parallel_ok), pass_label(ad_ok), pass_label(option_ok), pass_label(asw_ok), pass_label(cds_ok)))
 ```
 
 # 債券
@@ -683,6 +687,17 @@ P9 の結果です。QuantLib と LagrangeFinance との比較は Rust のテス
 hw_quadrature |>
   mutate(callable = sprintf("%.6f", callable), diff_from_finest = sprintf("%.2e", diff_from_finest)) |>
   knitr::kable(col.names = c("Rule", "Callable bond", "Diff. from the finest"), align = "lrr")
+```
+
+# CDS
+
+P8 の結果です。QuantLib との照合は Rust のテストにあり、結果は `docs/spec_cds.md` にあります。ここでは、1,000 万の買い手の CDS（満期 2031 年 12 月）について、スプレッド +1bp あたりの NPV の変化を比べます。自動微分の値と、スプレッドを ±1e-6 動かしてハザードカーブを作り直した中心差分です。
+
+```{r}
+#| label: cds-sensitivity
+cds_sensitivity |>
+  mutate(across(c(npv_per_bp_ad, npv_per_bp_rebuilt), \(x) sprintf("%.4f", x)), diff = sprintf("%.1e", diff)) |>
+  knitr::kable(col.names = c("Engine", "Maturity", "Spread (bp)", "Per bp, autodiff", "Per bp, rebuilt", "Diff."), align = "llrrrr")
 ```
 
 # 実行環境

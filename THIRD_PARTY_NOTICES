@@ -84,6 +84,11 @@ used for verification:
 - crates/riemann/src/hull_white.rs: ql/models/shortrate/onefactormodels/hullwhite.cpp and
   ql/pricingengines/swaption/jamshidianswaptionengine.cpp
 - crates/riemann/src/sabr.rs: ql/termstructures/volatility/sabr.cpp
+- crates/riemann/src/cds.rs: ql/instruments/creditdefaultswap.cpp,
+  ql/pricingengines/credit/midpointcdsengine.cpp, ql/pricingengines/credit/isdacdsengine.cpp and
+  ql/termstructures/credit/defaultprobabilityhelpers.cpp
+- crates/riemann/src/time/schedule.rs (Cds and Cds2015 rules, cds_maturity):
+  ql/time/schedule.cpp and ql/instruments/creditdefaultswap.cpp
 
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.
