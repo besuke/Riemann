@@ -5,3 +5,4 @@
 *.rmarkdown
 
 **/*.quarto_ipynb
+/figure/
