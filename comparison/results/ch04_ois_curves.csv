@@ -1,0 +1,51 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch04_ois_curves,"Discount factor, ON",discount factor,QuantLib C++,1.0000007397265747,1.0000007397265747,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 1W",discount factor,QuantLib C++,1.0000034317200381,1.0000034317200381,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 2W",discount factor,QuantLib C++,1.0000066479133711,1.0000066479133711,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 1M",discount factor,QuantLib C++,1.0000178459851115,1.0000178459851115,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 3M",discount factor,QuantLib C++,1.000049910864898,1.000049910864898,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 6M",discount factor,QuantLib C++,1.0000538805879284,1.0000538805879284,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 9M",discount factor,QuantLib C++,0.9999993678775927,0.9999993678775927,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 12M",discount factor,QuantLib C++,0.9998760288523976,0.9998760288523976,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 18M",discount factor,QuantLib C++,0.9995285502174438,0.9995285502174438,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 2Y",discount factor,QuantLib C++,0.9990252146852805,0.9990252146852805,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 3Y",discount factor,QuantLib C++,0.9977849065974493,0.9977849065974493,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 4Y",discount factor,QuantLib C++,0.9962109564126491,0.9962109564126491,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 5Y",discount factor,QuantLib C++,0.9940861817367059,0.9940861817367059,0,1e-4,PASS,NA
+ch04_ois_curves,"Discount factor, 7Y",discount factor,QuantLib C++,0.9866565408570284,0.9866565408570284,0,1e-4,PASS,NA
+ch04_ois_curves,monotonic_log_cubic pillar dates,"days, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,monotonic_log_cubic node dates,"days, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,monotonic_log_cubic node discount factors,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,monotonic_log_cubic discount on reading dates,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,monotonic_log_cubic continuous zero rate,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,monotonic_log_cubic 1-day simple forward,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,"monotonic_log_cubic implied quotes, used pillars","percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,log_linear pillar dates,"days, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,log_linear node dates,"days, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,log_linear node discount factors,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,log_linear discount on reading dates,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,log_linear continuous zero rate,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,log_linear 1-day simple forward,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,"log_linear implied quotes, used pillars","percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,"Annual zero rate, 5 years",percent,QuantLib C++,0.11795644330525601,0.11795644330525601,0,1e-4,PASS,NA
+ch04_ois_curves,"Continuous forward, 5y to 6y",percent,QuantLib C++,0.33420580728169763,0.33420580728169763,0,1e-4,PASS,NA
+ch04_ois_curves,"Fair rate, 2022-08-23 to 2022-08-30, paid 2022-09-01",percent,QuantLib C++,-0.012609988467871985,-0.012609988467871985,0,1e-4,PASS,NA
+ch04_ois_curves,Node discount factors,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,Continuous zero rate,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,1-day simple forward,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,EUR node discount factors,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,EUR implied quotes,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,EUR reprices its quotes,"percent, largest",The input quotes,NA,NA,1.0464633604101437e-9,1e-4,PASS,NA
+ch04_ois_curves,EUR effect of ModifiedFollowing on discount,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,Different payment conventions; a FAIL here is the effect of the missing argument
+ch04_ois_curves,USD node discount factors,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,USD implied quotes,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,USD reprices its quotes,"percent, largest",The input quotes,NA,NA,2.809809718229417e-9,1e-4,PASS,NA
+ch04_ois_curves,USD effect of ModifiedFollowing on discount,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,Different payment conventions; a FAIL here is the effect of the missing argument
+ch04_ois_curves,JPY node discount factors,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,JPY implied quotes,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,JPY reprices its quotes,"percent, largest",The input quotes,NA,NA,3.3014058153924e-10,1e-4,PASS,NA
+ch04_ois_curves,JPY effect of ModifiedFollowing on discount,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,Different payment conventions; a FAIL here is the effect of the missing argument
+ch04_ois_curves,GBP node discount factors,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,GBP implied quotes,"percent, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch04_ois_curves,GBP reprices its quotes,"percent, largest",The input quotes,NA,NA,7.263523116307624e-12,1e-4,PASS,NA
+ch04_ois_curves,GBP effect of ModifiedFollowing on discount,"discount factor, largest",QuantLib C++,NA,NA,0,1e-4,PASS,Different payment conventions; a FAIL here is the effect of the missing argument

@@ -1,0 +1,121 @@
+---
+title: "Parallel batches and running time"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+source("R/quantlib_side.R")
+```
+
+The legacy text's parallel examples use `furrr` around arithmetic in R, and no pricing library, so they are not repeated. The items here use the bond of the bonds chapter and the curves of the OIS chapter.
+
+## Many bonds
+
+```{r}
+#| label: bond-inputs
+n <- 2000L
+rates <- seq(0.01, 0.10, length.out = n)
+bonds <- tibble(
+  settlement_days = 2L, face_amount = 100, effective_date = as.Date("2022-04-01"), termination_date = as.Date("2062-04-01"),
+  tenor = "6M", calendar = "japan", convention = "unadjusted", termination_convention = "unadjusted", rule = "backward",
+  end_of_month = FALSE, coupon_rate = 0.075, day_count = "thirty_360_bond_basis", payment_convention = "unadjusted",
+  redemption = 100, issue_date = as.Date("2022-04-01"), rate = rates, yield_day_count = "thirty_360_bond_basis",
+  compounding = "compounded", frequency = 2L, evaluation_date = as.Date("2022-03-30")
+)
+show_inputs(list(rows = n, yields = "1% to 10%", bond = "40-year bond of the bonds chapter"))
+```
+
+QuantLib, one call for each row:
+
+```{r}
+#| label: bond-quantlib
+ql_set_evaluation_date("2022-03-30")
+ql_day_count <- QuantLib::Thirty360("BondBasis")
+ql_bond <- ql_fixed_bond("2022-04-01", "2062-04-01", 0.075, QuantLib::Japan(), ql_day_count, 2L, "Unadjusted")
+ql_settlement <- QuantLib::Bond_settlementDate(ql_bond)
+quantlib_time <- system.time(
+  quantlib_prices <- map_dbl(rates, \(y) QuantLib::BondFunctions_cleanPrice(ql_bond, y, ql_day_count, "Compounded", "Semiannual", ql_settlement))
+)[["elapsed"]]
+```
+
+RiemannFinMath, one call for all rows:
+
+```{r}
+#| label: bond-riemann
+times_by_threads <- map(c(1L, 4L), \(threads) {
+  elapsed <- system.time(result <- RiemannFinMath::bond_values_batch(bonds, threads = threads))[["elapsed"]]
+  list(result = result, elapsed = elapsed)
+})
+```
+
+```{r}
+#| label: bond-results
+bind_rows(
+  compare_max("Clean price, 1 thread", "per 100, largest", quantlib_prices, times_by_threads[[1]]$result$clean_price),
+  compare_max("Clean price, 4 threads", "per 100, largest", quantlib_prices, times_by_threads[[2]]$result$clean_price),
+  compare_max("1 thread against 4 threads", "per 100, largest", times_by_threads[[1]]$result$clean_price, times_by_threads[[2]]$result$clean_price, "RiemannFinMath itself"),
+  not_comparable("Running time, 1 thread", "seconds", quantlib_time, times_by_threads[[1]]$elapsed, "Time on this machine for one run; the batch also builds each bond and computes every measure"),
+  not_comparable("Running time, 4 threads", "seconds", quantlib_time, times_by_threads[[2]]$elapsed, "Time on this machine for one run; the batch also builds each bond and computes every measure")
+) |>
+  show_results()
+```
+
+## Many curves
+
+```{r}
+#| label: curve-inputs
+tona_date <- as.Date("2022-08-19")
+sofr_date <- as.Date("2023-09-26")
+chapter <- "part2_quantive_riemann/ch03_ois_swaps_multicurve.qmd"
+as_quotes <- function(x) x |> mutate(tenor = if_else(kind == "overnight_deposit", "ON", tenor)) |> select(tenor, rate)
+tona <- as_quotes(lagrange_object(chapter, "tona_quotes", trade_date_tona = "2022-08-19"))
+sofr <- as_quotes(lagrange_object(chapter, "sofr_quotes", trade_date_sofr = "2023-09-26"))
+curves <- tibble(
+  evaluation_date = c(tona_date, sofr_date), reference_date = c(tona_date, sofr_date), index = c("tonar", "sofr"),
+  curve_day_count = c("actual_365_fixed", "actual_360"),
+  instruments = list(RiemannFinMath::ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), RiemannFinMath::ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L)),
+  dates = list(tona_date + c(30L, 365L, 1000L), sofr_date + c(30L, 365L, 1000L))
+)
+show_inputs(list(curves = "the TONAR and SOFR curves of the OIS chapter", reading_dates = "30, 365 and 1000 days ahead"))
+```
+
+```{r}
+#| label: curve-calls
+ql_tona <- ql_ois_curve(tona_date, "tonar", QuantLib::Actual365Fixed(), tona$tenor, tona$rate, 2L)
+quantlib_tona <- ql_discount(ql_tona, curves$dates[[1]])
+ql_sofr <- ql_ois_curve(sofr_date, "sofr", QuantLib::Actual360(), sofr$tenor, sofr$rate, 2L)
+quantlib_sofr <- ql_discount(ql_sofr, curves$dates[[2]])
+batch_one <- RiemannFinMath::curve_values_batch(curves, threads = 1L)
+batch_four <- RiemannFinMath::curve_values_batch(curves, threads = 4L)
+```
+
+```{r}
+#| label: curve-results
+bind_rows(
+  compare_max("TONAR discount", "discount factor, largest", quantlib_tona, batch_four |> filter(curve == 1L) |> pull(discount)),
+  compare_max("SOFR discount", "discount factor, largest", quantlib_sofr, batch_four |> filter(curve == 2L) |> pull(discount)),
+  compare_max("1 thread against 4 threads", "discount factor, largest", batch_one$discount, batch_four$discount, "RiemannFinMath itself")
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,       ~QuantLib,                                               ~RiemannFinMath,
+  "Wrapper", "Many rows",   "A loop in R, or `furrr` with one R process per worker",  "One call with a table and a thread count",
+  "Wrapper", "Failed rows", "An R error stops the loop, unless the caller catches it", "`NA` with a message in the row",
+  "Core",    "Threads",     "Global `Settings` and observers limit sharing",          "Immutable values shared across threads; R is not called from them",
+  "Core",    "Order",       "Depends on how the caller collects the results",         "Results come back in the order of the inputs, for any thread count"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch13_parallel_batches")
+```

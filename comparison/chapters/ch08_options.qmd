@@ -1,0 +1,266 @@
+---
+title: "Options"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+## QuantLib set-up
+
+Every item uses this process. Time is days over 365 and rates are continuous, so the flat curves reduce to the numeric inputs of RiemannFinMath.
+
+```{r}
+#| label: quantlib-process
+ql_process <- function(today, spot, rate, dividend, volatility) {
+  dc <- QuantLib::Actual365Fixed()
+  QuantLib::BlackScholesMertonProcess(
+    QuantLib::QuoteHandle(QuantLib::SimpleQuote(spot)),
+    QuantLib::YieldTermStructureHandle(QuantLib::FlatForward(ql_date(today), dividend, dc)),
+    QuantLib::YieldTermStructureHandle(QuantLib::FlatForward(ql_date(today), rate, dc)),
+    QuantLib::BlackVolTermStructureHandle(QuantLib::BlackConstantVol(ql_date(today), QuantLib::NullCalendar(), volatility, dc))
+  )
+}
+ql_type <- function(kind) if (kind == "call") QuantLib::Option_Call_get() else QuantLib::Option_Put_get()
+ql_vanilla <- function(kind, strike, exercise) QuantLib::VanillaOption(QuantLib::PlainVanillaPayoff(ql_type(kind), strike), exercise)
+```
+
+## Black 76
+
+```{r}
+#| label: black-inputs
+black <- list(trade = "2023-07-21", maturity = "2023-08-26", forward = 107 + 6.75 / 32, strike = 107.5, volatility = 0.052, rate = 0.05)
+black$time <- as.numeric(as.Date(black$maturity) - as.Date(black$trade)) / 365
+black$discount <- exp(-black$rate * black$time)
+show_inputs(black)
+```
+
+```{r}
+#| label: black-calls
+ql_black <- QuantLib::blackFormula(ql_type("call"), black$strike, black$forward, black$volatility * sqrt(black$time), black$discount)
+riemann_black <- RiemannFinMath::forward_option("black", "call", black$forward, black$strike, black$volatility, black$time, black$discount)
+calculator <- QuantLib::BlackCalculator(
+  QuantLib::PlainVanillaPayoff(ql_type("call"), black$strike), black$forward, black$volatility * sqrt(black$time), black$discount
+)
+```
+
+```{r}
+#| label: black-results
+bind_rows(
+  compare_values("Value", "price", ql_black, riemann_black$value),
+  compare_values("Forward delta", "per unit of forward", calculator$deltaForward(), riemann_black$delta_forward),
+  compare_values("Forward gamma", "per unit of forward squared", calculator$gammaForward(), riemann_black$gamma_forward),
+  compare_values("Vega", "per unit of volatility", calculator$vega(black$time), riemann_black$vega)
+) |>
+  show_results()
+```
+
+## Bachelier
+
+The legacy text gives the formula and the units in R, without a numeric example on a market. The inputs below are the units of that section: a normal volatility of 40 bp on the 2-year SABR forward.
+
+```{r}
+#| label: bachelier
+normal <- list(forward = 0.0056, strike = 0.0056, volatility = 0.004, time = 2, discount = 1)
+show_inputs(normal)
+ql_normal <- map_dbl(c("call", "put"), \(kind) {
+  QuantLib::bachelierBlackFormula(ql_type(kind), normal$strike, normal$forward, normal$volatility * sqrt(normal$time), normal$discount)
+})
+riemann_normal <- RiemannFinMath::forward_option("bachelier", c("call", "put"), normal$forward, normal$strike, normal$volatility, normal$time, normal$discount)
+compare_values(c("Call", "Put"), "bp of price", 1e4 * ql_normal, 1e4 * riemann_normal$value) |>
+  show_results()
+```
+
+## European options and Greeks
+
+```{r}
+#| label: european-inputs
+equity <- list(today = "2026-01-02", maturity = "2027-01-02", spot = 100, strike = 100, rate = 0.03, dividend = 0, volatility = 0.2)
+equity$time <- as.numeric(as.Date(equity$maturity) - as.Date(equity$today)) / 365
+show_inputs(equity)
+```
+
+QuantLib:
+
+```{r}
+#| label: european-quantlib
+ql_set_evaluation_date(equity$today)
+ql_equity_process <- ql_process(equity$today, equity$spot, equity$rate, equity$dividend, equity$volatility)
+ql_call <- ql_vanilla("call", equity$strike, QuantLib::EuropeanExercise(ql_date(equity$maturity)))
+QuantLib::Instrument_setPricingEngine(ql_call, QuantLib::AnalyticEuropeanEngine(ql_equity_process))
+ql_greeks <- list(
+  value = ql_call$NPV(), delta = ql_call$delta(), gamma = ql_call$gamma(), vega = ql_call$vega(), rho = ql_call$rho(),
+  dividend_rho = ql_call$dividendRho(), theta = ql_call$theta(), strike_sensitivity = ql_call$strikeSensitivity()
+)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: european-riemann
+riemann_call <- RiemannFinMath::european_option("call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time)
+```
+
+```{r}
+#| label: european-results
+units <- c(value = "price", delta = "per unit of spot", gamma = "per unit of spot squared", vega = "per unit of volatility",
+           rho = "per unit of rate", dividend_rho = "per unit of yield", theta = "per year", strike_sensitivity = "per unit of strike")
+imap(ql_greeks, \(q, name) compare_values(name, units[[name]], q, riemann_call[[name]])) |>
+  list_rbind() |>
+  show_results()
+```
+
+## Implied volatility
+
+```{r}
+#| label: implied
+ql_implied <- ql_call$impliedVolatility(ql_greeks$value, ql_equity_process, 1e-10, 200L, 1e-7, 4)
+riemann_implied <- RiemannFinMath::implied_volatility("call", ql_greeks$value, equity$spot, equity$strike, equity$rate, equity$dividend, equity$time)
+compare_values("Implied volatility", "percent", 100 * ql_implied, 100 * riemann_implied) |>
+  show_results()
+```
+
+## Binomial trees
+
+```{r}
+#| label: tree-inputs
+tree <- list(today = "2024-03-01", maturity = "2025-03-03", spot = 100, strike = 100, rate = 0.05, dividend = 0, volatility = 0.2)
+tree$time <- as.numeric(as.Date(tree$maturity) - as.Date(tree$today)) / 365
+show_inputs(tree)
+```
+
+```{r}
+#| label: tree-calls
+ql_set_evaluation_date(tree$today)
+ql_tree_process <- ql_process(tree$today, tree$spot, tree$rate, tree$dividend, tree$volatility)
+tree_cases <- crossing(exercise = c("european", "american"), steps = c(25L, 100L, 500L))
+ql_exercise <- function(kind) {
+  if (kind == "american") QuantLib::AmericanExercise(ql_date(tree$today), ql_date(tree$maturity)) else QuantLib::EuropeanExercise(ql_date(tree$maturity))
+}
+ql_tree <- map2(tree_cases$exercise, tree_cases$steps, \(kind, steps) {
+  option <- ql_vanilla("put", tree$strike, ql_exercise(kind))
+  QuantLib::Instrument_setPricingEngine(option, QuantLib::BinomialCRRVanillaEngine(ql_tree_process, steps))
+  tibble(value = option$NPV(), delta = option$delta(), gamma = option$gamma())
+}) |>
+  list_rbind()
+riemann_tree <- RiemannFinMath::binomial_option(
+  "put", tree_cases$exercise, tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time, tree_cases$steps
+)
+```
+
+```{r}
+#| label: tree-results
+labels <- paste(tree_cases$exercise, tree_cases$steps, "steps")
+bind_rows(
+  compare_values(paste(labels, "value"), "price", ql_tree$value, riemann_tree$value),
+  compare_values(paste(labels, "delta"), "per unit of spot", ql_tree$delta, riemann_tree$delta),
+  compare_values(paste(labels, "gamma"), "per unit of spot squared", ql_tree$gamma, riemann_tree$gamma)
+) |>
+  show_results()
+```
+
+The same European put has an analytic value:
+
+```{r}
+#| label: tree-analytic
+ql_analytic_put <- ql_vanilla("put", tree$strike, QuantLib::EuropeanExercise(ql_date(tree$maturity)))
+QuantLib::Instrument_setPricingEngine(ql_analytic_put, QuantLib::AnalyticEuropeanEngine(ql_tree_process))
+compare_values(
+  "Analytic European put", "price", ql_analytic_put$NPV(),
+  RiemannFinMath::european_option("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)$value
+) |>
+  show_results()
+```
+
+## Barrier options
+
+The legacy text has no barrier example. The inputs extend the European item above.
+
+```{r}
+#| label: barrier
+barriers <- tribble(
+  ~type,      ~level, ~ql_type,
+  "down_in",  80,     list(QuantLib::Barrier_DownIn_get()),
+  "down_out", 80,     list(QuantLib::Barrier_DownOut_get()),
+  "up_in",    130,    list(QuantLib::Barrier_UpIn_get()),
+  "up_out",   130,    list(QuantLib::Barrier_UpOut_get())
+)
+ql_set_evaluation_date(equity$today)
+ql_barrier <- map2_dbl(barriers$ql_type, barriers$level, \(type, level) {
+  option <- QuantLib::BarrierOption(
+    type[[1]], level, 0, QuantLib::PlainVanillaPayoff(ql_type("call"), equity$strike), QuantLib::EuropeanExercise(ql_date(equity$maturity))
+  )
+  QuantLib::Instrument_setPricingEngine(option, QuantLib::AnalyticBarrierEngine(ql_equity_process))
+  option$NPV()
+})
+riemann_barrier <- RiemannFinMath::barrier_option(
+  "call", barriers$type, equity$spot, equity$strike, barriers$level, 0, equity$rate, equity$dividend, equity$volatility, equity$time
+)
+compare_values(paste("Call,", barriers$type, barriers$level), "price", ql_barrier, riemann_barrier$value) |>
+  show_results()
+```
+
+## Monte Carlo
+
+The two sides do not share random numbers, so a Monte Carlo value cannot meet an absolute tolerance of 1e-4 against any other number, and the rows are not judged. The note gives the distance in standard errors.
+
+```{r}
+#| label: monte-carlo
+mc <- RiemannFinMath::monte_carlo_european(
+  "call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time,
+  paths = 200000, seed = 1234, smoothing = 0.25
+)
+standard_error <- mc$standard_error
+reason <- sprintf(
+  "Sampling error: value differs by %.2f standard errors, against the analytic QuantLib value",
+  (mc$value - ql_greeks$value) / standard_error
+)
+bind_rows(
+  not_comparable("Value", "price", ql_greeks$value, mc$value, reason),
+  not_comparable("Delta", "per unit of spot", ql_greeks$delta, mc$delta, "Sampling error"),
+  not_comparable("Gamma, smoothed payoff", "per unit of spot squared", ql_greeks$gamma, mc$gamma, "Sampling error and a smoothed payoff of width 0.25"),
+  not_comparable("Vega", "per unit of volatility", ql_greeks$vega, mc$vega, "Sampling error"),
+  not_comparable("Theta", "per year", ql_greeks$theta, mc$theta, "Sampling error")
+) |>
+  show_results()
+```
+
+```{r}
+#| label: monte-carlo-threads
+one_thread <- RiemannFinMath::monte_carlo_european(
+  "call", 100, 100, 0.03, 0, 0.2, equity$time, paths = 200000, seed = 1234, threads = 1L
+)
+four_threads <- RiemannFinMath::monte_carlo_european(
+  "call", 100, 100, 0.03, 0, 0.2, equity$time, paths = 200000, seed = 1234, threads = 4L
+)
+compare_values("Value on 1 and on 4 threads", "price", one_thread$value, four_threads$value, "RiemannFinMath itself") |>
+  show_results()
+```
+
+## Not available
+
+Approximation engines (Barone-Adesi-Whaley, Bjerksund-Stensland), Sobol sequences and Longstaff-Schwartz are in the legacy text and not in RiemannFinMath. See @sec-gaps.
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,             ~QuantLib,                                                    ~RiemannFinMath,
+  "Wrapper", "Set-up",            "Quote, curves, volatility, process, payoff, exercise, engine", "One call with numbers",
+  "Wrapper", "Time",              "Evaluation date and maturity date",                          "Time in years",
+  "Wrapper", "Many options",      "A loop; one object each",                                    "Vectors recycled to a common length; a table",
+  "Wrapper", "Failure",           "An R error from SWIG",                                       "`on_error`: an error, or `NA` with a message per row",
+  "Core",    "Greeks",            "Formulas written for each engine",                           "Automatic differentiation of the price",
+  "Core",    "Tree delta and gamma", "From the first steps of the tree",                        "The same; other sensitivities are derivatives of the tree",
+  "Core",    "Monte Carlo",       "Generators, path objects and statistics classes",            "Pathwise derivatives on path vectors; results depend on the seed and not on the threads"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch08_options")
+```

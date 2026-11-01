@@ -1,0 +1,52 @@
+# Not compared {#sec-gaps}
+
+Nothing below is approximated with another library. "Legacy section" is the section of the legacy text that has the calculation.
+
+## Missing from the public API of RiemannFinMath
+
+| Legacy section | Calculation | State |
+|---|---|---|
+| II-1.3.2 | Bond cash flow table | In the Rust core; not exported to R |
+| II-1.6.2 | Bond value with a zero spread | Not exported to R |
+| II-2.2, II-2.3, II-2.5 | Curves from zero rates or discount factors, flat curves, implied and spreaded curves | Curves come from OIS quotes only. `flat_curve` in this document fits quotes for flat curves |
+| II-2.1 | JGB yield splines | R's `spline`, and no library calculation; the data comes from the network |
+| II-2.4 | Curves from deposits with bonds or swaps | Not implemented; OIS is the focus |
+| II-3.2.3, II-3.3, II-3.4.2 | OIS swap legs, NPV, daily compounding and fixings | Not implemented as an instrument. Only the hand formula for a fair rate is compared |
+| II-3.4.3, II-3.4.4 | Vanilla swaps and multi-curve valuation | Not implemented |
+| II-3.5, II-3.6 | EONIA curve, its jump adjustment and rate scenarios | Out of scope: OIS is limited to TONAR, ESTR, SOFR and SONIA |
+| II-3.7 | `ModifiedFollowing` on the OIS payments | No argument; always `Following`. Effect shown in the OIS chapter |
+| II-4.4.2, II-4.4.3 | Monte Carlo path tables | Paths are not returned |
+| II-4.5 | Barone-Adesi-Whaley and Bjerksund-Stensland approximations | Not implemented; the tree is compared |
+| II-4.6 | Sobol sequences and Longstaff-Schwartz | Not implemented |
+| II-5.2.5, II-5.6.4 | CDS cash flow and probability tables | Not returned |
+| II-5.6 | CDS trade date and cash settlement days | No argument. Effect shown in the CDS chapter |
+| II-6.4 | Hull-White calibration | Not implemented |
+| II-6.5, II-7.3 to II-7.5 | BGM/LMM, HJM, FMM | Not implemented |
+| II-7.2 | Simulated Hull-White paths | Not returned |
+| II-8.4.3 | Exercise decisions of the callable bond | Not returned |
+| II-8.8 | MBS prepayment and OAS | Not implemented |
+| II-9.1.2 | Coupon schedule | Not exported; the dates are inputs |
+| II-9.1.3 | A discount curve separate from the FX drift | One domestic curve. The same model is reached by moving both curves |
+| II-9.3.4, II-9.4 | Expected coupons, cap and floor probabilities, coupon distribution | Not returned |
+| III-3 | Scenario grid with a proxy PRDC formula | R code in the legacy text, and no library calculation |
+| III-4, III-6 | General automatic differentiation on user functions, swaps and cash flow lists in `torch` | Derivatives exist only for the library's own calculations |
+| III-7, and the PRDC model generally | Stochastic rates, calls, target redemption, knock-outs | Not implemented |
+
+## Missing from the QuantLib R binding
+
+| Calculation in RiemannFinMath | State |
+|---|---|
+| Sensitivities of bonds, curves, CDS and asset swaps | No automatic differentiation in the binding. Finite differences are the baseline |
+| Normal SABR | Not in the binding |
+| Direct option on a zero-coupon bond under Hull-White | The legacy text's closed form in R is the baseline |
+| OIS asset swaps, the futures basis, Japanese yields, PRDC | No instrument. The baselines are named in each chapter |
+
+## Different specifications, not judged
+
+| Item | Why |
+|---|---|
+| QuantLib's yield against the Japanese compound yield | Dated cash flows against remaining years with truncation |
+| Monte Carlo values | Different random numbers. The distance is given in standard errors |
+| SABR fitted parameters | Different optimizers |
+| Five-year PRDC against `torch` | Different random numbers, node times and risk factors |
+| CDS from the legacy text's builder | The builder sets a trade date and cash settlement days |

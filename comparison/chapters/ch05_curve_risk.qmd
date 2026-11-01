@@ -1,0 +1,196 @@
+---
+title: "Bonds on curves and curve risk"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+source("R/quantlib_side.R")
+```
+
+The legacy text computes curve risk on a swap and on a short cash flow list with `torch`, and neither is in the public API of RiemannFinMath. The items here use the TONAR curve of the OIS chapter and a bond that is not in the legacy text. QuantLib has no automatic differentiation in its R binding, so its side is a central difference that rebuilds the curve, with a bump of 1e-6 in rate.
+
+## Inputs
+
+```{r}
+#| label: inputs
+date <- "2022-08-19"
+quotes <- lagrange_object("part2_quantive_riemann/ch03_ois_swaps_multicurve.qmd", "tona_quotes", trade_date_tona = date) |>
+  mutate(tenor = if_else(kind == "overnight_deposit", "ON", tenor)) |>
+  select(tenor, rate)
+bond_terms <- list(issue = "2022-03-20", maturity = "2029-03-20", coupon = 0.002)
+show_inputs(c(
+  list(curve = "TONAR quotes of chapter 4, section TONAR", interpolation = "log-linear", evaluation = date),
+  bond_terms, list(calendar = "Japan", tenor = "6M", day_count = "Actual/365 (Fixed)", settlement_days = 2L, payment = "following")
+))
+```
+
+## Value on a curve
+
+QuantLib:
+
+```{r}
+#| label: value-quantlib
+build_quantlib <- function(rates) {
+  ql_ois_curve(date, "tonar", QuantLib::Actual365Fixed(), quotes$tenor, rates, 2L, interpolation = "log_linear")
+}
+ql_set_evaluation_date(date)
+ql_bond <- ql_fixed_bond(bond_terms$issue, bond_terms$maturity, bond_terms$coupon, QuantLib::Japan(), QuantLib::Actual365Fixed())
+npv_on <- function(curve_object) {
+  handle <- QuantLib::YieldTermStructureHandle(curve_object)
+  QuantLib::Instrument_setPricingEngine(ql_bond, QuantLib::DiscountingBondEngine(handle))
+  QuantLib::Instrument_NPV(ql_bond)
+}
+ql_curve <- build_quantlib(quotes$rate)
+quantlib_value <- list(npv = npv_on(ql_curve$curve), clean = QuantLib::Bond_cleanPrice(ql_bond), dirty = QuantLib::Bond_dirtyPrice(ql_bond), settlement = QuantLib::Bond_settlementValue(ql_bond))
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: value-riemann
+build_riemann <- function(rates) {
+  RiemannFinMath::build_ois_curve(
+    date, date, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(quotes$tenor, rates, 2L, 1L, 0L),
+    interpolation = "log_linear"
+  )
+}
+curve <- build_riemann(quotes$rate)
+bond <- RiemannFinMath::fixed_rate_bond(
+  settlement_days = 2L, face_amount = 100, effective_date = bond_terms$issue, termination_date = bond_terms$maturity,
+  tenor = "6M", calendar = "japan", convention = "unadjusted", termination_convention = "unadjusted", rule = "backward",
+  end_of_month = FALSE, coupon_rate = bond_terms$coupon, day_count = "actual_365_fixed", payment_convention = "following",
+  redemption = 100, issue_date = bond_terms$issue
+)
+riemann_value <- RiemannFinMath::value_on_curve(bond, curve, date)
+```
+
+```{r}
+#| label: value-results
+bind_rows(
+  compare_values("NPV", "per 100, at the curve date", quantlib_value$npv, riemann_value$npv),
+  compare_values("Settlement value", "per 100, at settlement", quantlib_value$settlement, riemann_value$settlement_value),
+  compare_values("Dirty price", "per 100, at settlement", quantlib_value$dirty, riemann_value$dirty_price),
+  compare_values("Clean price", "per 100, at settlement", quantlib_value$clean, riemann_value$clean_price)
+) |>
+  show_results()
+```
+
+## Sensitivity to each quote
+
+QuantLib, rebuilding the curve:
+
+```{r}
+#| label: quote-quantlib
+h <- 1e-6
+quantlib_quote_risk <- map_dbl(seq_len(nrow(quotes)), \(i) {
+  bumped <- function(sign) {
+    rates <- quotes$rate
+    rates[i] <- rates[i] + sign * h
+    npv_on(build_quantlib(rates)$curve)
+  }
+  (bumped(1) - bumped(-1)) / (2 * h) * 1e-4
+})
+```
+
+RiemannFinMath, by automatic differentiation and the implicit function theorem:
+
+```{r}
+#| label: quote-riemann
+riemann_quote_risk <- RiemannFinMath::quote_sensitivity(bond, curve, date)
+```
+
+```{r}
+#| label: quote-results
+compare_values(paste("Quote", quotes$tenor), "per 100, per bp of quote", quantlib_quote_risk, riemann_quote_risk$npv_per_bp) |>
+  show_results()
+```
+
+## Sensitivity to each node
+
+QuantLib, with a log-linear `DiscountCurve` on the same nodes, moving the continuous zero rate of one node:
+
+```{r}
+#| label: node-quantlib
+nodes <- ql_nodes(ql_curve)
+times <- as.numeric(nodes$date - as.Date(date)) / 365
+discount_curve_of <- function(discounts) {
+  dates <- do.call(QuantLib::DateVector, list())
+  walk(nodes$date, \(d) QuantLib::DateVector_push_back(dates, ql_date(d)))
+  QuantLib::DiscountCurve(dates, discounts, QuantLib::Actual365Fixed())
+}
+quantlib_node_risk <- map_dbl(seq_len(nrow(nodes))[-1], \(i) {
+  bumped <- function(sign) {
+    discounts <- nodes$discount
+    discounts[i] <- discounts[i] * exp(-sign * h * times[i])
+    npv_on(discount_curve_of(discounts))
+  }
+  (bumped(1) - bumped(-1)) / (2 * h) * 1e-4
+})
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: node-riemann
+riemann_node_risk <- RiemannFinMath::curve_node_sensitivity(bond, curve, date)
+```
+
+```{r}
+#| label: node-results
+node_table <- riemann_node_risk |> filter(date %in% nodes$date[-1])
+compare_values(
+  paste("Node", format(node_table$date)), "per 100, per bp of zero rate",
+  quantlib_node_risk[match(node_table$date, nodes$date[-1])], node_table$npv_per_bp
+) |>
+  show_results()
+```
+
+## Sensitivity to the yield
+
+QuantLib has the duration and the convexity, and the derivatives follow from them. RiemannFinMath differentiates the price.
+
+```{r}
+#| label: yield-calls
+yield_rate <- 0.01
+ql_settlement <- QuantLib::Bond_settlementDate(ql_bond)
+ql_dc <- QuantLib::Actual365Fixed()
+ql_dirty <- QuantLib::BondFunctions_cleanPrice(ql_bond, yield_rate, ql_dc, "Compounded", "Semiannual", ql_settlement) + QuantLib::Bond_accruedAmount(ql_bond, ql_settlement)
+ql_modified <- QuantLib::BondFunctions_duration(ql_bond, yield_rate, ql_dc, "Compounded", "Semiannual", "Modified", ql_settlement)
+ql_convexity <- QuantLib::BondFunctions_convexity(ql_bond, yield_rate, ql_dc, "Compounded", "Semiannual", ql_settlement)
+riemann_yield <- RiemannFinMath::yield_sensitivity(
+  bond, yield_rate, "actual_365_fixed", "compounded", 2L, RiemannFinMath::settlement_date(bond, date)
+)
+```
+
+```{r}
+#| label: yield-results
+bind_rows(
+  compare_values("Dirty price", "per 100", ql_dirty, riemann_yield$dirty_price),
+  compare_values("First derivative", "per 100, per bp", -ql_modified * ql_dirty * 1e-4, riemann_yield$d_price_d_yield * 1e-4),
+  compare_values("Second derivative", "per 100, per percent squared", ql_convexity * ql_dirty * 1e-4, riemann_yield$d2_price_d_yield2 * 1e-4)
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,             ~QuantLib,                                                     ~RiemannFinMath,
+  "Wrapper", "Value on a curve",  "Set an engine on the bond, then read `NPV`",                  "`value_on_curve(bond, curve, date)`",
+  "Wrapper", "Bucket risk",       "A loop written by the user, with a rebuild for each bump",    "One call returns the table",
+  "Core",    "Derivatives",       "Not exposed in R; finite differences",                        "Reverse-mode automatic differentiation on a graph",
+  "Core",    "Quote derivatives", "The bootstrap is repeated",                                   "Implicit function theorem on the solved curve",
+  "Core",    "Cost",              "2 rebuilds for each quote",                                   "One backward pass",
+  "Core",    "Past the last node", "Extrapolates when enabled on the curve",                     "An error, unless `with_extrapolation` made a new curve"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch05_curve_risk")
+```

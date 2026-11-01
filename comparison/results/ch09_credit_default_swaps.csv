@@ -1,0 +1,43 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch09_credit_default_swaps,Yield curve: discount at maturity,discount factor,Formula of the flat curve,0.9045895513293778,0.9045895513293778,0,1e-4,PASS,NA
+ch09_credit_default_swaps,Survival at maturity,probability,QuantLib C++,0.9785082827917037,0.9785082827917037,0,1e-4,PASS,NA
+ch09_credit_default_swaps,NPV,currency,QuantLib C++,28116.054353518906,28116.05435351892,1.4551915228366852e-11,1e-4,PASS,NA
+ch09_credit_default_swaps,Coupon leg,currency,QuantLib C++,-94245.82764370267,-94245.82764370267,0,1e-4,PASS,NA
+ch09_credit_default_swaps,Default leg,currency,QuantLib C++,122361.88199722157,122361.88199722159,1.4551915228366852e-11,1e-4,PASS,NA
+ch09_credit_default_swaps,Fair spread,bp,QuantLib C++,129.83267806805407,129.8326780680541,2.842170943040401e-14,1e-4,PASS,NA
+ch09_credit_default_swaps,Hazard rate,percent,QuantLib C++,2.1694590470505557,2.1694590470505575,1.7763568394002505e-15,1e-4,PASS,NA
+ch09_credit_default_swaps,Maturity of a standard swap,days,QuantLib C++,20989,20989,0,1e-4,PASS,NA
+ch09_credit_default_swaps,isda NPV,currency,QuantLib C++,-346421.6943205083,-346421.6943205086,-3.4924596548080444e-10,1e-4,PASS,NA
+ch09_credit_default_swaps,isda coupon leg,currency,QuantLib C++,-497918.3231439771,-497918.3231439774,-2.9103830456733704e-10,1e-4,PASS,NA
+ch09_credit_default_swaps,isda default leg,currency,QuantLib C++,151496.62882346884,151496.62882346878,-5.820766091346741e-11,1e-4,PASS,NA
+ch09_credit_default_swaps,isda accrual rebate,currency,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch09_credit_default_swaps,isda fair spread,bp,QuantLib C++,30.425999964589046,30.42599996458902,-2.4868995751603507e-14,1e-4,PASS,NA
+ch09_credit_default_swaps,isda fair upfront,percent of notional,QuantLib C++,NA,NA,NA,NA,N/C,QuantLib returns no value for a swap made with this constructor
+ch09_credit_default_swaps,midpoint NPV,currency,QuantLib C++,-346409.28195543354,-346409.28195543354,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint coupon leg,currency,QuantLib C++,-497906.1115592135,-497906.1115592135,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint default leg,currency,QuantLib C++,151496.82960377994,151496.82960377994,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint accrual rebate,currency,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint fair spread,bp,QuantLib C++,30.426786513899454,30.426786513899454,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint fair upfront,percent of notional,QuantLib C++,NA,NA,NA,NA,N/C,QuantLib returns no value for a swap made with this constructor
+ch09_credit_default_swaps,NPV,currency,QuantLib builder via GaussQuant,-334962.57282348396,-351638.74140178587,-16676.168578301906,NA,N/C,The builder sets a trade date and cash settlement days; RiemannFinMath's swap has neither
+ch09_credit_default_swaps,Accrual rebate,currency,QuantLib builder via GaussQuant,16943.864165187468,0,-16943.864165187468,NA,N/C,The builder sets a trade date and cash settlement days; RiemannFinMath's swap has neither
+ch09_credit_default_swaps,Fair upfront,percent of notional,QuantLib builder via GaussQuant,-3.349740443409001,NA,NA,NA,N/C,The builder sets a trade date and cash settlement days; RiemannFinMath's swap has neither
+ch09_credit_default_swaps,midpoint 1 years,survival probability,QuantLib C++,0.997969427027246,0.997969427027246,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint 2 years,survival probability,QuantLib C++,0.993931461466883,0.993931461466883,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint 3 years,survival probability,QuantLib C++,0.9878844514422576,0.9878844514422576,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint 5 years,survival probability,QuantLib C++,0.9748922041728265,0.9748922041728265,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint 7 years,survival probability,QuantLib C++,0.960368843490884,0.960368843490884,0,1e-4,PASS,NA
+ch09_credit_default_swaps,midpoint 10 years,survival probability,QuantLib C++,0.939030886520411,0.939030886520411,0,1e-4,PASS,NA
+ch09_credit_default_swaps,isda 1 years,survival probability,QuantLib C++,0.9979638741095256,0.9979638741095256,0,1e-4,PASS,NA
+ch09_credit_default_swaps,isda 2 years,survival probability,QuantLib C++,0.9939202506107783,0.9939202506107783,0,1e-4,PASS,NA
+ch09_credit_default_swaps,isda 3 years,survival probability,QuantLib C++,0.987867631156101,0.987867631156101,0,1e-4,PASS,NA
+ch09_credit_default_swaps,isda 5 years,survival probability,QuantLib C++,0.9748738650500668,0.9748738650500669,1.1102230246251565e-16,1e-4,PASS,NA
+ch09_credit_default_swaps,isda 7 years,survival probability,QuantLib C++,0.9603479711861762,0.9603479711861763,1.1102230246251565e-16,1e-4,PASS,NA
+ch09_credit_default_swaps,isda 10 years,survival probability,QuantLib C++,0.9390097806742447,0.9390097806742449,2.220446049250313e-16,1e-4,PASS,NA
+ch09_credit_default_swaps,Spread 1 years,currency per bp,QuantLib C++,3.3944976108614355,3.3944976649250314,5.4063595822384514e-8,1e-4,PASS,NA
+ch09_credit_default_swaps,Spread 2 years,currency per bp,QuantLib C++,23.231511865742505,23.231512277797343,4.1205483825024203e-7,1e-4,PASS,NA
+ch09_credit_default_swaps,Spread 3 years,currency per bp,QuantLib C++,52.572291853721254,52.572290978738295,-8.749829589760338e-7,1e-4,PASS,NA
+ch09_credit_default_swaps,Spread 5 years,currency per bp,QuantLib C++,4827.390696533258,4827.390696558529,2.5271219783462584e-8,1e-4,PASS,NA
+ch09_credit_default_swaps,Spread 7 years,currency per bp,QuantLib C++,306.500915606739,306.5009160005804,3.93841389723093e-7,1e-4,PASS,NA
+ch09_credit_default_swaps,Spread 10 years,currency per bp,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch09_credit_default_swaps,"Recovery, hazard curve fixed",currency per percent,QuantLib C++,-2553.7973274535034,-2553.7973274523188,1.184616849059239e-9,1e-4,PASS,NA

@@ -1,0 +1,251 @@
+---
+title: "OIS curves"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+The QuantLib side of this chapter and of later chapters uses these functions, which call the C++ classes directly:
+
+```{r}
+#| label: quantlib-side
+#| file: R/quantlib_side.R
+```
+
+## TONAR, 2022-08-19
+
+```{r}
+#| label: tona-inputs
+tona_date <- "2022-08-19"
+tona_quotes <- lagrange_object("part2_quantive_riemann/ch03_ois_swaps_multicurve.qmd", "tona_quotes", trade_date_tona = tona_date) |>
+  mutate(tenor = if_else(kind == "overnight_deposit", "ON", tenor)) |>
+  select(tenor, rate)
+tona_quotes |>
+  mutate(rate_percent = 100 * rate, .keep = "unused") |>
+  knitr::kable(digits = 4, caption = "Quotes (legacy text, section II-3.2.1)")
+show_inputs(list(index = "TONAR", settlement_days = 2L, payment_frequency = "annual", payment_lag = 0L, curve_day_count = "Actual/365 (Fixed)"))
+```
+
+QuantLib, with both interpolations:
+
+```{r}
+#| label: tona-quantlib
+tona_quantlib <- list(
+  monotonic_log_cubic = ql_ois_curve(tona_date, "tonar", QuantLib::Actual365Fixed(), tona_quotes$tenor, tona_quotes$rate, 2L),
+  log_linear = ql_ois_curve(tona_date, "tonar", QuantLib::Actual365Fixed(), tona_quotes$tenor, tona_quotes$rate, 2L, interpolation = "log_linear")
+)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: tona-riemann
+tona_instruments <- RiemannFinMath::ois_instruments(tona_quotes$tenor, tona_quotes$rate, 2L, 1L, 0L)
+tona_riemann <- list(
+  monotonic_log_cubic = RiemannFinMath::build_ois_curve(tona_date, tona_date, "tonar", "actual_365_fixed", tona_instruments),
+  log_linear = RiemannFinMath::build_ois_curve(tona_date, tona_date, "tonar", "actual_365_fixed", tona_instruments, interpolation = "log_linear")
+) |>
+  map(RiemannFinMath::with_extrapolation)
+print(tona_riemann$monotonic_log_cubic)
+```
+
+```{r}
+#| label: tona-by-pillar
+pillars <- ql_pillars(tona_quantlib$monotonic_log_cubic)
+bind_rows(
+  compare_values(
+    paste("Discount factor,", tona_quotes$tenor), "discount factor",
+    ql_discount(tona_quantlib$monotonic_log_cubic, pillars), RiemannFinMath::discount(tona_riemann$monotonic_log_cubic, pillars)
+  )
+) |>
+  show_results("Monotonic log-cubic curve, at the pillars")
+```
+
+```{r}
+#| label: tona-summary
+reading_dates <- as.Date(tona_date) + c(1L, 30L, 100L, 365L, 1000L, 3650L, 7300L, 10950L, 14600L)
+curve_rows <- function(label, q, r) {
+  v <- RiemannFinMath::curve_values(r, reading_dates, "actual_365_fixed")
+  repricing <- RiemannFinMath::quote_repricing(r)
+  bind_rows(
+    compare_max(paste(label, "pillar dates"), "days, largest", as.numeric(ql_pillars(q)), as.numeric(repricing$pillar_date)),
+    compare_max(paste(label, "node dates"), "days, largest", as.numeric(ql_nodes(q)$date), as.numeric(RiemannFinMath::discount_nodes(r)$date)),
+    compare_max(paste(label, "node discount factors"), "discount factor, largest", ql_nodes(q)$discount, RiemannFinMath::discount_nodes(r)$discount),
+    compare_max(paste(label, "discount on reading dates"), "discount factor, largest", ql_discount(q, reading_dates), v$discount),
+    compare_max(paste(label, "continuous zero rate"), "percent, largest", ql_zero_percent(q, reading_dates), 100 * v$zero_continuous),
+    compare_max(paste(label, "1-day simple forward"), "percent, largest", ql_forward_percent(q, reading_dates), 100 * v$forward_1d_simple),
+    compare_max(
+      paste(label, "implied quotes, used pillars"), "percent, largest",
+      ql_implied_percent(q)[repricing$used_in_bootstrap], 100 * repricing$implied_rate[repricing$used_in_bootstrap]
+    )
+  )
+}
+imap(tona_quantlib, \(q, label) curve_rows(label, q, tona_riemann[[label]])) |>
+  list_rbind() |>
+  show_results("Largest difference over the curve")
+```
+
+Reading through a function that takes a rate convention:
+
+```{r}
+#| label: tona-conventions
+target_date <- as.Date(tona_date) + 1825L
+q <- tona_quantlib$monotonic_log_cubic
+ql_set_evaluation_date(tona_date)
+quantlib_zero_annual <- 100 * QuantLib::InterestRate_rate(QuantLib::YieldTermStructure_zeroRate(q$curve, ql_date(target_date), q$day_count, "Compounded", "Annual"))
+quantlib_forward_cont <- 100 * QuantLib::InterestRate_rate(QuantLib::YieldTermStructure_forwardRate(q$curve, ql_date(target_date), ql_date(target_date + 365L), q$day_count, "Continuous", "Annual"))
+r <- tona_riemann$monotonic_log_cubic
+bind_rows(
+  compare_values("Annual zero rate, 5 years", "percent", quantlib_zero_annual, 100 * RiemannFinMath::zero_rate(r, target_date, "actual_365_fixed", "compounded", 1L)),
+  compare_values("Continuous forward, 5y to 6y", "percent", quantlib_forward_cont, 100 * RiemannFinMath::forward_rate(r, target_date, target_date + 365L, "actual_365_fixed", "continuous"))
+) |>
+  show_results()
+```
+
+## Fair rate of a short OIS
+
+The legacy text computes the fair rate of a one-week swap by hand from three discount factors. The formula is the same on both sides; only the discount factors come from the libraries.
+
+```{r}
+#| label: fair-rate
+fair_dates <- as.Date(c("2022-08-23", "2022-08-30", "2022-09-01"))
+fair_rate <- function(d) 100 * (d[1] - d[2]) / ((7 / 365) * d[3])
+compare_values(
+  "Fair rate, 2022-08-23 to 2022-08-30, paid 2022-09-01", "percent",
+  fair_rate(ql_discount(tona_quantlib$log_linear, fair_dates)),
+  fair_rate(RiemannFinMath::discount(tona_riemann$log_linear, fair_dates))
+) |>
+  show_results()
+```
+
+The swap itself (legs, fixings, NPV) is not in the public API of RiemannFinMath. See @sec-gaps.
+
+## SOFR, 2023-09-26
+
+```{r}
+#| label: sofr-inputs
+sofr_date <- "2023-09-26"
+sofr_quotes <- lagrange_object("part2_quantive_riemann/ch03_ois_swaps_multicurve.qmd", "sofr_quotes", trade_date_sofr = sofr_date) |>
+  mutate(tenor = if_else(kind == "overnight_deposit", "ON", tenor)) |>
+  select(tenor, rate)
+sofr_quotes |>
+  mutate(rate_percent = 100 * rate, .keep = "unused") |>
+  knitr::kable(digits = 4, caption = "Quotes (legacy text, section II-3.4.1)")
+show_inputs(list(index = "SOFR", settlement_days = 2L, payment_frequency = "annual", payment_lag = 0L, curve_day_count = "Actual/360"))
+```
+
+```{r}
+#| label: sofr-calls
+sofr_quantlib <- ql_ois_curve(sofr_date, "sofr", QuantLib::Actual360(), sofr_quotes$tenor, sofr_quotes$rate, 2L, interpolation = "log_linear")
+sofr_riemann <- RiemannFinMath::build_ois_curve(
+  sofr_date, sofr_date, "sofr", "actual_360",
+  RiemannFinMath::ois_instruments(sofr_quotes$tenor, sofr_quotes$rate, 2L, 1L, 0L), interpolation = "log_linear"
+) |>
+  RiemannFinMath::with_extrapolation()
+sofr_dates <- as.Date(sofr_date) + c(30L, 365L, 1000L, 3650L, 7300L)
+```
+
+```{r}
+#| label: sofr-results
+v <- RiemannFinMath::curve_values(sofr_riemann, sofr_dates, "actual_360")
+bind_rows(
+  compare_max("Node discount factors", "discount factor, largest", ql_nodes(sofr_quantlib)$discount, RiemannFinMath::discount_nodes(sofr_riemann)$discount),
+  compare_max("Continuous zero rate", "percent, largest", ql_zero_percent(sofr_quantlib, sofr_dates), 100 * v$zero_continuous),
+  compare_max("1-day simple forward", "percent, largest", ql_forward_percent(sofr_quantlib, sofr_dates), 100 * v$forward_1d_simple)
+) |>
+  show_results()
+```
+
+## Four indices, 2026-10-06
+
+The quotes are Bloomberg data, read from the local file of the legacy text and neither stored here nor shown. Only the largest differences appear.
+
+```{r}
+#| label: market-inputs
+market_date <- as.Date("2026-10-06")
+import <- new.env()
+sys.source(file.path(lagrange_root, "R", "import_data.R"), envir = import)
+market_file <- file.path(lagrange_root, "data", "raw", "market", "Bloomberg_MarketData_20261006.xlsx")
+conventions <- tribble(
+  ~currency, ~index,  ~settlement_days, ~riemann_day_count,  ~quantlib_day_count,
+  "EUR",     "estr",  2L,               "actual_360",        list(QuantLib::Actual360()),
+  "USD",     "sofr",  2L,               "actual_360",        list(QuantLib::Actual360()),
+  "JPY",     "tonar", 2L,               "actual_365_fixed",  list(QuantLib::Actual365Fixed()),
+  "GBP",     "sonia", 0L,               "actual_365_fixed",  list(QuantLib::Actual365Fixed())
+)
+market_quotes <- map(conventions$currency, \(ccy) {
+  import$import_ois_curves(path = market_file, currency = ccy, marketdate = market_date, quote = "mid") |>
+    filter(instrument_type %in% c("spot_ois", "deposit")) |>
+    select(tenor, rate)
+})
+conventions |>
+  transmute(currency, index, settlement_days, curve_day_count = riemann_day_count, quotes = map_int(market_quotes, nrow)) |>
+  knitr::kable(caption = "Conventions and the number of quotes")
+```
+
+The legacy text pays these swaps with `ModifiedFollowing`. RiemannFinMath takes no payment convention and always uses `Following`, so `Following` is given to both sides for the judged rows.
+
+```{r}
+#| label: market-calls
+market_pairs <- pmap(list(transpose(conventions), market_quotes), \(x, quotes) {
+  list(
+    currency = x$currency,
+    quantlib = ql_ois_curve(market_date, x$index, x$quantlib_day_count[[1]], quotes$tenor, quotes$rate, x$settlement_days),
+    modified = ql_ois_curve(market_date, x$index, x$quantlib_day_count[[1]], quotes$tenor, quotes$rate, x$settlement_days, payment_convention = "ModifiedFollowing"),
+    riemann = RiemannFinMath::build_ois_curve(
+      market_date, market_date, x$index, x$riemann_day_count,
+      RiemannFinMath::ois_instruments(quotes$tenor, quotes$rate, x$settlement_days, 1L, 0L)
+    ) |>
+      RiemannFinMath::with_extrapolation()
+  )
+})
+```
+
+```{r}
+#| label: market-results
+market_dates <- market_date + c(30L, 365L, 1825L, 3650L, 10000L)
+map(market_pairs, \(p) {
+  nodes <- RiemannFinMath::discount_nodes(p$riemann)
+  repricing <- RiemannFinMath::quote_repricing(p$riemann)
+  bind_rows(
+    compare_max(paste(p$currency, "node discount factors"), "discount factor, largest", ql_nodes(p$quantlib)$discount, nodes$discount),
+    compare_max(paste(p$currency, "implied quotes"), "percent, largest", ql_implied_percent(p$quantlib), 100 * repricing$implied_rate),
+    compare_max(paste(p$currency, "reprices its quotes"), "percent, largest", 100 * repricing$rate, 100 * repricing$implied_rate, "The input quotes"),
+    compare_max(
+      paste(p$currency, "effect of ModifiedFollowing on discount"), "discount factor, largest",
+      ql_discount(p$modified, market_dates), RiemannFinMath::discount(p$riemann, market_dates),
+      note = "Different payment conventions; a FAIL here is the effect of the missing argument"
+    )
+  )
+}) |>
+  list_rbind() |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,               ~QuantLib,                                                                ~RiemannFinMath,
+  "Wrapper", "Quotes",              "One `SimpleQuote`, `QuoteHandle` and helper per quote, put in a vector", "A table from `ois_instruments`",
+  "Wrapper", "Index",               "An index object; TONA built by hand in the legacy text",                 "A name: `tonar`, `estr`, `sofr`, `sonia`",
+  "Wrapper", "Evaluation date",     "`Settings` singleton",                                                   "An argument of the curve",
+  "Wrapper", "Extrapolation",       "Mutates the curve with `enableExtrapolation`",                           "`with_extrapolation` returns a new curve",
+  "Wrapper", "Reading",             "One date per call; `InterestRate` objects",                              "Vectors of dates; numbers",
+  "Core",    "Bootstrap",           "`PiecewiseYieldCurve` templates, lazy, observers recalculate",           "A function from a specification to a curve value, run once",
+  "Core",    "Interpolation choice", "Chosen by the C++ template type",                                       "A runtime value",
+  "Core",    "Market change",       "Change the quote and the curve updates itself",                          "Build a new curve",
+  "Core",    "Indices",             "Any `OvernightIndex`",                                                   "Limited to the four indices",
+  "Core",    "Payment convention",  "Argument of the helper",                                                 "Fixed to `Following`"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch04_ois_curves")
+```

@@ -1,0 +1,177 @@
+---
+title: "Japanese bond yields"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+QuantLib has no counterpart for the Japanese simple-yield rules: remaining years truncated to 7 decimals, prices truncated to 3, and simple rates truncated to 7. The baseline of this chapter is therefore the R implementation in GaussQuant. These rows compare two implementations of one set of rules, and neither of them is C++. @sec-quantlib-yield shows what happens when QuantLib's own yield is placed next to them.
+
+## Rules
+
+| Quantity | Rule |
+|---|---|
+| Remaining years | Years between the dates, truncated to 7 decimals (`docs/spec_bonds.md`, section 5.1) |
+| February 29 | The anniversary in a non-leap year is February 28, and that period counts as 1 year |
+| Price from a simple rate | $(R + CT) / (1 + YT/100)$, truncated to 3 decimals |
+| Simple rate from a price | The price formula solved by Newton's method, truncated to 7 decimals |
+| Compound yield from a price | Discounted coupons and redemption, solved by Newton's method with the analytic derivative |
+
+## Inputs
+
+```{r}
+#| label: inputs
+start_date <- "2022-04-01"
+end_date <- "2062-04-01"
+coupon_rate_pct <- 7.5
+simple_rate_pct <- 6.515
+redemption <- 100
+show_inputs(list(
+  settlement = start_date, maturity = end_date, coupon_percent = coupon_rate_pct,
+  simple_rate_percent = simple_rate_pct, redemption = redemption, coupon_frequency = 2L, compound_frequency = 2L
+))
+```
+
+## Yields and prices
+
+GaussQuant in R:
+
+```{r}
+#| label: baseline-call
+baseline <- list(
+  years = GaussQuant::bond_year_fraction_YEN_GQL(start_date, end_date),
+  price = GaussQuant::bond_price_from_simple_rate_YEN_GQL(start_date, end_date, coupon_rate_pct, simple_rate_pct, redemption)
+)
+baseline$simple <- GaussQuant::bond_simple_rate_from_price_YEN_GQL(start_date, end_date, coupon_rate_pct, baseline$price, redemption)
+baseline$compound <- GaussQuant::bond_compound_yield_from_price_YEN_GQL(
+  start_date, end_date, coupon_rate_pct, baseline$price, redemption, coupon_frequency = 2, compound_frequency = 2
+)
+baseline$compound_price <- GaussQuant::bond_price_from_compound_yield_YEN_GQL(
+  start_date, end_date, coupon_rate_pct, baseline$compound, redemption, coupon_frequency = 2, compound_frequency = 2
+)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: riemann-call
+t <- RiemannFinMath::remaining_years(start_date, end_date)
+price <- RiemannFinMath::price_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption)
+simple <- RiemannFinMath::simple_rate_from_price(t, coupon_rate_pct, price, redemption)
+compound <- RiemannFinMath::compound_yield_from_price(t, coupon_rate_pct, price, redemption)
+compound_price <- RiemannFinMath::price_from_compound_yield(t, coupon_rate_pct, compound, redemption)
+```
+
+```{r}
+#| label: results
+bind_rows(
+  compare_values("Remaining years", "years", baseline$years, t, "GaussQuant R"),
+  compare_values("Price from simple rate", "per 100", baseline$price, price, "GaussQuant R"),
+  compare_values("Simple rate from price", "percent", baseline$simple, simple, "GaussQuant R"),
+  compare_values("Compound yield from price", "percent", baseline$compound, compound, "GaussQuant R"),
+  compare_values("Price from compound yield", "per 100", baseline$compound_price, compound_price, "GaussQuant R")
+) |>
+  show_results()
+```
+
+## Risk measures
+
+The accrued interest is 0, as in the legacy text, because the settlement date is a coupon date.
+
+```{r}
+#| label: risk-calls
+baseline_risk <- list(
+  compound = GaussQuant::bond_risk_from_compound_yield_YEN_GQL(
+    start_date, end_date, coupon_rate_pct, baseline$compound, redemption,
+    coupon_frequency = 2, compound_frequency = 2, accrued_interest = 0
+  ),
+  simple = GaussQuant::bond_risk_from_simple_rate_YEN_GQL(
+    start_date, end_date, coupon_rate_pct, simple_rate_pct, redemption, accrued_interest = 0
+  )
+)
+riemann_risk <- list(
+  compound = RiemannFinMath::risk_from_compound_yield(t, coupon_rate_pct, compound, redemption, 0),
+  simple = RiemannFinMath::risk_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption, 0)
+)
+```
+
+```{r}
+#| label: risk-results
+risk_rows <- function(label, q, r) {
+  bind_rows(
+    compare_values(paste(label, "BPV"), "yen per 100, per bp", q$bpv_yen, r$bpv_yen, "GaussQuant R"),
+    compare_values(paste(label, "modified duration"), "years", q$modified_duration, r$modified_duration, "GaussQuant R"),
+    compare_values(paste(label, "convexity"), "years squared", q$convexity, r$convexity, "GaussQuant R")
+  )
+}
+bind_rows(
+  risk_rows("Compound:", baseline_risk$compound, riemann_risk$compound),
+  risk_rows("Simple:", baseline_risk$simple, riemann_risk$simple)
+) |>
+  show_results()
+```
+
+## February 29
+
+```{r}
+#| label: leap
+leap_dates <- tribble(
+  ~start,       ~end,
+  "2024-02-29", "2025-02-28",
+  "2024-02-29", "2028-02-29",
+  "2023-02-28", "2024-02-29",
+  "2024-02-29", "2024-08-31"
+)
+leap_dates |>
+  mutate(
+    baseline = map2_dbl(start, end, GaussQuant::bond_year_fraction_YEN_GQL),
+    riemann = map2_dbl(start, end, RiemannFinMath::remaining_years)
+  ) |>
+  (\(x) compare_values(paste(x$start, "to", x$end), "years", x$baseline, x$riemann, "GaussQuant R"))() |>
+  show_results()
+```
+
+## QuantLib's yield is another quantity {#sec-quantlib-yield}
+
+QuantLib computes a compound yield on the bond's dated cash flows, with 30/360 here. The Japanese compound yield uses the remaining years directly. On this bond both have whole periods, so the two numbers can be close; that does not make them the same rule, and they are not judged.
+
+```{r}
+#| label: quantlib-yield
+ql_set_evaluation_date("2022-03-30")
+ql_day_count <- QuantLib::Thirty360("BondBasis")
+ql_bond <- QuantLib::FixedRateBond(
+  2L, 100, QuantLib::Schedule(ql_date(start_date), ql_date(end_date), QuantLib::Period(6L, "Months"), QuantLib::Japan(),
+                              "Unadjusted", "Unadjusted", "Backward", FALSE),
+  0.075, ql_day_count, "Unadjusted", 100, ql_date(start_date)
+)
+quantlib_yield <- QuantLib::BondFunctions_yield(
+  ql_bond, QuantLib::BondPrice(price, "Clean"), ql_day_count, "Compounded", "Semiannual", QuantLib::Bond_settlementDate(ql_bond)
+)
+not_comparable(
+  "QuantLib yield and Japanese compound yield", "percent", 100 * quantlib_yield, compound,
+  "Different rules: dated cash flows against remaining years with truncation"
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,          ~`GaussQuant (R)`,                                  ~RiemannFinMath,
+  "Wrapper", "Time argument",  "Start and end dates in every call",                "Remaining years, computed once by `remaining_years`",
+  "Wrapper", "Vectors",        "One bond per call",                                "Vectors recycled to one length",
+  "Core",    "Implementation", "R arithmetic and a solver in R",                   "Rust pure functions, with an explicit digit and iteration count",
+  "Core",    "Scope of the February 29 rule", "Japanese functions only",           "Japanese functions only; day counts follow QuantLib"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch03_japanese_bond_yields")
+```

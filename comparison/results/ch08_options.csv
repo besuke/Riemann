@@ -1,0 +1,45 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch08_options,Value,price,QuantLib C++,0.5615965733453677,0.5615965733453677,0,1e-4,PASS,NA
+ch08_options,Forward delta,per unit of forward,QuantLib C++,0.4355827517855987,0.4355827517855963,-2.3869795029440866e-15,1e-4,PASS,NA
+ch08_options,Forward gamma,per unit of forward squared,QuantLib C++,0.22396918989345416,0.22396918989345382,-3.3306690738754696e-16,1e-4,PASS,NA
+ch08_options,Vega,per unit of volatility,QuantLib C++,13.203207433567334,13.203207433567332,-1.7763568394002505e-15,1e-4,PASS,NA
+ch08_options,Call,bp of price,QuantLib C++,22.567583341910257,22.567583341910257,0,1e-4,PASS,NA
+ch08_options,Put,bp of price,QuantLib C++,22.567583341910257,22.567583341910257,0,1e-4,PASS,NA
+ch08_options,value,price,QuantLib C++,9.413403383853023,9.413403383853023,0,1e-4,PASS,NA
+ch08_options,delta,per unit of spot,QuantLib C++,0.598706325682924,0.5987063256829239,-1.1102230246251565e-16,1e-4,PASS,NA
+ch08_options,gamma,per unit of spot squared,QuantLib C++,0.01933340584014246,0.019333405840142457,-3.469446951953614e-18,1e-4,PASS,NA
+ch08_options,vega,per unit of volatility,QuantLib C++,38.66681168028492,38.66681168028492,0,1e-4,PASS,NA
+ch08_options,rho,per unit of rate,QuantLib C++,50.45722918443934,50.45722918443937,2.842170943040401e-14,1e-4,PASS,NA
+ch08_options,dividend_rho,per unit of yield,QuantLib C++,-59.870632568292365,-59.87063256829239,-2.842170943040401e-14,1e-4,PASS,NA
+ch08_options,theta,per year,QuantLib C++,-5.380398043561679,-5.380398043561673,6.217248937900877e-15,1e-4,PASS,NA
+ch08_options,strike_sensitivity,per unit of strike,QuantLib C++,-0.5045722918443937,-0.5045722918443937,0,1e-4,PASS,NA
+ch08_options,Implied volatility,percent,QuantLib C++,19.999999999804103,20,1.9589663224905962e-10,1e-4,PASS,NA
+ch08_options,american 25 steps value,price,QuantLib C++,6.159486222851605,6.159486222855241,3.6362024502523127e-12,1e-4,PASS,NA
+ch08_options,american 100 steps value,price,QuantLib C++,6.094836405068832,6.09483640507233,3.4985347951987933e-12,1e-4,PASS,NA
+ch08_options,american 500 steps value,price,QuantLib C++,6.101096294008553,6.101096294012048,3.4949820815199928e-12,1e-4,PASS,NA
+ch08_options,european 25 steps value,price,QuantLib C++,5.654556620250472,5.654556620255228,4.756195437494171e-12,1e-4,PASS,NA
+ch08_options,european 100 steps value,price,QuantLib C++,5.562916741621292,5.562916741626028,4.735767333841068e-12,1e-4,PASS,NA
+ch08_options,european 500 steps value,price,QuantLib C++,5.578645206961151,5.578645206965884,4.733102798581967e-12,1e-4,PASS,NA
+ch08_options,american 25 steps delta,per unit of spot,QuantLib C++,-0.41195687069885234,-0.4119568706989245,-7.216449660063518e-14,1e-4,PASS,NA
+ch08_options,american 100 steps delta,per unit of spot,QuantLib C++,-0.41145811068290383,-0.41145811068297494,-7.110978472724128e-14,1e-4,PASS,NA
+ch08_options,american 500 steps delta,per unit of spot,QuantLib C++,-0.4109871548913902,-0.410987154891461,-7.077671781985373e-14,1e-4,PASS,NA
+ch08_options,european 25 steps delta,per unit of spot,QuantLib C++,-0.36531185347024736,-0.3653118534704388,-1.9145796059660825e-13,1e-4,PASS,NA
+ch08_options,european 100 steps delta,per unit of spot,QuantLib C++,-0.36314446618420093,-0.363144466184398,-1.9706458687096529e-13,1e-4,PASS,NA
+ch08_options,european 500 steps delta,per unit of spot,QuantLib C++,-0.3628770206072156,-0.36287702060741367,-1.9806378759312793e-13,1e-4,PASS,NA
+ch08_options,american 25 steps gamma,per unit of spot squared,QuantLib C++,0.023189750133031414,0.0231897501330204,-1.1015494072452725e-14,1e-4,PASS,NA
+ch08_options,american 100 steps gamma,per unit of spot squared,QuantLib C++,0.023087689995765416,0.023087689995754817,-1.0599160438218291e-14,1e-4,PASS,NA
+ch08_options,american 500 steps gamma,per unit of spot squared,QuantLib C++,0.022966445086572362,0.02296644508656175,-1.0613038226026106e-14,1e-4,PASS,NA
+ch08_options,european 25 steps gamma,per unit of spot squared,QuantLib C++,0.01898538549782071,0.018985385497822325,1.6167622796103842e-15,1e-4,PASS,NA
+ch08_options,european 100 steps gamma,per unit of spot squared,QuantLib C++,0.018864452496000748,0.01886445249600255,1.8006429680639258e-15,1e-4,PASS,NA
+ch08_options,european 500 steps gamma,per unit of spot squared,QuantLib C++,0.018736267313611422,0.018736267313612876,1.4536982728685643e-15,1e-4,PASS,NA
+ch08_options,Analytic European put,price,QuantLib C++,5.582582448004466,5.582582448004458,-7.993605777301127e-15,1e-4,PASS,NA
+ch08_options,"Call, down_in 80",price,QuantLib C++,0.09559191846264059,0.09559191846263748,-3.1086244689504383e-15,1e-4,PASS,NA
+ch08_options,"Call, down_out 80",price,QuantLib C++,9.317811465390383,9.317811465390378,-5.3290705182007514e-15,1e-4,PASS,NA
+ch08_options,"Call, up_in 130",price,QuantLib C++,6.210653708318789,6.210653708318777,-1.2434497875801753e-14,1e-4,PASS,NA
+ch08_options,"Call, up_out 130",price,QuantLib C++,3.2027496755342337,3.202749675534239,5.3290705182007514e-15,1e-4,PASS,NA
+ch08_options,Value,price,QuantLib C++,9.413403383853023,9.414492713120305,0.0010893292672822241,NA,N/C,"Sampling error: value differs by 0.05 standard errors, against the analytic QuantLib value"
+ch08_options,Delta,per unit of spot,QuantLib C++,0.598706325682924,0.598470396508339,-2.359291745850367e-4,NA,N/C,Sampling error
+ch08_options,"Gamma, smoothed payoff",per unit of spot squared,QuantLib C++,0.01933340584014246,0.019697503497881144,3.640976577386837e-4,NA,N/C,Sampling error and a smoothed payoff of width 0.25
+ch08_options,Vega,per unit of volatility,QuantLib C++,38.66681168028492,38.63594407549712,-0.03086760478780093,NA,N/C,Sampling error
+ch08_options,Theta,per year,QuantLib C++,-5.380398043561679,-5.376570815681124,0.0038272278805555615,NA,N/C,Sampling error
+ch08_options,Value on 1 and on 4 threads,price,RiemannFinMath itself,9.411077962658092,9.411077962658092,0,1e-4,PASS,NA

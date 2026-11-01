@@ -1,0 +1,15 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch10_sabr,Strike 0.06 percent,percent of volatility,QuantLib C++,89.70111412698617,89.70111412698618,1.4210854715202004e-14,1e-4,PASS,NA
+ch10_sabr,Strike 0.31 percent,percent of volatility,QuantLib C++,48.486543126543054,48.48654312654306,7.105427357601002e-15,1e-4,PASS,NA
+ch10_sabr,Strike 0.56 percent,percent of volatility,QuantLib C++,44.897049151416915,44.8970491514169,-1.4210854715202004e-14,1e-4,PASS,NA
+ch10_sabr,Strike 0.81 percent,percent of volatility,QuantLib C++,48.91911985911442,48.91911985911442,0,1e-4,PASS,NA
+ch10_sabr,Strike 1.06 percent,percent of volatility,QuantLib C++,52.78899090607153,52.78899090607153,0,1e-4,PASS,NA
+ch10_sabr,Strike 1.56 percent,percent of volatility,QuantLib C++,58.32821299483382,58.32821299483379,-2.842170943040401e-14,1e-4,PASS,NA
+ch10_sabr,Strike 2.56 percent,percent of volatility,QuantLib C++,64.64837362234053,64.64837362234056,2.842170943040401e-14,1e-4,PASS,NA
+ch10_sabr,alpha,percent,R optim on QuantLib,3.058290415034555,3.059147313456828,8.568984222727671e-4,NA,N/C,Different optimizers; not the same calculation
+ch10_sabr,nu,percent,R optim on QuantLib,72.84888602520638,72.82491393695769,-0.023972088248697787,NA,N/C,Different optimizers; not the same calculation
+ch10_sabr,rho,percent,R optim on QuantLib,44.93845924750541,44.93581703182608,-0.0026422156793302065,NA,N/C,Different optimizers; not the same calculation
+ch10_sabr,Root mean square error,percent of volatility,R optim on QuantLib,1.3880754496095016,1.3880598918705003,-1.5557739001303972e-5,NA,N/C,Different optimizers; not the same calculation
+ch10_sabr,alpha,percent,The input,3,2.9999999999999996,-4.440892098500626e-16,1e-4,PASS,NA
+ch10_sabr,nu,percent,The input,40,40.00000000000002,2.1316282072803006e-14,1e-4,PASS,NA
+ch10_sabr,rho,percent,The input,-30,-29.99999999999995,4.973799150320701e-14,1e-4,PASS,NA

@@ -1,0 +1,143 @@
+---
+title: "SABR"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+## Inputs
+
+```{r}
+#| label: inputs
+market <- lagrange_object("part2_quantive_riemann/ch06_irs_calibration.qmd", "tbl_sabr_market")
+forward <- 0.0056
+expiry <- 2
+beta <- 0.5
+market |>
+  select(strike_pct, black_vol_pct) |>
+  knitr::kable(digits = 4, caption = "Smile (illustrative quotes of the legacy text)")
+show_inputs(list(forward = forward, expiry = expiry, beta = beta))
+```
+
+## Lognormal volatility at given parameters
+
+The parameters are those the fit below finds on the QuantLib side.
+
+QuantLib, with R's optimizer around `sabrVolatility`, as in the legacy text:
+
+```{r}
+#| label: quantlib-fit
+ql_volatility <- function(strike, alpha, nu, rho) {
+  map_dbl(strike, \(k) QuantLib::sabrVolatility(k, forward, expiry, alpha, beta, nu, rho))
+}
+objective <- function(p) {
+  model <- tryCatch(ql_volatility(market$strike, p[[1]], p[[2]], p[[3]]), error = \(e) rep(NA_real_, nrow(market)))
+  if (any(!is.finite(model))) return(1e6)
+  mean((model - market$black_volatility)^2)
+}
+ql_fit <- optim(
+  c(alpha = 0.1, nu = 0.1, rho = 0.1), objective, method = "L-BFGS-B",
+  lower = c(1e-4, 0, -0.999), upper = c(1, 5, 0.999), control = list(maxit = 1000)
+)
+parameters <- as.list(ql_fit$par)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: riemann-volatility
+riemann_volatility <- RiemannFinMath::sabr_volatility(
+  "lognormal", market$strike, forward, expiry, parameters$alpha, beta, parameters$nu, parameters$rho
+)
+```
+
+```{r}
+#| label: results-volatility
+compare_values(
+  sprintf("Strike %.2f percent", market$strike_pct), "percent of volatility",
+  100 * ql_volatility(market$strike, parameters$alpha, parameters$nu, parameters$rho), 100 * riemann_volatility
+) |>
+  show_results()
+```
+
+## Calibration
+
+```{r}
+#| label: riemann-fit
+riemann_fit <- RiemannFinMath::calibrate_sabr("lognormal", market$strike, market$black_volatility, forward, expiry, beta)
+```
+
+The two fits use different optimizers, starting points and parameter scales: L-BFGS-B on the plain parameters against Levenberg-Marquardt with exact derivatives on transformed ones. So the parameters are not judged. Compare the root mean square errors: the lower one is the better fit of the same quotes.
+
+```{r}
+#| label: results-fit
+reason <- "Different optimizers; not the same calculation"
+bind_rows(
+  not_comparable("alpha", "percent", 100 * parameters$alpha, 100 * riemann_fit$alpha, reason, "R optim on QuantLib"),
+  not_comparable("nu", "percent", 100 * parameters$nu, 100 * riemann_fit$nu, reason, "R optim on QuantLib"),
+  not_comparable("rho", "percent", 100 * parameters$rho, 100 * riemann_fit$rho, reason, "R optim on QuantLib"),
+  not_comparable("Root mean square error", "percent of volatility", 100 * sqrt(ql_fit$value), 100 * riemann_fit$root_mean_square_error, reason, "R optim on QuantLib")
+) |>
+  show_results()
+```
+
+```{r}
+#| label: plot-fit
+#| fig-width: 8
+#| fig-height: 4.5
+tibble(strike_pct = market$strike_pct, Quotes = 100 * market$black_volatility) |>
+  mutate(
+    `R optim on QuantLib` = 100 * ql_volatility(market$strike, parameters$alpha, parameters$nu, parameters$rho),
+    RiemannFinMath = 100 * RiemannFinMath::sabr_volatility("lognormal", market$strike, forward, expiry, riemann_fit$alpha, beta, riemann_fit$nu, riemann_fit$rho)
+  ) |>
+  pivot_longer(-strike_pct, names_to = "Series", values_to = "volatility") |>
+  ggplot(aes(strike_pct, volatility, colour = Series)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Strike (percent)", y = "Lognormal volatility (percent)", colour = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+## Normal SABR
+
+The QuantLib R binding has no normal SABR expansion, so nothing on the C++ side can be judged. The item shows only that RiemannFinMath's own fit recovers its own smile.
+
+```{r}
+#| label: normal
+normal_inputs <- list(alpha = 0.03, nu = 0.4, rho = -0.3, forward = 0.03, expiry = 2, beta = 0.5)
+show_inputs(normal_inputs)
+strikes <- 0.03 * c(0.6, 0.8, 0.9, 1, 1.1, 1.25, 1.5)
+normal_smile <- RiemannFinMath::sabr_volatility("normal", strikes, 0.03, 2, 0.03, 0.5, 0.4, -0.3)
+normal_fit <- RiemannFinMath::calibrate_sabr("normal", strikes, normal_smile, 0.03, 2, 0.5)
+bind_rows(
+  compare_values("alpha", "percent", 3, 100 * normal_fit$alpha, "The input"),
+  compare_values("nu", "percent", 40, 100 * normal_fit$nu, "The input"),
+  compare_values("rho", "percent", -30, 100 * normal_fit$rho, "The input")
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,       ~QuantLib,                                  ~RiemannFinMath,
+  "Wrapper", "Volatility",  "One strike per call",                      "Vectors recycled to a common length",
+  "Wrapper", "Calibration", "Written by the caller around `optim`",     "One call, with the iterations in the result",
+  "Core",    "Expansion",   "Hagan et al.",                             "Hagan et al.",
+  "Core",    "Normal kind", "Not in the R binding",                     "Available",
+  "Core",    "Shifted form", "Available in C++",                        "Not implemented",
+  "Core",    "Fit",         "Numerical gradients in `optim`",           "Levenberg-Marquardt with an exact Jacobian"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch10_sabr")
+```

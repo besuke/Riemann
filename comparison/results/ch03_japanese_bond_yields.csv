@@ -1,0 +1,17 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch03_japanese_bond_yields,Remaining years,years,GaussQuant R,40,40,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,Price from simple rate,per 100,GaussQuant R,110.926,110.926,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,Simple rate from price,percent,GaussQuant R,6.515019,6.515019,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,Compound yield from price,percent,GaussQuant R,6.7104799,6.7104799,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,Price from compound yield,per 100,GaussQuant R,110.926,110.926,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,Compound: BPV,"yen per 100, per bp",GaussQuant R,0.1514209572760825,0.15142095727608257,5.551115123125783e-17,1e-4,PASS,NA
+ch03_japanese_bond_yields,Compound: modified duration,years,GaussQuant R,13.650628062004733,13.650628062004737,3.552713678800501e-15,1e-4,PASS,NA
+ch03_japanese_bond_yields,Compound: convexity,years squared,GaussQuant R,321.1738092177346,321.17380921773486,2.8421709430404007e-13,1e-4,PASS,NA
+ch03_japanese_bond_yields,Simple: BPV,"yen per 100, per bp",GaussQuant R,0.12304629401481293,0.12304629401481293,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,Simple: modified duration,years,GaussQuant R,11.092623405435386,11.092623405435386,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,Simple: convexity,years squared,GaussQuant R,246.09258802962592,246.09258802962592,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,2024-02-29 to 2025-02-28,years,GaussQuant R,1,1,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,2024-02-29 to 2028-02-29,years,GaussQuant R,4,4,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,2023-02-28 to 2024-02-29,years,GaussQuant R,1.0027397,1.0027397,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,2024-02-29 to 2024-08-31,years,GaussQuant R,0.5041095,0.5041095,0,1e-4,PASS,NA
+ch03_japanese_bond_yields,QuantLib yield and Japanese compound yield,percent,QuantLib C++,6.710479924567045,6.7104799,-2.4567044398793314e-8,NA,N/C,Different rules: dated cash flows against remaining years with truncation

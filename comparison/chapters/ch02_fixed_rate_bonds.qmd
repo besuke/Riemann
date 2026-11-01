@@ -1,0 +1,180 @@
+---
+title: "Fixed-rate bonds"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+## Bond and yield
+
+```{r}
+#| label: inputs
+trade_date <- "2022-03-30"
+issue_date <- "2022-04-01"
+maturity_date <- "2062-04-01"
+face_amount <- 100
+coupon_rate <- 0.075
+settlement_days <- 2L
+compound_yield <- 0.0671047990
+show_inputs(list(
+  trade_date = trade_date, issue_date = issue_date, maturity_date = maturity_date, face_amount = face_amount,
+  coupon_rate = coupon_rate, settlement_days = settlement_days, calendar = "Japan", tenor = "6M",
+  conventions = "unadjusted", rule = "backward", day_count = "30/360 Bond Basis",
+  yield = compound_yield, yield_compounding = "semiannual"
+))
+```
+
+QuantLib:
+
+```{r}
+#| label: quantlib-call
+ql_set_evaluation_date(trade_date)
+ql_schedule <- QuantLib::Schedule(
+  ql_date(issue_date), ql_date(maturity_date), QuantLib::Period(6L, "Months"), QuantLib::Japan(),
+  "Unadjusted", "Unadjusted", "Backward", FALSE
+)
+ql_day_count <- QuantLib::Thirty360("BondBasis")
+ql_bond <- QuantLib::FixedRateBond(
+  settlement_days, face_amount, ql_schedule, coupon_rate, ql_day_count, "Unadjusted", 100, ql_date(issue_date)
+)
+ql_settlement <- QuantLib::Bond_settlementDate(ql_bond)
+quantlib <- list(
+  settlement = ql_iso(ql_settlement),
+  clean = QuantLib::BondFunctions_cleanPrice(ql_bond, compound_yield, ql_day_count, "Compounded", "Semiannual", ql_settlement),
+  accrued = QuantLib::Bond_accruedAmount(ql_bond, ql_settlement),
+  duration_simple = QuantLib::BondFunctions_duration(ql_bond, compound_yield, ql_day_count, "Compounded", "Semiannual", "Simple", ql_settlement),
+  duration_modified = QuantLib::BondFunctions_duration(ql_bond, compound_yield, ql_day_count, "Compounded", "Semiannual", "Modified", ql_settlement),
+  duration_macaulay = QuantLib::BondFunctions_duration(ql_bond, compound_yield, ql_day_count, "Compounded", "Semiannual", "Macaulay", ql_settlement),
+  convexity = QuantLib::BondFunctions_convexity(ql_bond, compound_yield, ql_day_count, "Compounded", "Semiannual", ql_settlement),
+  bpv = QuantLib::BondFunctions_basisPointValue(ql_bond, compound_yield, ql_day_count, "Compounded", "Semiannual", ql_settlement),
+  yvbp = QuantLib::BondFunctions_yieldValueBasisPoint(ql_bond, compound_yield, ql_day_count, "Compounded", "Semiannual", ql_settlement)
+)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: riemann-call
+bond <- RiemannFinMath::fixed_rate_bond(
+  settlement_days = settlement_days, face_amount = face_amount,
+  effective_date = issue_date, termination_date = maturity_date, tenor = "6M", calendar = "japan",
+  convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
+  coupon_rate = coupon_rate, day_count = "thirty_360_bond_basis", payment_convention = "unadjusted",
+  redemption = 100, issue_date = issue_date
+)
+settlement <- RiemannFinMath::settlement_date(bond, trade_date)
+riemann <- RiemannFinMath::bond_values(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+```
+
+The single-measure functions read the same row:
+
+```{r}
+#| label: riemann-single-measures
+single <- list(
+  clean = RiemannFinMath::clean_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  dirty = RiemannFinMath::dirty_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  accrued = RiemannFinMath::accrued_amount(bond, settlement),
+  modified = RiemannFinMath::duration(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement, "modified"),
+  convexity = RiemannFinMath::convexity(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  bpv = RiemannFinMath::basis_point_value(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  yvbp = RiemannFinMath::yield_value_basis_point(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+)
+```
+
+```{r}
+#| label: results
+bind_rows(
+  compare_values("Settlement date", "days", as.numeric(quantlib$settlement), as.numeric(settlement)),
+  compare_values("Clean price", "per 100", quantlib$clean, riemann$clean_price),
+  compare_values("Clean price, single function", "per 100", quantlib$clean, single$clean),
+  compare_values("Dirty price, single function", "per 100", quantlib$clean + quantlib$accrued, single$dirty),
+  compare_values("Accrued amount", "per 100", quantlib$accrued, riemann$accrued_amount),
+  compare_values("Accrued amount, single function", "per 100", quantlib$accrued, single$accrued),
+  compare_values("Simple duration", "years", quantlib$duration_simple, riemann$duration_simple),
+  compare_values("Modified duration", "years", quantlib$duration_modified, riemann$duration_modified),
+  compare_values("Modified duration, single function", "years", quantlib$duration_modified, single$modified),
+  compare_values("Macaulay duration", "years", quantlib$duration_macaulay, riemann$duration_macaulay),
+  compare_values("Convexity", "years squared", quantlib$convexity, riemann$convexity),
+  compare_values("Convexity, single function", "years squared", quantlib$convexity, single$convexity),
+  compare_values("Basis point value", "per 100, per bp", quantlib$bpv, riemann$basis_point_value),
+  compare_values("Basis point value, single function", "per 100, per bp", quantlib$bpv, single$bpv),
+  compare_values("Yield value of a basis point", "bp per 1.00 of price", 1e4 * quantlib$yvbp, 1e4 * riemann$yield_value_basis_point),
+  compare_values("Yield value, single function", "bp per 1.00 of price", 1e4 * quantlib$yvbp, 1e4 * single$yvbp)
+) |>
+  show_results()
+```
+
+## Yield from price
+
+```{r}
+#| label: yield-inputs
+price_inputs <- c(85, 100, quantlib$clean, 130)
+show_inputs(list(clean_prices = price_inputs, compounding = "semiannual", day_count = "30/360 Bond Basis"))
+```
+
+```{r}
+#| label: yield-calls
+quantlib_yields <- map_dbl(price_inputs, \(p) {
+  QuantLib::BondFunctions_yield(ql_bond, QuantLib::BondPrice(p, "Clean"), ql_day_count, "Compounded", "Semiannual", ql_settlement)
+})
+riemann_yields <- RiemannFinMath::yield_from_price(
+  bond, price_inputs, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement
+)
+```
+
+```{r}
+#| label: yield-results
+compare_values(
+  paste0("Yield at price ", format_4(price_inputs)), "percent",
+  100 * quantlib_yields, 100 * riemann_yields, note = "Solver accuracy 1e-10 in both"
+) |>
+  show_results()
+```
+
+## A yield applied as a flat curve
+
+The legacy text values the bond on a flat curve built from the yield. QuantLib has an instrument and engine for this. RiemannFinMath reads the same number from the yield formula, so this item checks that two routes agree, not that two engines agree.
+
+```{r}
+#| label: flat-calls
+flat_handle <- QuantLib::YieldTermStructureHandle(
+  QuantLib::FlatForward(ql_settlement, compound_yield, ql_day_count, "Compounded", "Semiannual")
+)
+QuantLib::Instrument_setPricingEngine(ql_bond, QuantLib::DiscountingBondEngine(flat_handle))
+quantlib_flat <- QuantLib::Instrument_NPV(ql_bond)
+```
+
+```{r}
+#| label: flat-results
+compare_values("Dirty price, flat curve against yield formula", "per 100", quantlib_flat, riemann$dirty_price) |>
+  show_results()
+```
+
+## Not available
+
+Two functions of the legacy text have no public counterpart. They are not approximated here: cash flow tables, and valuation with a zero spread on a curve. See @sec-gaps.
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,            ~QuantLib,                                               ~RiemannFinMath,
+  "Wrapper", "Bond construction", "`Schedule` first, then `FixedRateBond`",               "One call with named arguments",
+  "Wrapper", "Conventions",      "Positional strings with defaults from the binding",     "Required named arguments; no defaults",
+  "Wrapper", "Many yields",      "One call per measure and per yield",                    "One call returns a table, one row per yield",
+  "Wrapper", "Evaluation date",  "`Settings` singleton, set before the call",             "Passed to `settlement_date`; no global state",
+  "Core",    "Bond",             "`Instrument` object that holds an engine and caches",   "Immutable value; functions take the bond and the inputs",
+  "Core",    "Price and yield",  "`BondFunctions` over a cash flow `Leg`",                "Pure functions over the same cash flows",
+  "Core",    "Yield solver",     "Newton-safe with the same accuracy and guess",          "The same defaults, as explicit arguments"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch02_fixed_rate_bonds")
+```

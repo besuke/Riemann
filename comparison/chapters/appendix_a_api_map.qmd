@@ -1,0 +1,109 @@
+# Public API and QuantLib counterparts {#sec-api}
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+## Every exported function
+
+```{r}
+#| label: api-map
+#| echo: false
+counterparts <- tribble(
+  ~fn, ~quantlib,
+  "accrued_amount", "Bond_accruedAmount",
+  "asset_swap_quote_sensitivity", "None; finite difference over GaussQuant",
+  "barrier_option", "BarrierOption, AnalyticBarrierEngine",
+  "basis_point_value", "BondFunctions_basisPointValue",
+  "binomial_option", "VanillaOption, BinomialCRRVanillaEngine",
+  "bond_values", "BondFunctions_*",
+  "bond_values_batch", "None; a loop over BondFunctions_*",
+  "bootstrap_hazard_curve", "SpreadCdsHelper, PiecewiseFlatHazardRate",
+  "build_ois_curve", "OISRateHelper, DepositRateHelper, PiecewiseLogCubicDiscount, PiecewiseLogLinearDiscount",
+  "calibrate_sabr", "None in the R binding; R optim around sabrVolatility",
+  "cds_maturity", "cdsMaturity",
+  "cds_quote_sensitivity", "None; finite difference with a rebuilt curve",
+  "cds_value", "MidPointCdsEngine, IsdaCdsEngine",
+  "clean_price", "BondFunctions_cleanPrice",
+  "compound_yield_from_price", "None; GaussQuant R",
+  "convexity", "BondFunctions_convexity",
+  "credit_default_swap", "Schedule, CreditDefaultSwap",
+  "curve_node_sensitivity", "None; finite difference on DiscountCurve",
+  "curve_values", "YieldTermStructure_discount, _zeroRate, _forwardRate",
+  "curve_values_batch", "None; a loop",
+  "dirty_price", "Clean price plus accrued amount",
+  "discount", "YieldTermStructure_discount",
+  "discount_nodes", "curve dates and data",
+  "duration", "BondFunctions_duration",
+  "european_option", "VanillaOption, AnalyticEuropeanEngine",
+  "forward_option", "blackFormula, bachelierBlackFormula, BlackCalculator",
+  "forward_rate", "YieldTermStructure_forwardRate",
+  "future_basis", "None; QuantLib values with R arithmetic",
+  "future_basket", "None; QuantLib values with R arithmetic",
+  "hazard_curve", "FlatHazardRate",
+  "holidays", "Calendar_holidayList",
+  "hull_white_bermudan_swaption", "BermudanExercise, TreeSwaptionEngine (another method)",
+  "hull_white_bond_option", "None in the R binding; R closed form",
+  "hull_white_callable_bond", "None for this method; legacy R function",
+  "hull_white_swaption", "JamshidianSwaptionEngine",
+  "implied_volatility", "VanillaOption impliedVolatility",
+  "is_business_day", "Calendar_isBusinessDay",
+  "monte_carlo_european", "None compared; different random numbers",
+  "ois_asset_swap", "None; GaussQuant R on a QuantLib curve",
+  "ois_instruments", "None; the helpers of the curve",
+  "prdc_value", "None; blackFormula for the closed form",
+  "price_from_compound_yield", "None; GaussQuant R",
+  "price_from_simple_rate", "None; GaussQuant R",
+  "quote_repricing", "Helper impliedQuote and dates",
+  "quote_sensitivity", "None; finite difference with a rebuilt curve",
+  "remaining_years", "None; GaussQuant R",
+  "risk_from_compound_yield", "None; GaussQuant R",
+  "risk_from_simple_rate", "None; GaussQuant R",
+  "sabr_volatility", "sabrVolatility (lognormal); none for normal",
+  "settlement_date", "Bond_settlementDate",
+  "simple_rate_from_price", "None; GaussQuant R",
+  "survival_probability", "survivalProbability",
+  "value_on_curve", "DiscountingBondEngine",
+  "with_extrapolation", "TermStructure_enableExtrapolation",
+  "yen_asset_swap", "None; GaussQuant R on QuantLib curves",
+  "yield_from_price", "BondFunctions_yield",
+  "yield_sensitivity", "None; duration and convexity of BondFunctions",
+  "yield_value_basis_point", "BondFunctions_yieldValueBasisPoint",
+  "zero_rate", "YieldTermStructure_zeroRate",
+  "fixed_rate_bond", "Schedule, FixedRateBond"
+)
+exports <- getNamespaceExports("RiemannFinMath") |> sort()
+chapter_files <- list.files("chapters", pattern = "^ch.*qmd$", full.names = TRUE)
+uses <- map(chapter_files, \(f) {
+  text <- readLines(f, encoding = "UTF-8", warn = FALSE) |> paste(collapse = "\n")
+  found <- str_match_all(text, "RiemannFinMath::([a-z_0-9]+)")[[1]][, 2] |> unique()
+  tibble(fn = found, chapter = str_extract(basename(f), "ch[0-9]+"))
+}) |>
+  list_rbind() |>
+  summarise(Chapters = paste(sort(unique(chapter)), collapse = ", "), .by = fn)
+coverage <- tibble(fn = exports) |>
+  left_join(counterparts, by = "fn") |>
+  left_join(uses, by = "fn") |>
+  arrange(fn)
+stopifnot(!anyNA(coverage$quantlib))
+coverage |>
+  transmute(Function = paste0("`", fn, "`"), `QuantLib side` = quantlib, Chapters = replace_na(Chapters, "not called")) |>
+  knitr::kable()
+```
+
+```{r}
+#| label: coverage
+#| echo: false
+tibble(`Exported functions` = nrow(coverage), `Called in a chapter` = sum(!is.na(coverage$Chapters))) |>
+  knitr::kable()
+```
+
+## Helpers used by the chapters {#sec-helpers}
+
+```{r}
+#| label: helpers
+#| eval: false
+#| file: R/book.R
+```

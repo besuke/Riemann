@@ -1,0 +1,22 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch02_fixed_rate_bonds,Settlement date,days,QuantLib C++,19083,19083,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Clean price,per 100,QuantLib C++,110.92600031902495,110.92600031902495,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,"Clean price, single function",per 100,QuantLib C++,110.92600031902495,110.92600031902495,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,"Dirty price, single function",per 100,QuantLib C++,110.92600031902495,110.92600031902495,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Accrued amount,per 100,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,"Accrued amount, single function",per 100,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Simple duration,years,QuantLib C++,14.108639388167026,14.108639388167026,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Modified duration,years,QuantLib C++,13.650628062004731,13.650628062004731,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,"Modified duration, single function",years,QuantLib C++,13.650628062004731,13.650628062004731,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Macaulay duration,years,QuantLib C++,14.108639388167024,14.108639388167024,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Convexity,years squared,QuantLib C++,321.1738092177346,321.1738092177346,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,"Convexity, single function",years squared,QuantLib C++,321.1738092177346,321.1738092177346,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Basis point value,"per 100, per bp",QuantLib C++,-0.1514191759497796,-0.1514191759497796,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,"Basis point value, single function","per 100, per bp",QuantLib C++,-0.1514191759497796,-0.1514191759497796,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Yield value of a basis point,bp per 1.00 of price,QuantLib C++,-0.06604105653464601,-0.06604105653464601,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,"Yield value, single function",bp per 1.00 of price,QuantLib C++,-0.06604105653464601,-0.06604105653464601,0,1e-4,PASS,NA
+ch02_fixed_rate_bonds,Yield at price 85.0000,percent,QuantLib C++,8.873667401205749,8.873667401205749,0,1e-4,PASS,Solver accuracy 1e-10 in both
+ch02_fixed_rate_bonds,Yield at price 100.0000,percent,QuantLib C++,7.499999994821847,7.499999994821847,0,1e-4,PASS,Solver accuracy 1e-10 in both
+ch02_fixed_rate_bonds,Yield at price 110.9260,percent,QuantLib C++,6.710479899384082,6.710479899384082,0,1e-4,PASS,Solver accuracy 1e-10 in both
+ch02_fixed_rate_bonds,Yield at price 130.0000,percent,QuantLib C++,5.610277780145406,5.610277780145406,0,1e-4,PASS,Solver accuracy 1e-10 in both
+ch02_fixed_rate_bonds,"Dirty price, flat curve against yield formula",per 100,QuantLib C++,110.92600031902514,110.92600031902495,-1.8474111129762605e-13,1e-4,PASS,NA

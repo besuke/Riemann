@@ -1,0 +1,66 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch07_bond_futures,Issue 373 net basis,per 100,QuantLib with R arithmetic,0.38344719543253164,0.38344719543253164,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 374 net basis,per 100,QuantLib with R arithmetic,0.6829544535090943,0.6829544535090943,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 375 net basis,per 100,QuantLib with R arithmetic,0.8878534730418391,0.8878534730418391,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 376 net basis,per 100,QuantLib with R arithmetic,1.446053873982013,1.446053873982013,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 377 net basis,per 100,QuantLib with R arithmetic,1.6448436485363218,1.6448436485363218,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 378 net basis,per 100,QuantLib with R arithmetic,1.9015920563464423,1.9015920563464423,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 379 net basis,per 100,QuantLib with R arithmetic,2.1991123451567027,2.1991123451567027,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 380 net basis,per 100,QuantLib with R arithmetic,2.4277934040664295,2.4277934040664295,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 381 net basis,per 100,QuantLib with R arithmetic,2.450505083055006,2.450505083055006,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 382 net basis,per 100,QuantLib with R arithmetic,2.5441245440889735,2.5441245440889735,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 383 net basis,per 100,QuantLib with R arithmetic,2.5584566405423077,2.5584566405423077,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 373 implied repo,percent,QuantLib with R arithmetic,-0.3490875253799524,-0.3490875253799524,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 374 implied repo,percent,QuantLib with R arithmetic,-1.552077730855772,-1.552077730855772,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 375 implied repo,percent,QuantLib with R arithmetic,-2.3321148943952177,-2.3321148943952177,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 376 implied repo,percent,QuantLib with R arithmetic,-4.691157329285405,-4.691157329285405,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 377 implied repo,percent,QuantLib with R arithmetic,-5.392840391328577,-5.392840391328577,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 378 implied repo,percent,QuantLib with R arithmetic,-6.309038929066121,-6.309038929066121,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 379 implied repo,percent,QuantLib with R arithmetic,-7.492644228276789,-7.492644228276789,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 380 implied repo,percent,QuantLib with R arithmetic,-8.233155453111404,-8.233155453111404,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 381 implied repo,percent,QuantLib with R arithmetic,-8.074760798723531,-8.074760798723531,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 382 implied repo,percent,QuantLib with R arithmetic,-8.156335312209823,-8.156335312209823,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 383 implied repo,percent,QuantLib with R arithmetic,-8.055596590794005,-8.055596590794005,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 373 yield,percent,QuantLib C++,2.467714132838888,2.467714132838888,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 374 yield,percent,QuantLib C++,2.509392802946368,2.509392802946368,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 375 yield,percent,QuantLib C++,2.549397821389139,2.549397821389139,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 376 yield,percent,QuantLib C++,2.587859973944724,2.587859973944724,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 377 yield,percent,QuantLib C++,2.620587676353753,2.620587676353753,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 378 yield,percent,QuantLib C++,2.6537035994255525,2.6537035994255525,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 379 yield,percent,QuantLib C++,2.6862949233874684,2.6862949233874684,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 380 yield,percent,QuantLib C++,2.7165878607136333,2.7165878607136333,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 381 yield,percent,QuantLib C++,2.7502187004312875,2.7502187004312875,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 382 yield,percent,QuantLib C++,2.782593457965531,2.782593457965531,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 383 yield,percent,QuantLib C++,2.821336055086981,2.821336055086981,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 373 modified duration,years,QuantLib C++,7.026059096014571,7.026059096014571,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 374 modified duration,years,QuantLib C++,7.185747217821251,7.185747217821251,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 375 modified duration,years,QuantLib C++,7.343553172894591,7.343553172894591,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 376 modified duration,years,QuantLib C++,7.608691160242293,7.608691160242293,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 377 modified duration,years,QuantLib C++,7.756574133768622,7.756574133768622,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 378 modified duration,years,QuantLib C++,7.876043510518349,7.876043510518349,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 379 modified duration,years,QuantLib C++,8.088572688361387,8.088572688361387,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 380 modified duration,years,QuantLib C++,8.19379756900928,8.19379756900928,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 381 modified duration,years,QuantLib C++,8.299050056992504,8.299050056992504,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 382 modified duration,years,QuantLib C++,8.344003419084876,8.344003419084876,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 383 modified duration,years,QuantLib C++,8.484756597432135,8.484756597432135,0,1e-4,PASS,NA
+ch07_bond_futures,"Accrued at valuation, all issues","per 100, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch07_bond_futures,"Accrued at delivery, all issues","per 100, largest",QuantLib C++,NA,NA,0,1e-4,PASS,NA
+ch07_bond_futures,"Coupon income, all issues","per 100, largest",QuantLib with R arithmetic,NA,NA,0,1e-4,PASS,NA
+ch07_bond_futures,"Gross basis, all issues","per 100, largest",QuantLib with R arithmetic,NA,NA,0,1e-4,PASS,NA
+ch07_bond_futures,"Carry, all issues","per 100, largest",QuantLib with R arithmetic,NA,NA,0,1e-4,PASS,NA
+ch07_bond_futures,"One bond: net basis, issue 373",per 100,QuantLib with R arithmetic,0.38344719543253164,0.38344719543253164,0,1e-4,PASS,NA
+ch07_bond_futures,Cheapest to deliver: row in the basket,row,QuantLib with R arithmetic,1,1,0,1e-4,PASS,NA
+ch07_bond_futures,Futures price from the standard bond,per 100,QuantLib C++,86.39790384824789,86.39790384824789,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 373 net basis,per 100,QuantLib with R arithmetic,1.0234384002442405,1.0234384002442405,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 374 net basis,per 100,QuantLib with R arithmetic,0.8305195263607006,0.8305195263607006,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 375 net basis,per 100,QuantLib with R arithmetic,0.6775042880042121,0.6775042880042121,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 376 net basis,per 100,QuantLib with R arithmetic,0.32513679638056914,0.32513679638056914,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 377 net basis,per 100,QuantLib with R arithmetic,0.18694585858982893,0.18694585858982893,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 378 net basis,per 100,QuantLib with R arithmetic,0.042708885823176335,0.042708885823176335,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 379 net basis,per 100,QuantLib with R arithmetic,-0.17883721981120582,-0.17883721981120582,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 380 net basis,per 100,QuantLib with R arithmetic,-0.3251703276242621,-0.3251703276242621,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 381 net basis,per 100,QuantLib with R arithmetic,-0.40358458944008646,-0.40358458944008646,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 382 net basis,per 100,QuantLib with R arithmetic,-0.494809314888881,-0.494809314888881,0,1e-4,PASS,NA
+ch07_bond_futures,Issue 383 net basis,per 100,QuantLib with R arithmetic,-0.6088135519199049,-0.6088135519199049,0,1e-4,PASS,NA
+ch07_bond_futures,"Implied repo, all issues","percent, largest",QuantLib with R arithmetic,NA,NA,0,1e-4,PASS,NA
+ch07_bond_futures,Cheapest to deliver: row in the basket,row,QuantLib with R arithmetic,11,11,0,1e-4,PASS,NA

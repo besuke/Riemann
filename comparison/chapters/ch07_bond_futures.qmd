@@ -1,0 +1,189 @@
+---
+title: "Bond futures and the cheapest to deliver"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+source("R/quantlib_side.R")
+```
+
+QuantLib has no bond future basis calculation in its R binding. The baseline uses QuantLib for yields, durations, accrued amounts and cash flows, and the arithmetic of the legacy text in R for the basis.
+
+## Inputs
+
+The clean prices of the deliverable bonds are market data. They are read from the legacy text and not shown.
+
+```{r}
+#| label: inputs
+valuation_date <- "2026-09-10"
+delivery_date <- "2026-12-20"
+futures_price <- 125.71
+funding_rate <- 0.0123
+year_fraction <- as.numeric(as.Date(delivery_date) - as.Date(valuation_date)) / 365
+basket <- lagrange_object("part2_quantive_riemann/ch02_interest_rate_curves.qmd", "tbl_jgb_deliverable")
+basket |>
+  select(-bb_price) |>
+  knitr::kable(digits = 4, caption = "Deliverable bonds")
+show_inputs(list(
+  valuation = valuation_date, delivery = delivery_date, futures_price = futures_price, funding_rate = funding_rate,
+  bond = "6M, Japan, Actual/365 (Fixed), following payment, settlement 0 days", yield = "semiannual compounding"
+))
+```
+
+## Current market
+
+Baseline:
+
+```{r}
+#| label: baseline-call
+ql_set_evaluation_date(valuation_date)
+ql_dc <- QuantLib::Actual365Fixed()
+ql_bonds <- pmap(list(basket$issue_date, basket$maturity_date, basket$coupon_pct), \(issue, maturity, coupon) {
+  ql_fixed_bond(issue, maturity, coupon / 100, QuantLib::Japan(), ql_dc, settlement_days = 0L)
+})
+coupon_income <- function(bond) {
+  GaussQuant::bond_cashflow_table_GQL(bond) |>
+    mutate(date = as.Date(date)) |>
+    filter(date > as.Date(valuation_date), date <= as.Date(delivery_date)) |>
+    summarise(value = sum(amount, na.rm = TRUE)) |>
+    pull(value)
+}
+basis_table <- function(bonds, clean, futures, funding) {
+  tibble(
+    clean = clean, factor = basket$conversion_factor,
+    accrued_start = map_dbl(bonds, \(b) QuantLib::Bond_accruedAmount(b, ql_date(valuation_date))),
+    accrued_end = map_dbl(bonds, \(b) QuantLib::Bond_accruedAmount(b, ql_date(delivery_date))),
+    coupon_income = map_dbl(bonds, coupon_income)
+  ) |>
+    mutate(
+      dirty = clean + accrued_start,
+      futures_invoice = futures * factor,
+      gross_basis = clean - futures_invoice,
+      funding_cost = dirty * funding * year_fraction,
+      carry = coupon_income + accrued_end - accrued_start - funding_cost,
+      net_basis = gross_basis - carry,
+      implied_repo = (futures_invoice + accrued_end + coupon_income - dirty) / dirty / year_fraction
+    )
+}
+baseline <- basis_table(ql_bonds, basket$bb_price, futures_price, funding_rate) |>
+  mutate(
+    yield = map2_dbl(ql_bonds, clean, \(b, p) {
+      QuantLib::BondFunctions_yield(b, QuantLib::BondPrice(p, "Clean"), ql_dc, "Compounded", "Semiannual", ql_date(valuation_date))
+    }),
+    duration = map2_dbl(ql_bonds, yield, \(b, y) {
+      QuantLib::BondFunctions_duration(b, y, ql_dc, "Compounded", "Semiannual", "Modified", ql_date(valuation_date))
+    })
+  )
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: riemann-call
+riemann_bonds <- pmap(list(basket$issue_date, basket$maturity_date, basket$coupon_pct), \(issue, maturity, coupon) {
+  RiemannFinMath::fixed_rate_bond(
+    settlement_days = 0L, face_amount = 100, effective_date = issue, termination_date = maturity, tenor = "6M", calendar = "japan",
+    convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
+    coupon_rate = coupon / 100, day_count = "actual_365_fixed", payment_convention = "following", redemption = 100, issue_date = issue
+  )
+})
+riemann <- RiemannFinMath::future_basket(
+  riemann_bonds, basket$bb_price, futures_price, basket$conversion_factor, funding_rate, valuation_date, delivery_date
+)
+riemann_yields <- map2_dbl(riemann_bonds, basket$bb_price, \(b, p) {
+  RiemannFinMath::yield_from_price(b, p, "clean", "actual_365_fixed", "compounded", 2L, valuation_date)
+})
+riemann_durations <- map2_dbl(riemann_bonds, riemann_yields, \(b, y) {
+  RiemannFinMath::duration(b, y, "actual_365_fixed", "compounded", 2L, valuation_date, "modified")
+})
+```
+
+`future_basis` is the same calculation for one bond:
+
+```{r}
+#| label: riemann-one
+one <- RiemannFinMath::future_basis(
+  riemann_bonds[[1]], basket$bb_price[1], futures_price, basket$conversion_factor[1], funding_rate, valuation_date, delivery_date
+)
+```
+
+```{r}
+#| label: results
+baseline_name <- "QuantLib with R arithmetic"
+issues <- paste("Issue", basket$issue)
+bind_rows(
+  compare_values(paste(issues, "net basis"), "per 100", baseline$net_basis, riemann$net_basis, baseline_name),
+  compare_values(paste(issues, "implied repo"), "percent", 100 * baseline$implied_repo, 100 * riemann$implied_repo, baseline_name),
+  compare_values(paste(issues, "yield"), "percent", 100 * baseline$yield, 100 * riemann_yields),
+  compare_values(paste(issues, "modified duration"), "years", baseline$duration, riemann_durations),
+  compare_max("Accrued at valuation, all issues", "per 100, largest", baseline$accrued_start, riemann$accrued_start),
+  compare_max("Accrued at delivery, all issues", "per 100, largest", baseline$accrued_end, riemann$accrued_end),
+  compare_max("Coupon income, all issues", "per 100, largest", baseline$coupon_income, riemann$coupon_income, baseline_name),
+  compare_max("Gross basis, all issues", "per 100, largest", baseline$gross_basis, riemann$gross_basis, baseline_name),
+  compare_max("Carry, all issues", "per 100, largest", baseline$carry, riemann$carry, baseline_name),
+  compare_values("One bond: net basis, issue 373", "per 100", baseline$net_basis[1], one$net_basis, baseline_name),
+  compare_values("Cheapest to deliver: row in the basket", "row", which.min(baseline$net_basis), which(riemann$ctd), baseline_name)
+) |>
+  show_results()
+```
+
+## Inverted curve scenario
+
+```{r}
+#| label: stress-inputs
+stress_yield <- 0.08
+stress_funding <- 0.09
+show_inputs(list(standard_bond = "6% coupon, 2026-09-10 to 2036-09-10", yield = stress_yield, funding = stress_funding))
+```
+
+```{r}
+#| label: stress-calls
+ql_standard <- ql_fixed_bond("2026-09-10", "2036-09-10", 0.06, QuantLib::Japan(), ql_dc, settlement_days = 0L)
+ql_stress_price <- function(b) QuantLib::BondFunctions_cleanPrice(b, stress_yield, ql_dc, "Compounded", "Semiannual", ql_date(valuation_date))
+stress_futures_baseline <- ql_stress_price(ql_standard)
+stress_baseline <- basis_table(ql_bonds, map_dbl(ql_bonds, ql_stress_price), stress_futures_baseline, stress_funding)
+
+riemann_standard <- RiemannFinMath::fixed_rate_bond(
+  settlement_days = 0L, face_amount = 100, effective_date = "2026-09-10", termination_date = "2036-09-10", tenor = "6M", calendar = "japan",
+  convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
+  coupon_rate = 0.06, day_count = "actual_365_fixed", payment_convention = "following", redemption = 100, issue_date = "2026-09-10"
+)
+riemann_stress_price <- function(b) RiemannFinMath::clean_price(b, stress_yield, "actual_365_fixed", "compounded", 2L, valuation_date)
+stress_futures_riemann <- riemann_stress_price(riemann_standard)
+stress_riemann <- RiemannFinMath::future_basket(
+  riemann_bonds, map_dbl(riemann_bonds, riemann_stress_price), stress_futures_riemann, basket$conversion_factor,
+  stress_funding, valuation_date, delivery_date
+)
+```
+
+```{r}
+#| label: stress-results
+bind_rows(
+  compare_values("Futures price from the standard bond", "per 100", stress_futures_baseline, stress_futures_riemann),
+  compare_values(paste(issues, "net basis"), "per 100", stress_baseline$net_basis, stress_riemann$net_basis, baseline_name),
+  compare_max("Implied repo, all issues", "percent, largest", 100 * stress_baseline$implied_repo, 100 * stress_riemann$implied_repo, baseline_name),
+  compare_values("Cheapest to deliver: row in the basket", "row", which.min(stress_baseline$net_basis), which(stress_riemann$ctd), baseline_name)
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,            ~Baseline,                                       ~RiemannFinMath,
+  "Wrapper", "Basket",           "A pipeline written by the caller",              "`future_basket` with a list of bonds",
+  "Wrapper", "Coupon income",    "Read from a cash flow table and filtered",      "A column of the result",
+  "Core",    "Basis arithmetic", "R, in the chapter",                             "Rust",
+  "Core",    "Conversion factor", "An input",                                     "An input; set by the exchange"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch07_bond_futures")
+```

@@ -1,0 +1,7 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch01_dates_calendars,japan: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,target: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_sofr: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_exchange: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,weekends_only: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,japan 2026: days that differ,days,QuantLib C++,0,0,0,1e-4,PASS,NA

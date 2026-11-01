@@ -1,0 +1,321 @@
+---
+title: "Credit default swaps"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+## QuantLib set-up
+
+```{r}
+#| label: quantlib-setup
+act365 <- QuantLib::Actual365Fixed()
+act360 <- QuantLib::Actual360()
+weekends <- QuantLib::WeekendsOnly()
+ql_yield <- function(date, rate) {
+  QuantLib::YieldTermStructureHandle(QuantLib::FlatForward(ql_date(date), rate, act365, "Continuous"))
+}
+ql_hazard <- function(date, hazard) {
+  QuantLib::DefaultProbabilityTermStructureHandle(QuantLib::FlatHazardRate(ql_date(date), QuantLib::QuoteHandle(QuantLib::SimpleQuote(hazard)), act365))
+}
+ql_cds <- function(notional, spread, start, end, rule) {
+  schedule <- QuantLib::Schedule(ql_date(start), ql_date(end), QuantLib::Period(3L, "Months"), weekends, "Following", "Unadjusted", rule, FALSE)
+  QuantLib::CreditDefaultSwap(QuantLib::Protection_Buyer_get(), notional, spread, schedule, "Following", act360)
+}
+```
+
+RiemannFinMath has no flat yield curve in its public API. `flat_curve` finds the OIS quotes of a log-linear curve with the requested zero rate; its definition is in @sec-helpers. The rates of the two sides therefore differ by the accuracy of that search.
+
+## One-year swap, MidPoint engine
+
+```{r}
+#| label: flat-inputs
+flat <- list(trade = "2022-09-19", start = "2022-09-20", maturity = "2023-09-20", notional = 1e7, rate = 0.10, market_spread = 0.013, coupon = 0.01, recovery = 0.4)
+flat$hazard <- flat$market_spread / (1 - flat$recovery)
+show_inputs(c(flat, list(schedule = "3M, weekends only, following, unadjusted at the end, forward", premium_day_count = "Actual/360")))
+```
+
+QuantLib:
+
+```{r}
+#| label: flat-quantlib
+ql_set_evaluation_date(flat$trade)
+ql_flat <- ql_cds(flat$notional, flat$coupon, flat$start, flat$maturity, "Forward")
+QuantLib::Instrument_setPricingEngine(ql_flat, QuantLib::MidPointCdsEngine(ql_hazard(flat$trade, flat$hazard), flat$recovery, ql_yield(flat$trade, flat$rate)))
+ql_flat_curve <- QuantLib::FlatHazardRate(ql_date(flat$trade), QuantLib::QuoteHandle(QuantLib::SimpleQuote(flat$hazard)), act365)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: flat-riemann
+flat_rates <- flat_curve(flat$trade, flat$rate)
+flat_hazard <- RiemannFinMath::hazard_curve(flat$trade, "2060-01-01", flat$hazard)
+flat_swap <- RiemannFinMath::credit_default_swap("buyer", flat$notional, flat$coupon, flat$start, flat$maturity)
+riemann_flat <- RiemannFinMath::cds_value(flat_swap, flat_hazard, flat$recovery, flat_rates, flat$trade, "midpoint")
+print(flat_swap)
+print(flat_hazard)
+```
+
+```{r}
+#| label: flat-results
+bind_rows(
+  compare_values("Yield curve: discount at maturity", "discount factor", exp(-flat$rate * as.numeric(as.Date(flat$maturity) - as.Date(flat$trade)) / 365), RiemannFinMath::discount(flat_rates, flat$maturity), "Formula of the flat curve"),
+  compare_values("Survival at maturity", "probability", ql_flat_curve$survivalProbability(ql_date(flat$maturity)), RiemannFinMath::survival_probability(flat_hazard, flat$maturity)),
+  compare_values("NPV", "currency", ql_flat$NPV(), riemann_flat$npv),
+  compare_values("Coupon leg", "currency", ql_flat$couponLegNPV(), riemann_flat$coupon_leg_npv),
+  compare_values("Default leg", "currency", ql_flat$defaultLegNPV(), riemann_flat$default_leg_npv),
+  compare_values("Fair spread", "bp", 1e4 * ql_flat$fairSpread(), 1e4 * riemann_flat$fair_spread)
+) |>
+  show_results()
+```
+
+## Hazard rate at zero NPV
+
+Both sides use the solver of the legacy text, R's `uniroot`, around their own valuation of a swap whose coupon is the market spread.
+
+```{r}
+#| label: flat-hazard
+ql_market <- ql_cds(flat$notional, flat$market_spread, flat$start, flat$maturity, "Forward")
+ql_at_hazard <- function(h) {
+  QuantLib::Instrument_setPricingEngine(ql_market, QuantLib::MidPointCdsEngine(ql_hazard(flat$trade, h), flat$recovery, ql_yield(flat$trade, flat$rate)))
+  ql_market$NPV()
+}
+market_swap <- RiemannFinMath::credit_default_swap("buyer", flat$notional, flat$market_spread, flat$start, flat$maturity)
+riemann_at_hazard <- function(h) {
+  RiemannFinMath::cds_value(market_swap, RiemannFinMath::hazard_curve(flat$trade, "2060-01-01", h), flat$recovery, flat_rates, flat$trade, "midpoint")$npv
+}
+compare_values(
+  "Hazard rate", "percent",
+  100 * uniroot(ql_at_hazard, c(1e-8, 0.5), tol = 1e-10)$root,
+  100 * uniroot(riemann_at_hazard, c(1e-8, 0.5), tol = 1e-10)$root
+) |>
+  show_results()
+```
+
+## Standard five-year swap, ISDA and MidPoint engines
+
+```{r}
+#| label: isda-inputs
+isda <- list(trade = "2022-08-19", notional = 1e7, market_spread = 30.426 / 1e4, coupon = 0.01, recovery = 0.4, rate = 0.0025)
+show_inputs(c(isda, list(tenor = "5Y", rule = "CDS2015", premium_day_count = "Actual/360")))
+```
+
+```{r}
+#| label: isda-maturity
+ql_set_evaluation_date(isda$trade)
+isda$maturity <- ql_iso(QuantLib::cdsMaturity(ql_date(isda$trade), QuantLib::Period(5L, "Years"), "CDS2015"))
+riemann_maturity <- RiemannFinMath::cds_maturity(isda$trade, "5Y", "cds2015")
+compare_values("Maturity of a standard swap", "days", as.numeric(isda$maturity), as.numeric(riemann_maturity)) |>
+  show_results()
+```
+
+The hazard rate is solved once on the QuantLib side, as in the legacy text, and given to both.
+
+QuantLib:
+
+```{r}
+#| label: isda-quantlib
+ql_market_isda <- ql_cds(isda$notional, isda$market_spread, isda$trade, isda$maturity, "CDS2015")
+ql_isda_at_hazard <- function(h) {
+  QuantLib::Instrument_setPricingEngine(ql_market_isda, QuantLib::IsdaCdsEngine(ql_hazard(isda$trade, h), isda$recovery, ql_yield(isda$trade, isda$rate)))
+  ql_market_isda$NPV()
+}
+isda$hazard <- uniroot(ql_isda_at_hazard, c(1e-8, 0.5), tol = 1e-10)$root
+ql_standard <- ql_cds(isda$notional, isda$coupon, isda$trade, isda$maturity, "CDS2015")
+ql_engines <- list(
+  isda = QuantLib::IsdaCdsEngine(ql_hazard(isda$trade, isda$hazard), isda$recovery, ql_yield(isda$trade, isda$rate)),
+  midpoint = QuantLib::MidPointCdsEngine(ql_hazard(isda$trade, isda$hazard), isda$recovery, ql_yield(isda$trade, isda$rate))
+)
+ql_values <- imap(ql_engines, \(engine, name) {
+  QuantLib::Instrument_setPricingEngine(ql_standard, engine)
+  tibble(
+    engine = name, npv = ql_standard$NPV(), coupon = ql_standard$couponLegNPV(), default = ql_standard$defaultLegNPV(),
+    rebate = tryCatch(ql_standard$accrualRebateNPV(), error = \(e) NA_real_), fair_spread = ql_standard$fairSpread(),
+    fair_upfront = tryCatch(ql_standard$fairUpfront(), error = \(e) NA_real_)
+  )
+}) |>
+  list_rbind()
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: isda-riemann
+isda_rates <- flat_curve(isda$trade, isda$rate)
+isda_hazard <- RiemannFinMath::hazard_curve(isda$trade, "2060-01-01", isda$hazard)
+standard_swap <- RiemannFinMath::credit_default_swap("buyer", isda$notional, isda$coupon, isda$trade, isda$maturity, rule = "cds2015")
+riemann_values <- map(c("isda", "midpoint"), \(engine) {
+  RiemannFinMath::cds_value(standard_swap, isda_hazard, isda$recovery, isda_rates, isda$trade, engine) |>
+    mutate(engine = engine)
+}) |>
+  list_rbind()
+```
+
+```{r}
+#| label: isda-results
+compare_or_absent <- function(item, unit, quantlib, riemann) {
+  if (is.na(quantlib)) {
+    not_comparable(item, unit, NA_real_, riemann, "QuantLib returns no value for a swap made with this constructor")
+  } else {
+    compare_values(item, unit, quantlib, riemann)
+  }
+}
+map(c("isda", "midpoint"), \(name) {
+  q <- ql_values |> filter(engine == name)
+  r <- riemann_values |> filter(engine == name)
+  bind_rows(
+    compare_values(paste(name, "NPV"), "currency", q$npv, r$npv),
+    compare_values(paste(name, "coupon leg"), "currency", q$coupon, r$coupon_leg_npv),
+    compare_values(paste(name, "default leg"), "currency", q$default, r$default_leg_npv),
+    compare_or_absent(paste(name, "accrual rebate"), "currency", q$rebate, r$accrual_rebate_npv),
+    compare_values(paste(name, "fair spread"), "bp", 1e4 * q$fair_spread, 1e4 * r$fair_spread),
+    compare_or_absent(paste(name, "fair upfront"), "percent of notional", 100 * q$fair_upfront, 100 * r$fair_upfront)
+  )
+}) |>
+  list_rbind() |>
+  show_results()
+```
+
+## The legacy text's swap builder
+
+The legacy text makes this swap with QuantLib's `MakeCreditDefaultSwap`, through GaussQuant, which sets a trade date and cash settlement days. `credit_default_swap` has neither argument, so the swap above uses the plain constructor on both sides. These rows show what that leaves out. They are not judged, because the swaps are not the same.
+
+```{r}
+#| label: isda-builder
+legacy_swap <- function(spread, engine) {
+  GaussQuant::make_cds_GQL(
+    maturity_date = isda$maturity, running_spread = spread, notional = isda$notional, side = "buyer", trade_date = isda$trade,
+    coupon_tenor = "3M", day_counter = "Actual360", date_generation_rule = "CDS2015", pricing_engine = engine
+  )
+}
+legacy_engine <- function(h) QuantLib::IsdaCdsEngine(ql_hazard(isda$trade, h), isda$recovery, ql_yield(isda$trade, isda$rate))
+legacy_hazard <- uniroot(\(h) legacy_swap(isda$market_spread, legacy_engine(h))$NPV(), c(1e-8, 0.5), tol = 1e-10)$root
+legacy_value <- legacy_swap(isda$coupon, legacy_engine(legacy_hazard))
+riemann_on_legacy <- RiemannFinMath::cds_value(
+  standard_swap, RiemannFinMath::hazard_curve(isda$trade, "2060-01-01", legacy_hazard), isda$recovery, isda_rates, isda$trade, "isda"
+)
+reason <- "The builder sets a trade date and cash settlement days; RiemannFinMath's swap has neither"
+bind_rows(
+  not_comparable("NPV", "currency", legacy_value$NPV(), riemann_on_legacy$npv, reason, "QuantLib builder via GaussQuant"),
+  not_comparable("Accrual rebate", "currency", legacy_value$accrualRebateNPV(), riemann_on_legacy$accrual_rebate_npv, reason, "QuantLib builder via GaussQuant"),
+  not_comparable("Fair upfront", "percent of notional", 100 * legacy_value$fairUpfront(), 100 * riemann_on_legacy$fair_upfront, reason, "QuantLib builder via GaussQuant")
+) |>
+  show_results()
+```
+
+## Bootstrap from a spread term structure
+
+The legacy text solves one flat hazard rate. This item has no example there, and the spreads are synthetic, ending near the market spread above.
+
+```{r}
+#| label: bootstrap-inputs
+term <- tibble(years = c(1L, 2L, 3L, 5L, 7L, 10L), spread = c(0.0012, 0.0018, 0.0024, 0.0030, 0.0034, 0.0037))
+knitr::kable(term |> mutate(spread_bp = 1e4 * spread, .keep = "unused"), digits = 4, caption = "Running spreads")
+show_inputs(list(evaluation = isda$trade, recovery = isda$recovery, rate = isda$rate, schedule = "3M, weekends only, following, backward, settlement 0 days"))
+```
+
+QuantLib:
+
+```{r}
+#| label: bootstrap-quantlib
+ql_bootstrap <- function(spreads, engine_model) {
+  helpers <- QuantLib::DefaultProbabilityHelperVector()
+  walk2(term$years, spreads, \(y, s) {
+    helpers$append(QuantLib::SpreadCdsHelper(
+      s, QuantLib::Period(y, "Years"), 0L, weekends, "Quarterly", "Following", "Backward", act360, isda$recovery,
+      ql_yield(isda$trade, isda$rate), TRUE, TRUE, QuantLib::Date(), act360, TRUE, engine_model
+    ))
+  })
+  QuantLib::PiecewiseFlatHazardRate(ql_date(isda$trade), helpers, act365)
+}
+ql_set_evaluation_date(isda$trade)
+models <- list(midpoint = QuantLib::CreditDefaultSwap_Midpoint_get(), isda = QuantLib::CreditDefaultSwap_ISDA_get())
+ql_curves <- map(models, \(m) ql_bootstrap(term$spread, m))
+node_dates <- map(ql_curves, \(curve) ql_date_vector(curve$dates())[-1] |> map(ql_iso) |> list_c())
+# QuantLib's nodes are adjusted dates. The swaps end on the unadjusted date, which goes to RiemannFinMath.
+unadjusted_maturities <- as.Date(isda$trade) %m+% years(term$years)
+ql_survival <- map(ql_curves, \(curve) {
+  map_dbl(ql_date_vector(curve$dates())[-1], \(d) curve$survivalProbability(d))
+})
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: bootstrap-riemann
+riemann_curves <- imap(models, \(m, engine) {
+  RiemannFinMath::bootstrap_hazard_curve(isda$trade, unadjusted_maturities, term$spread, isda$recovery, isda_rates, engine)
+})
+```
+
+```{r}
+#| label: bootstrap-results
+imap(ql_survival, \(q, engine) {
+  compare_values(
+    paste(engine, term$years, "years"), "survival probability", q,
+    RiemannFinMath::survival_probability(riemann_curves[[engine]], node_dates[[engine]])
+  )
+}) |>
+  list_rbind() |>
+  show_results()
+```
+
+## Sensitivity to the spreads and the recovery
+
+QuantLib rebuilds the hazard curve with a bump of 1e-6. RiemannFinMath uses automatic differentiation and the implicit function theorem.
+
+```{r}
+#| label: sensitivity
+risk_inputs <- list(notional = 1e7, coupon = 0.01, start = "2022-08-20", end = "2027-09-20")
+show_inputs(risk_inputs)
+ql_risk_swap <- ql_cds(risk_inputs$notional, risk_inputs$coupon, risk_inputs$start, risk_inputs$end, "Forward")
+ql_value_on <- function(spreads, recovery = isda$recovery) {
+  curve <- QuantLib::DefaultProbabilityTermStructureHandle(ql_bootstrap(spreads, models$midpoint))
+  QuantLib::Instrument_setPricingEngine(ql_risk_swap, QuantLib::MidPointCdsEngine(curve, recovery, ql_yield(isda$trade, isda$rate)))
+  ql_risk_swap$NPV()
+}
+h <- 1e-6
+ql_spread_risk <- map_dbl(seq_len(nrow(term)), \(i) {
+  move <- function(sign) {
+    spreads <- term$spread
+    spreads[i] <- spreads[i] + sign * h
+    ql_value_on(spreads)
+  }
+  (move(1) - move(-1)) / (2 * h) * 1e-4
+})
+ql_recovery_risk <- (ql_value_on(term$spread, isda$recovery + 1e-4) - ql_value_on(term$spread, isda$recovery - 1e-4)) / 2e-4 * 0.01
+
+riemann_risk_swap <- RiemannFinMath::credit_default_swap("buyer", risk_inputs$notional, risk_inputs$coupon, risk_inputs$start, risk_inputs$end)
+riemann_risk <- RiemannFinMath::cds_quote_sensitivity(riemann_risk_swap, riemann_curves$midpoint, isda_rates, isda$trade, "midpoint")
+bind_rows(
+  compare_values(paste("Spread", term$years, "years"), "currency per bp", ql_spread_risk, riemann_risk$npv_per_bp),
+  compare_values("Recovery, hazard curve fixed", "currency per percent", ql_recovery_risk, riemann_risk$npv_per_recovery_percent[1])
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,          ~QuantLib,                                               ~RiemannFinMath,
+  "Wrapper", "Swap",           "`Schedule`, then `CreditDefaultSwap` with a side object", "One call with names; conventions have example defaults",
+  "Wrapper", "Curves",         "Handles of term structures",                            "Values; a hazard curve from dates and rates",
+  "Wrapper", "Flat yield curve", "`FlatForward`",                                       "No constructor; quotes must be fitted",
+  "Wrapper", "Engine",         "An object set on the swap",                             "A name in the valuation call",
+  "Core",    "Legs",           "Stored in the instrument after a lazy calculation",     "A value returned by a pure function",
+  "Core",    "Bootstrap",      "Helpers in a piecewise template",                       "A function; the nodes are returned as a table",
+  "Core",    "Risk",           "Not exposed; finite differences by the caller",         "Automatic differentiation and the implicit function theorem"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch09_credit_default_swaps")
+```

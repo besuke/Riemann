@@ -1,0 +1,225 @@
+---
+title: "PRDC notes"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+QuantLib has no PRDC instrument. But in this model each coupon is a floor plus a call spread on the FX rate, so a baseline can be built from QuantLib's `blackFormula`. That is the C++ side of the judged rows. Monte Carlo values are shown without a verdict.
+
+## Inputs
+
+```{r}
+#| label: inputs
+valuation_date <- "2023-04-11"
+terms <- list(
+  effective = "2015-09-03", termination = "2041-09-03", notional = 3e8, spot = 133.2681, volatility = 0.10,
+  domestic_rate = 0.01, foreign_rate = 0.03, discount_rate = 0.005,
+  fx_base = 120, leverage = 0.122, subtraction = 0.10, floor = 0, cap = 0.022
+)
+show_inputs(c(list(valuation = valuation_date), terms, list(schedule = "6M, TARGET, modified following, backward", day_count = "Actual/360")))
+```
+
+The note is discounted at 0.5%, while the FX drift is 1% - 3%. `prdc_value` takes one domestic curve for both purposes. The same model is reached with a domestic curve at 0.5% and a foreign curve at 2.5%, which keep the drift at -2%. This is a change of inputs, and not a separate discount curve; see @sec-gaps.
+
+```{r}
+#| label: dates
+schedule <- QuantLib::Schedule(
+  ql_date(terms$effective), ql_date(terms$termination), QuantLib::Period(6L, "Months"), QuantLib::TARGET(),
+  "ModifiedFollowing", "ModifiedFollowing", "Backward", FALSE
+)
+schedule_dates <- map(seq_len(QuantLib::Schedule_size(schedule)) - 1L, \(i) ql_iso(QuantLib::Schedule_date(schedule, i))) |> list_c()
+position <- which(schedule_dates > as.Date(valuation_date))
+coupon_dates <- schedule_dates[position]
+times <- as.numeric(coupon_dates - as.Date(valuation_date)) / 360
+accruals <- as.numeric(coupon_dates - schedule_dates[position - 1L]) / 360
+drift <- terms$domestic_rate - terms$foreign_rate
+domestic_curve_rate <- terms$discount_rate
+foreign_curve_rate <- terms$discount_rate - drift
+show_inputs(list(coupons = length(times), first_coupon = coupon_dates[1], last_coupon = max(coupon_dates), domestic_curve = domestic_curve_rate, foreign_curve = foreign_curve_rate))
+```
+
+RiemannFinMath has no public schedule, so both sides take the dates above from QuantLib.
+
+## Closed form
+
+Baseline on `blackFormula`:
+
+```{r}
+#| label: baseline
+baseline_npv <- function(spot = terms$spot, volatility = terms$volatility, discount = domestic_curve_rate, foreign = foreign_curve_rate) {
+  forwards <- spot * exp((discount - foreign) * times)
+  deviations <- volatility * sqrt(times)
+  low <- terms$fx_base * (terms$subtraction + terms$floor) / terms$leverage
+  high <- terms$fx_base * (terms$subtraction + terms$cap) / terms$leverage
+  call_on <- function(strike) {
+    map2_dbl(forwards, deviations, \(f, d) QuantLib::blackFormula(QuantLib::Option_Call_get(), strike, f, d, 1))
+  }
+  rates <- terms$floor + terms$leverage / terms$fx_base * (call_on(low) - call_on(high))
+  discounts <- exp(-discount * times)
+  terms$notional * (sum(accruals * rates * discounts) + discounts[length(discounts)])
+}
+# The vega is a formula here: a finite difference on this notional has an error above the tolerance.
+baseline_vega <- function() {
+  forwards <- terms$spot * exp((domestic_curve_rate - foreign_curve_rate) * times)
+  deviations <- terms$volatility * sqrt(times)
+  low <- terms$fx_base * (terms$subtraction + terms$floor) / terms$leverage
+  high <- terms$fx_base * (terms$subtraction + terms$cap) / terms$leverage
+  black_vega <- function(strike) forwards * dnorm(log(forwards / strike) / deviations + deviations / 2) * sqrt(times)
+  terms$notional * sum(accruals * exp(-domestic_curve_rate * times) * terms$leverage / terms$fx_base * (black_vega(low) - black_vega(high)))
+}
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: riemann
+domestic <- flat_curve(valuation_date, domestic_curve_rate, "actual_360", "tonar")
+foreign <- flat_curve(valuation_date, foreign_curve_rate, "actual_360", "sofr")
+riemann_note <- function(spot = terms$spot, volatility = terms$volatility, ...) {
+  RiemannFinMath::prdc_value(
+    spot, volatility, domestic, foreign, times, accruals, terms$fx_base, terms$leverage, terms$subtraction,
+    terms$floor, terms$cap, notional = terms$notional, ...
+  )
+}
+closed <- riemann_note()
+```
+
+```{r}
+#| label: closed-results
+derivative <- function(f, x, h) (f(x + h) - f(x - h)) / (2 * h)
+parallel <- function(curve_name) closed$curve_sensitivity |> filter(curve == curve_name) |> summarise(value = sum(npv_per_bp)) |> pull(value)
+baseline_name <- "QuantLib blackFormula"
+fd_name <- "QuantLib blackFormula, finite difference"
+domestic_shift <- function(r) baseline_npv(discount = r)
+foreign_shift <- function(r) baseline_npv(foreign = r)
+bind_rows(
+  compare_values("NPV", "yen", baseline_npv(), closed$summary$npv, baseline_name),
+  compare_values("NPV", "percent of notional", 100 * baseline_npv() / terms$notional, 100 * closed$summary$npv / terms$notional, baseline_name),
+  compare_values("FX delta", "yen per yen of spot", derivative(\(s) baseline_npv(spot = s), terms$spot, 1e-3), closed$summary$fx_delta, fd_name),
+  compare_values("FX vega", "yen per percent", baseline_vega() * 0.01, closed$summary$fx_vega * 0.01, "Black vega formula in R"),
+  compare_values("Domestic curve, parallel", "yen per bp", derivative(domestic_shift, domestic_curve_rate, 1e-6) * 1e-4, parallel("domestic"), fd_name),
+  compare_values("Foreign curve, parallel", "yen per bp", derivative(foreign_shift, foreign_curve_rate, 1e-6) * 1e-4, parallel("foreign"), fd_name)
+) |>
+  show_results()
+```
+
+## Scenarios of the legacy text
+
+```{r}
+#| label: scenarios
+spots <- terms$spot * c(0.90, 0.95, 1.05, 1.10)
+volatilities <- c(0.05, 0.075, 0.125, 0.15)
+bind_rows(
+  compare_values(sprintf("Spot %.4f", spots), "yen", map_dbl(spots, \(s) baseline_npv(spot = s)), map_dbl(spots, \(s) riemann_note(spot = s)$summary$npv), baseline_name),
+  compare_values(sprintf("Volatility %.3f", volatilities), "yen", map_dbl(volatilities, \(v) baseline_npv(volatility = v)), map_dbl(volatilities, \(v) riemann_note(volatility = v)$summary$npv), baseline_name)
+) |>
+  show_results()
+```
+
+## Monte Carlo on the same note
+
+The legacy text uses 300 paths with QuantLib's generator through GaussQuant. Random numbers differ, so these rows are not judged. The note gives the distance from the closed form in standard errors.
+
+```{r}
+#| label: monte-carlo
+paths <- 1e5
+mc <- riemann_note(paths = paths, seed = 123, threads = 4L)$summary
+mc_one <- riemann_note(paths = paths, seed = 123, threads = 1L)$summary
+bind_rows(
+  not_comparable(
+    "NPV, Monte Carlo against the closed form", "yen", baseline_npv(), mc$npv,
+    sprintf("%.0f paths; %.2f standard errors from the closed form; standard error %.0f yen", paths, (mc$npv - baseline_npv()) / mc$standard_error, mc$standard_error),
+    baseline_name
+  ),
+  compare_values("NPV on 1 and on 4 threads", "yen", mc_one$npv, mc$npv, "RiemannFinMath itself")
+) |>
+  show_results()
+```
+
+## Five-year note with automatic differentiation
+
+The inputs are those of the legacy text's `torch` chapter, which rates each year with its own forward rate. The side is `torch`, which is C++ and not QuantLib. RiemannFinMath's curves have calendar node dates and `torch` has whole years, and the random numbers differ, so nothing here is judged.
+
+```{r}
+#| label: torch-inputs
+legacy <- lagrange_objects("part3_enterprise_riemann/ch07_prdc_autodiff.qmd", c("tbl_prdc_curve", "prdc_price_torch"), n_steps = 5L)
+curve_table <- legacy$tbl_prdc_curve
+knitr::kable(curve_table, digits = 4, caption = "Rates of each year")
+note <- list(notional = 1e8, spot = 150, reference_fx = 150, fixed_coupon = 0.02, leverage = 0.8, cap = 0.08, volatility = 0.12, paths = 20000L, seed = 1234L)
+show_inputs(note)
+```
+
+`torch`:
+
+```{r}
+#| label: torch-call
+library(torch)
+torch_manual_seed(note$seed)
+z <- torch_randn(c(note$paths, nrow(curve_table)))
+spot_t <- torch_tensor(note$spot, requires_grad = TRUE)
+jpy_t <- torch_tensor(curve_table$jpy_rate, requires_grad = TRUE)
+foreign_t <- torch_tensor(curve_table$foreign_rate, requires_grad = TRUE)
+volatility_t <- torch_tensor(note$volatility, requires_grad = TRUE)
+torch_npv <- legacy$prdc_price_torch(
+  fx_spot = spot_t, jpy_curve = jpy_t, foreign_curve = foreign_t, fx_vol = volatility_t, z = z,
+  notional = torch_tensor(note$notional), reference_fx = torch_tensor(note$reference_fx),
+  fixed_coupon = torch_tensor(note$fixed_coupon), leverage = torch_tensor(note$leverage),
+  coupon_cap = torch_tensor(note$cap), dt = torch_ones(nrow(curve_table))
+)
+torch_gradients <- autograd_grad(torch_npv, list(spot_t, jpy_t, foreign_t, volatility_t))
+```
+
+RiemannFinMath, with zero rates that average the yearly rates:
+
+```{r}
+#| label: torch-riemann
+tenors <- paste0(curve_table$year, "Y")
+jpy_zero <- cumsum(curve_table$jpy_rate) / curve_table$year
+foreign_zero <- cumsum(curve_table$foreign_rate) / curve_table$year
+jpy_curve <- fitted_curve("2026-01-05", jpy_zero, tenors, index = "tonar")
+foreign_five <- fitted_curve("2026-01-05", foreign_zero, tenors, index = "sofr")
+subtraction <- note$leverage - note$fixed_coupon
+five_closed <- RiemannFinMath::prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional)
+five_mc <- RiemannFinMath::prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional, paths = note$paths, seed = note$seed)
+```
+
+```{r}
+#| label: torch-results
+reason <- "Different random numbers and different times of the curve nodes"
+sum_of <- function(x, name) x$curve_sensitivity |> filter(curve == name) |> summarise(value = sum(npv_per_bp)) |> pull(value)
+bind_rows(
+  not_comparable("NPV, closed form", "yen", torch_npv$item(), five_closed$summary$npv, reason, "torch"),
+  not_comparable("NPV, Monte Carlo", "yen", torch_npv$item(), five_mc$summary$npv, sprintf("%s; standard error of RiemannFinMath %.0f yen", reason, five_mc$summary$standard_error), "torch"),
+  not_comparable("FX delta", "yen per yen of spot", torch_gradients[[1]]$item(), five_mc$summary$fx_delta, reason, "torch"),
+  not_comparable("FX vega", "yen per percent", torch_gradients[[4]]$item() * 0.01, five_mc$summary$fx_vega * 0.01, reason, "torch"),
+  not_comparable("JPY curve, total", "yen per bp", sum(as.numeric(torch_gradients[[2]])) * 1e-4, sum_of(five_mc, "domestic"), "Different risk factors: a yearly forward rate against a node's zero rate", "torch"),
+  not_comparable("Foreign curve, total", "yen per bp", sum(as.numeric(torch_gradients[[3]])) * 1e-4, sum_of(five_mc, "foreign"), "Different risk factors: a yearly forward rate against a node's zero rate", "torch")
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,       ~`Baseline (QuantLib, GaussQuant, torch)`,                       ~RiemannFinMath,
+  "Wrapper", "Instrument",  "No instrument; formula or `GaussQuant` functions in R",         "One call with the terms",
+  "Wrapper", "Curves",      "Flat handles, or a vector of yearly rates",                     "OIS curve values; flat ones must be fitted",
+  "Wrapper", "Schedule",    "`Schedule` and date vectors",                                   "Times and accruals as numbers",
+  "Core",    "Closed form", "Not provided",                                                  "Floor plus call spread on each coupon",
+  "Core",    "Monte Carlo", "QuantLib generators, or tensors in `torch`",                    "Rust threads; the result depends on the seed and not on the threads",
+  "Core",    "Derivatives", "Reverse mode in `torch`; none in QuantLib's R binding",         "Reverse mode, without `torch`",
+  "Core",    "Discounting", "A separate discount curve in GaussQuant",                       "The domestic curve only"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch12_prdc")
+```

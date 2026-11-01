@@ -1,0 +1,56 @@
+# How to read this comparison {.unnumbered}
+
+This document calls QuantLib (C++, through its R binding) and RiemannFinMath (Rust, through its R package) from R on the same inputs. Each item gives the inputs, both calls, the results, the difference, the tolerance and the verdict. The inputs and examples come from the text *LagrangeFinance*, which this document does not change or translate.
+
+```{r}
+#| label: versions
+#| echo: false
+source("R/book.R")
+tibble(
+  Component = c("QuantLib R package", "RiemannFinMath", "GaussQuant", "R"),
+  Version = c(as.character(packageVersion("QuantLib")), as.character(packageVersion("RiemannFinMath")), as.character(packageVersion("GaussQuant")), paste(R.version$major, R.version$minor, sep = "."))
+) |>
+  knitr::kable()
+```
+
+The QuantLib R package does not state its exact C++ commit, so these results are against that package and not against a known C++ commit.
+
+## Verdicts
+
+| Verdict | Meaning |
+|---|---|
+| PASS | The absolute difference is at most 0.0001 in the stated unit |
+| FAIL | The absolute difference is above 0.0001. The chapter states the cause where it is known |
+| N/C | Not comparable: the two numbers are not the same quantity under the same rules, so no verdict applies |
+
+- Numbers are shown to 4 decimals. Verdicts use the unrounded values, which are in `results/*.csv`.
+- Every row names its unit. Rates are compared in percent or in basis points, on both sides alike, and the unit changes what 0.0001 means: 0.0001 percent is 0.01 bp.
+- A quantity much smaller than 0.0001 in its unit passes trivially. The same absolute tolerance is strict on a large amount such as an NPV on a notional of 3e8.
+- This tolerance applies to this document only. The library's regression tests keep their own, stricter tolerances (`docs/specification.md`, section 5.1).
+
+## Baselines
+
+The `Baseline` column says what each RiemannFinMath number is compared with. Only `QuantLib C++` and the rows built on it are C++.
+
+| Baseline | Meaning |
+|---|---|
+| QuantLib C++ | A QuantLib class or function called directly |
+| QuantLib, finite difference | The same, bumped and revalued by the code shown |
+| QuantLib with R arithmetic | QuantLib values, combined by formulas in R |
+| GaussQuant R | An R implementation, used where QuantLib has no counterpart |
+| Legacy R function, R closed form | R code of the legacy text |
+| torch | Automatic differentiation in `torch`, whose engine is C++ |
+| RiemannFinMath itself, The input | A check within RiemannFinMath, and not a comparison between libraries |
+
+No RiemannFinMath call falls back on another library. Where RiemannFinMath lacks a calculation, the item is listed in @sec-gaps and is not approximated.
+
+## Wrapper and core
+
+Each chapter ends with a table that separates two kinds of difference:
+
+- **Wrapper**: how the function is called from R, which is the SWIG binding on one side and the extendr package on the other.
+- **Core**: how the calculation is implemented in C++ or in Rust.
+
+## Market data
+
+The 2026-10-06 OIS quotes and the bond prices of the deliverable basket are market data. They are read from the local files of the legacy text at render time, and they are neither stored in this directory nor shown. Rendering therefore needs `../../LagrangeFinance` next to this repository.

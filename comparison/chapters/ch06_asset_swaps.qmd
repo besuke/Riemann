@@ -1,0 +1,223 @@
+---
+title: "Asset swaps"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+source("R/quantlib_side.R")
+```
+
+QuantLib has no OIS asset swap instrument. As in the legacy text, the baseline is GaussQuant's R function, which evaluates the legs in R from a QuantLib curve. So the discount factors come from C++ and the asset swap formula from R. The rows compare two implementations of the formula, and GaussQuant is called only in this explicit role.
+
+## Inputs
+
+The OIS quotes are Bloomberg data, read from the local file of the legacy text and not shown. The bonds are the assumptions of the legacy text. `Following` replaces the legacy text's `ModifiedFollowing` on the OIS payments, because RiemannFinMath has only `Following` (see the OIS chapter).
+
+```{r}
+#| label: inputs
+market_date <- as.Date("2026-10-06")
+import <- new.env()
+sys.source(file.path(lagrange_root, "R", "import_data.R"), envir = import)
+market_file <- file.path(lagrange_root, "data", "raw", "market", "Bloomberg_MarketData_20261006.xlsx")
+terms <- tribble(
+  ~currency, ~coupon_rate, ~clean_price, ~fx_spot, ~basis_bp, ~index,  ~settlement_days, ~curve_day_count,   ~calendar,     ~bond_day_count,
+  "EUR",     0.035,        99.5,         165,      -20,       "estr",  2L,               "actual_360",       "target",      "thirty_360_bond_basis",
+  "USD",     0.050,        99.5,         150,      -30,       "sofr",  2L,               "actual_360",       "us_sofr",     "thirty_360_bond_basis",
+  "JPY",     0.030,        99.5,         1,        0,         "tonar", 2L,               "actual_365_fixed", "japan",       "actual_365_fixed",
+  "GBP",     0.050,        99.5,         195,      -25,       "sonia", 0L,               "actual_365_fixed", "uk_exchange", "thirty_360_bond_basis"
+)
+quotes <- map(set_names(terms$currency), \(ccy) {
+  import$import_ois_curves(path = market_file, currency = ccy, marketdate = market_date, quote = "mid") |>
+    filter(instrument_type %in% c("spot_ois", "deposit")) |>
+    select(tenor, rate)
+})
+knitr::kable(terms, caption = "Assumptions and conventions", digits = 4)
+show_inputs(list(issue = "2026-09-30", maturity = "2036-09-30", tenor = "6M", settlement_days = 2L, redemption = 100, overnight_leg = "semiannual, no payment lag"))
+```
+
+## OIS asset swap
+
+Baseline:
+
+```{r}
+#| label: baseline-native
+gaussquant_curve <- function(currency, rates = quotes[[currency]]$rate) {
+  GaussQuant::ir_build_ois_curve_GQH(
+    curve_data = tibble(kind = "ois", tenor = quotes[[currency]]$tenor, rate = rates),
+    trade_date = as.character(market_date), currency = currency, verbose = FALSE, curve_type = "log_cubic_discount",
+    reference = "evaluation", payment_frequency = "Annual", payment_lag = 0L, payment_convention = "Following", max_quote_error_bp = 1e-4
+  )
+}
+gaussquant_bond <- function(currency, curve) {
+  row <- terms |> filter(currency == .env$currency)
+  ql_set_evaluation_date(market_date)
+  ql_fixed_bond(
+    "2026-09-30", "2036-09-30", row$coupon_rate, curve$calendar,
+    if (currency == "JPY") QuantLib::Actual365Fixed() else QuantLib::Thirty360("BondBasis")
+  )
+}
+baseline_curves <- map(set_names(terms$currency), gaussquant_curve)
+baseline_bonds <- imap(baseline_curves, \(curve, currency) gaussquant_bond(currency, curve))
+baseline_native <- map(terms$currency, \(ccy) {
+  GaussQuant::ois_asset_swap_GQL(
+    bond = baseline_bonds[[ccy]], clean_price = 99.5, ois_curve = baseline_curves[[ccy]],
+    payment_frequency = "Semiannual", payment_lag = 0L
+  )$valuation
+}) |>
+  set_names(terms$currency)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: riemann-native
+riemann_curve <- function(currency, rates = quotes[[currency]]$rate) {
+  row <- terms |> filter(currency == .env$currency)
+  RiemannFinMath::build_ois_curve(
+    market_date, market_date, row$index, row$curve_day_count,
+    RiemannFinMath::ois_instruments(quotes[[currency]]$tenor, rates, row$settlement_days, 1L, 0L)
+  )
+}
+riemann_bond <- function(currency) {
+  row <- terms |> filter(currency == .env$currency)
+  RiemannFinMath::fixed_rate_bond(
+    settlement_days = 2L, face_amount = 100, effective_date = "2026-09-30", termination_date = "2036-09-30", tenor = "6M",
+    calendar = row$calendar, convention = "unadjusted", termination_convention = "unadjusted", rule = "backward",
+    end_of_month = FALSE, coupon_rate = row$coupon_rate, day_count = row$bond_day_count, payment_convention = "following",
+    redemption = 100, issue_date = "2026-09-30"
+  )
+}
+riemann_curves <- map(set_names(terms$currency), riemann_curve)
+riemann_bonds <- map(set_names(terms$currency), riemann_bond)
+riemann_native <- map(terms$currency, \(ccy) {
+  RiemannFinMath::ois_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], market_date)
+}) |>
+  set_names(terms$currency)
+```
+
+```{r}
+#| label: results-native
+native_rows <- function(ccy) {
+  b <- baseline_native[[ccy]]
+  r <- riemann_native[[ccy]]
+  bind_rows(
+    compare_values(paste(ccy, "accrued"), "per 100", b$accrued_per_100, r$accrued, "GaussQuant R on QuantLib curve"),
+    compare_values(paste(ccy, "fair spread"), "bp", b$fair_spread_bp, r$fair_spread_bp, "GaussQuant R on QuantLib curve"),
+    compare_values(paste(ccy, "spread annuity"), "per 100, per unit of spread", b$spread_annuity, r$spread_annuity, "GaussQuant R on QuantLib curve"),
+    compare_values(paste(ccy, "NPV"), "per 100", b$npv, r$npv, "GaussQuant R on QuantLib curve"),
+    compare_values(paste(ccy, "bond leg"), "per 100", b$bond_leg_pv, r$bond_leg_pv, "GaussQuant R on QuantLib curve"),
+    compare_values(paste(ccy, "overnight leg"), "per 100", b$overnight_leg_pv, r$overnight_leg_pv, "GaussQuant R on QuantLib curve"),
+    compare_values(paste(ccy, "principal"), "per 100", b$principal_pv, r$principal_pv, "GaussQuant R on QuantLib curve"),
+    compare_values(paste(ccy, "upfront"), "per 100", b$upfront_pv, r$upfront_pv, "GaussQuant R on QuantLib curve")
+  )
+}
+map(terms$currency, native_rows) |>
+  list_rbind() |>
+  show_results()
+```
+
+## Yen-converted asset swap
+
+```{r}
+#| label: yen-calls
+foreign <- setdiff(terms$currency, "JPY")
+baseline_yen_call <- function(ccy, fx_spot, basis_bp) {
+  GaussQuant::ois_asset_swap_jpy_basis_GQL(
+    baseline_bonds[[ccy]], 99.5, baseline_curves[[ccy]], baseline_curves[["JPY"]], fx_spot, basis_bp, currency = ccy
+  )$valuation
+}
+riemann_yen_call <- function(ccy, fx_spot, basis_bp) {
+  RiemannFinMath::yen_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], riemann_curves[["JPY"]], fx_spot, basis_bp, market_date)
+}
+yen_terms <- terms |> filter(currency %in% foreign)
+baseline_yen <- pmap(list(yen_terms$currency, yen_terms$fx_spot, yen_terms$basis_bp), baseline_yen_call) |> set_names(yen_terms$currency)
+riemann_yen <- pmap(list(yen_terms$currency, yen_terms$fx_spot, yen_terms$basis_bp), riemann_yen_call) |> set_names(yen_terms$currency)
+```
+
+```{r}
+#| label: yen-results
+map(foreign, \(ccy) {
+  b <- baseline_yen[[ccy]]
+  r <- riemann_yen[[ccy]]
+  baseline_name <- "GaussQuant R on QuantLib curve"
+  bind_rows(
+    compare_values(paste(ccy, "native spread"), "bp", b$native_asw_bp, r$native_asw_bp, baseline_name),
+    compare_values(paste(ccy, "yen spread"), "bp", b$jpy_asw_bp, r$yen_asw_bp, baseline_name),
+    compare_values(paste(ccy, "simple sum"), "bp", b$simple_sum_bp, r$simple_sum_bp, baseline_name),
+    compare_values(paste(ccy, "calibrated discount spread"), "bp", b$calibrated_discount_spread_bp, r$calibrated_discount_spread_bp, baseline_name),
+    compare_values(paste(ccy, "NPV"), "yen per 100 of foreign notional", b$npv_jpy, r$npv_yen, baseline_name),
+    compare_values(paste(ccy, "hedged bond"), "yen per 100 of foreign notional", b$hedged_bond_pv_jpy, r$hedged_bond_pv_yen, baseline_name),
+    compare_values(paste(ccy, "base yen leg"), "yen per 100 of foreign notional", b$jpy_base_leg_pv, r$yen_base_leg_pv, baseline_name),
+    compare_values(paste(ccy, "upfront"), "yen per 100 of foreign notional", b$upfront_pv_jpy, r$upfront_pv_yen, baseline_name),
+    compare_values(paste(ccy, "spread annuity"), "yen, per unit of spread", b$spread_annuity_jpy, r$spread_annuity_yen, baseline_name)
+  )
+}) |>
+  list_rbind() |>
+  show_results()
+```
+
+The scenarios of the legacy text, for the USD bond:
+
+```{r}
+#| label: yen-scenarios
+scenarios <- bind_rows(tibble(fx_spot = 150, basis_bp = c(-50, -30, -10, 0)), tibble(fx_spot = c(140, 160), basis_bp = -30))
+compare_values(
+  sprintf("USD, FX %.0f, basis %.0f bp", scenarios$fx_spot, scenarios$basis_bp), "bp",
+  map2_dbl(scenarios$fx_spot, scenarios$basis_bp, \(x, y) baseline_yen_call("USD", x, y)$jpy_asw_bp),
+  map2_dbl(scenarios$fx_spot, scenarios$basis_bp, \(x, y) riemann_yen_call("USD", x, y)$yen_asw_bp),
+  "GaussQuant R on QuantLib curve"
+) |>
+  show_results()
+```
+
+## Spread sensitivity to the quotes
+
+The baseline rebuilds the QuantLib curve with a bump of 1e-6 and repeats the formula. RiemannFinMath differentiates. JPY only, for the running time.
+
+```{r}
+#| label: sensitivity
+h <- 1e-6
+spread_on <- function(rates) {
+  GaussQuant::ois_asset_swap_GQL(
+    baseline_bonds[["JPY"]], 99.5, gaussquant_curve("JPY", rates), payment_frequency = "Semiannual", payment_lag = 0L
+  )$valuation$fair_spread_bp
+}
+base_rates <- quotes[["JPY"]]$rate
+baseline_sensitivity <- map_dbl(seq_along(base_rates), \(i) {
+  move <- function(sign) {
+    rates <- base_rates
+    rates[i] <- rates[i] + sign * h
+    spread_on(rates)
+  }
+  (move(1) - move(-1)) / (2 * h) * 1e-4
+})
+riemann_sensitivity <- RiemannFinMath::asset_swap_quote_sensitivity(riemann_bonds[["JPY"]], 99.5, riemann_curves[["JPY"]], market_date)
+compare_values(
+  paste("Quote", quotes[["JPY"]]$tenor), "bp of spread per bp of quote",
+  baseline_sensitivity, riemann_sensitivity$spread_bp_per_quote_bp, "GaussQuant R, finite difference"
+) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,            ~`Baseline (GaussQuant on QuantLib)`,                ~RiemannFinMath,
+  "Wrapper", "Curve argument",   "A list holding the curve, the index and the quotes", "A `riemann_ois_curve` value",
+  "Wrapper", "Frequency",        "A name, `\"Semiannual\"`",                          "A count, `2L`",
+  "Wrapper", "Result",           "A list with a `valuation` table",                   "One table, one row per price",
+  "Core",    "Where it runs",    "Legs evaluated in R, curves in C++",                "Everything in Rust",
+  "Core",    "Model",            "One constant spread on the foreign discounting",    "The same simplified model",
+  "Core",    "Sensitivity",      "Not available; finite difference by the caller",    "Automatic differentiation and the implicit function theorem"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch06_asset_swaps")
+```

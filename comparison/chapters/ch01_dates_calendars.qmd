@@ -1,0 +1,102 @@
+---
+title: "Dates and calendars"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+## Calendars
+
+```{r}
+#| label: calendar-inputs
+pairs <- tribble(
+  ~riemann_name,      ~quantlib_calendar,
+  "japan",            list(QuantLib::Japan()),
+  "target",           list(QuantLib::TARGET()),
+  "us_sofr",          list(QuantLib::UnitedStates("SOFR")),
+  "uk_exchange",      list(QuantLib::UnitedKingdom("Exchange")),
+  "weekends_only",    list(QuantLib::WeekendsOnly())
+)
+from <- "2020-01-01"
+to <- "2040-12-31"
+show_inputs(list(calendars = pairs$riemann_name, from = from, to = to))
+```
+
+QuantLib:
+
+```{r}
+#| label: calendar-quantlib
+quantlib_holidays <- function(calendar) {
+  QuantLib::Calendar_holidayList(calendar, ql_date(from), ql_date(to), FALSE) |>
+    ql_date_vector() |>
+    map(ql_iso) |>
+    list_c()
+}
+quantlib_lists <- map(pairs$quantlib_calendar, \(x) quantlib_holidays(x[[1]]))
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: calendar-riemann
+riemann_lists <- map(pairs$riemann_name, \(name) RiemannFinMath::holidays(name, from, to))
+```
+
+```{r}
+#| label: calendar-results
+pmap(list(pairs$riemann_name, quantlib_lists, riemann_lists), \(name, q, r) {
+  compare_values(
+    paste0(name, ": holidays only in one list"), "dates",
+    0, length(setdiff(q, r)) + length(setdiff(r, q))
+  )
+}) |>
+  list_rbind() |>
+  show_results()
+```
+
+Agreement here is agreement with QuantLib's rules, not with actual market holidays.
+
+## Business days
+
+```{r}
+#| label: business-day-inputs
+dates <- seq(as.Date("2026-01-01"), as.Date("2026-12-31"), by = "day")
+show_inputs(list(calendar = "japan", from = min(dates), to = max(dates)))
+```
+
+```{r}
+#| label: business-day-calls
+quantlib_flags <- map_lgl(dates, \(d) QuantLib::Calendar_isBusinessDay(QuantLib::Japan(), ql_date(d)))
+riemann_flags <- RiemannFinMath::is_business_day("japan", dates)
+```
+
+```{r}
+#| label: business-day-results
+compare_values("japan 2026: days that differ", "days", 0, sum(quantlib_flags != riemann_flags)) |>
+  show_results()
+```
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,            ~QuantLib,                                        ~RiemannFinMath,
+  "Wrapper", "Date argument",    "`Date` object made from day, month name, year",  "`Date` or ISO string",
+  "Wrapper", "Calendar argument", "Constructor call such as `UnitedStates(\"SOFR\")`", "Name such as `\"us_sofr\"`",
+  "Wrapper", "Date vector",      "Loop over a SWIG `DateVector`",                  "An R `Date` vector",
+  "Core",    "Rules",            "Calendar classes with virtual `isBusinessDay`",  "Values and `match` over the same rules",
+  "Core",    "State",            "None for calendars, except added holidays",      "None; added holidays do not exist"
+) |>
+  show_design()
+```
+
+The full calendar check is in the repository: every calendar of QuantLib C++ v1.42 was compared on every date (`docs/spec_dates_calendars.md`, section 3.5).
+
+```{r}
+#| label: finish
+finish_chapter("ch01_dates_calendars")
+```

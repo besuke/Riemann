@@ -1,0 +1,52 @@
+project:
+  type: book
+  output-dir: _book
+  execute-dir: project
+
+book:
+  title: "QuantLib and RiemannFinMath: A Comparison from R"
+  subtitle: "C++ and Rust on the same inputs: calls, results, differences and verdicts"
+  author: "Eiichi Horigome"
+  chapters:
+    - index.qmd
+    - part: "Dates, bonds and curves"
+      chapters:
+        - chapters/ch01_dates_calendars.qmd
+        - chapters/ch02_fixed_rate_bonds.qmd
+        - chapters/ch03_japanese_bond_yields.qmd
+        - chapters/ch04_ois_curves.qmd
+        - chapters/ch05_curve_risk.qmd
+    - part: "Bond relative value"
+      chapters:
+        - chapters/ch06_asset_swaps.qmd
+        - chapters/ch07_bond_futures.qmd
+    - part: "Options and credit"
+      chapters:
+        - chapters/ch08_options.qmd
+        - chapters/ch09_credit_default_swaps.qmd
+    - part: "Rate models and exotics"
+      chapters:
+        - chapters/ch10_sabr.qmd
+        - chapters/ch11_hull_white.qmd
+        - chapters/ch12_prdc.qmd
+    - part: "Computation"
+      chapters:
+        - chapters/ch13_parallel_batches.qmd
+  appendices:
+    - chapters/appendix_a_api_map.qmd
+    - chapters/appendix_b_reconciliation.qmd
+    - chapters/appendix_c_gaps.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: false
+    number-sections: true
+
+execute:
+  eval: true
+  echo: true
+  warning: false
+  message: false
+  error: false

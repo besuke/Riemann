@@ -1,0 +1,211 @@
+---
+title: "Hull-White"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+```
+
+## Options on a zero-coupon bond
+
+The QuantLib R binding gives no direct price of this option. The baseline is the closed form of the legacy text, in R.
+
+```{r}
+#| label: option-inputs
+legacy <- lagrange_objects(
+  "part2_quantive_riemann/ch06_irs_calibration.qmd",
+  c("compute_hw_bond_option_price_LRL", "hw_initial_zero_rate", "hw_reference_a", "hw_reference_sigma", "tbl_bond_option_market")
+)
+options_table <- legacy$tbl_bond_option_market |> select(option_maturity, bond_maturity, strike)
+knitr::kable(options_table, digits = 4, caption = "Options")
+curve_date <- "2026-11-02"
+show_inputs(list(flat_zero_rate = legacy$hw_initial_zero_rate, mean_reversion = legacy$hw_reference_a, volatility = legacy$hw_reference_sigma, curve_date = curve_date))
+```
+
+```{r}
+#| label: option-calls
+baseline_options <- pmap_dbl(options_table, \(option_maturity, bond_maturity, strike) {
+  legacy$compute_hw_bond_option_price_LRL(option_maturity, bond_maturity, strike, legacy$hw_reference_a, legacy$hw_reference_sigma, legacy$hw_initial_zero_rate)
+})
+option_curve <- flat_curve(curve_date, legacy$hw_initial_zero_rate)
+riemann_options <- RiemannFinMath::hull_white_bond_option(
+  "call", options_table$strike, options_table$option_maturity, options_table$bond_maturity,
+  legacy$hw_reference_a, legacy$hw_reference_sigma, option_curve
+)
+```
+
+```{r}
+#| label: option-results
+compare_values(
+  sprintf("Option %.1fy on bond %.0fy", options_table$option_maturity, options_table$bond_maturity), "bp of a bond worth 1",
+  1e4 * baseline_options, 1e4 * riemann_options, "R closed form"
+) |>
+  show_results()
+```
+
+## Swaptions
+
+The legacy text describes the extension to swaptions without an example. These inputs use its parameters, on a notional of 100.
+
+```{r}
+#| label: swaption-inputs
+swaption <- list(today = curve_date, start_days = 730L, years = 5L, fixed_rate = 0.03, nominal = 100, rate = legacy$hw_initial_zero_rate, a = legacy$hw_reference_a, sigma = legacy$hw_reference_sigma)
+show_inputs(c(swaption, list(type = "payer", schedule = "annual, no calendar, Actual/365 (Fixed)")))
+```
+
+QuantLib:
+
+```{r}
+#| label: swaption-quantlib
+dc <- QuantLib::Actual365Fixed()
+ql_set_evaluation_date(swaption$today)
+today <- ql_date(swaption$today)
+start <- ql_date(as.Date(swaption$today) + swaption$start_days)
+end <- ql_date(as.Date(swaption$today) + swaption$start_days + 365L * swaption$years)
+handle <- QuantLib::YieldTermStructureHandle(QuantLib::FlatForward(today, swaption$rate, dc, "Continuous"))
+schedule <- QuantLib::Schedule(start, end, QuantLib::Period("Annual"), QuantLib::NullCalendar(), "Unadjusted", "Unadjusted", "Backward", FALSE)
+index <- QuantLib::IborIndex("Synthetic1Y", QuantLib::Period("Annual"), 0L, QuantLib::JPYCurrency(), QuantLib::NullCalendar(), "Unadjusted", FALSE, dc, handle)
+ql_swap <- QuantLib::VanillaSwap(QuantLib::Swap_Payer_get(), swaption$nominal, schedule, swaption$fixed_rate, dc, schedule, index, 0, dc)
+ql_european <- function(a, sigma) {
+  option <- QuantLib::Swaption(ql_swap, QuantLib::EuropeanExercise(start))
+  QuantLib::Instrument_setPricingEngine(option, QuantLib::JamshidianSwaptionEngine(QuantLib::HullWhite(handle, a, sigma)))
+  option$NPV()
+}
+schedule_serials <- map_int(seq_len(QuantLib::Schedule_size(schedule)) - 1L, \(i) {
+  as.integer(QuantLib::Date_serialNumber(QuantLib::Schedule_date(schedule, i)))
+})
+exercise_dates <- do.call(QuantLib::DateVector, list())
+walk(head(schedule_serials, -1), \(s) QuantLib::DateVector_push_back(exercise_dates, QuantLib::Date(s)))
+ql_bermudan <- function(steps) {
+  option <- QuantLib::Swaption(ql_swap, QuantLib::BermudanExercise(exercise_dates))
+  QuantLib::Instrument_setPricingEngine(option, QuantLib::TreeSwaptionEngine(QuantLib::HullWhite(handle, swaption$a, swaption$sigma), steps))
+  option$NPV()
+}
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: swaption-riemann
+days <- schedule_serials - as.integer(QuantLib::Date_serialNumber(today))
+times <- days / 365
+payment_times <- times[-1]
+coupons <- swaption$nominal * swaption$fixed_rate * diff(times) # amounts, not rates
+riemann_curve <- flat_curve(swaption$today, swaption$rate)
+riemann_european <- RiemannFinMath::hull_white_swaption(TRUE, times[1], payment_times, coupons, swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
+riemann_bermudan <- RiemannFinMath::hull_white_bermudan_swaption(TRUE, times[1], payment_times, coupons, head(times, -1), swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
+```
+
+```{r}
+#| label: swaption-results
+h <- 1e-6
+tree <- map_dbl(c(500L, 1000L, 2000L), ql_bermudan)
+bind_rows(
+  compare_values("European value", "per 100", ql_european(swaption$a, swaption$sigma), riemann_european$value),
+  compare_values(
+    "European, derivative in mean reversion", "per 100, per percent",
+    (ql_european(swaption$a + h, swaption$sigma) - ql_european(swaption$a - h, swaption$sigma)) / (2 * h) * 0.01,
+    riemann_european$d_mean_reversion * 0.01, "QuantLib, finite difference"
+  ),
+  compare_values(
+    "European, derivative in volatility", "per 100, per percent",
+    (ql_european(swaption$a, swaption$sigma + h) - ql_european(swaption$a, swaption$sigma - h)) / (2 * h) * 0.01,
+    riemann_european$d_volatility * 0.01, "QuantLib, finite difference"
+  ),
+  compare_values("Bermudan value, tree of 1000 steps", "per 100", tree[2], riemann_bermudan),
+  compare_values("Bermudan value, tree of 2000 steps", "per 100", tree[3], riemann_bermudan),
+  not_comparable("Bermudan: the tree from 500 to 1000 steps", "per 100", tree[1], tree[2], "The tree against itself: how far the baseline still moves", "QuantLib tree itself"),
+  not_comparable("Bermudan: the tree from 1000 to 2000 steps", "per 100", tree[2], tree[3], "The tree against itself: how far the baseline still moves", "QuantLib tree itself")
+) |>
+  show_results()
+```
+
+The Bermudan methods are different: QuantLib rolls back on a trinomial tree, and RiemannFinMath takes an exact conditional expectation on a state grid at each step. A FAIL in these rows is a numerical difference between two methods. The rows on the tree against itself show how much of it is the tree's own convergence error.
+
+## Callable bond
+
+QuantLib has a callable bond on a tree, but it is a different calculation from the legacy text. The baseline is the legacy text's own R function, with the same state grid and quadrature.
+
+```{r}
+#| label: callable-inputs
+callable <- lagrange_objects(
+  "part2_quantive_riemann/ch08_early_redemption_models.qmd",
+  c("notional", "coupon_rate", "period_years", "maturity_years", "flat_zero_rate", "first_call_year", "call_price", "tbl_cashflows",
+    "compute_normal_quadrature_LRL", "compute_hw_shift_integral_LRL", "compute_discounted_step_LRL", "compute_callable_bond_LRL")
+)
+show_inputs(list(
+  notional = callable$notional, coupon_rate = callable$coupon_rate, period_years = callable$period_years, maturity_years = callable$maturity_years,
+  flat_zero_rate = callable$flat_zero_rate, first_call_year = callable$first_call_year, call_price = callable$call_price,
+  mean_reversion = 0.15, volatility = 0.012
+))
+```
+
+```{r}
+#| label: callable-calls
+flows <- callable$tbl_cashflows
+baseline_callable <- function(volatility, points = 321L, nodes = 24L) {
+  callable$compute_callable_bond_LRL(
+    flows, flat_rate = callable$flat_zero_rate, mean_reversion = 0.15, volatility = volatility,
+    number_of_grid_points = points, grid_limit = 0.13, quadrature_nodes = nodes
+  )
+}
+callable_curve <- flat_curve(curve_date, callable$flat_zero_rate)
+riemann_callable <- function(volatility, points = 321L, nodes = 24L) {
+  RiemannFinMath::hull_white_callable_bond(
+    flows$payment_time, flows$coupon, flows$principal_at_maturity, flows$call_principal,
+    0.15, volatility, callable_curve, points = points, limit = 0.13, nodes = nodes
+  )
+}
+```
+
+```{r}
+#| label: callable-results
+base_b <- baseline_callable(0.012)
+base_r <- riemann_callable(0.012)
+scenarios <- tibble(volatility = c(0.006, 0.02))
+grids <- tibble(points = c(161L, 641L), nodes = c(16L, 32L))
+bind_rows(
+  compare_values("Bullet", "per 100", base_b$bullet_price, base_r$bullet, "Legacy R function"),
+  compare_values("Callable", "per 100", base_b$callable_price, base_r$callable, "Legacy R function"),
+  compare_values("Value of the issuer's call", "per 100", base_b$issuer_call_value, base_r$issuer_call_value, "Legacy R function"),
+  compare_values(
+    sprintf("Callable, volatility %.3f", scenarios$volatility), "per 100",
+    map_dbl(scenarios$volatility, \(v) baseline_callable(v)$callable_price),
+    map_dbl(scenarios$volatility, \(v) riemann_callable(v)$callable), "Legacy R function"
+  ),
+  compare_values(
+    sprintf("Callable, grid %d, nodes %d", grids$points, grids$nodes), "per 100",
+    map2_dbl(grids$points, grids$nodes, \(p, n) baseline_callable(0.012, p, n)$callable_price),
+    map2_dbl(grids$points, grids$nodes, \(p, n) riemann_callable(0.012, p, n)$callable), "Legacy R function"
+  )
+) |>
+  show_results()
+```
+
+## Not available
+
+Hull-White calibration, the exercise decisions of the callable bond, the simulated short-rate paths, HJM, BGM/LMM, FMM and MBS are in the legacy text and not in RiemannFinMath. See @sec-gaps.
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,        ~QuantLib,                                                ~RiemannFinMath,
+  "Wrapper", "Swap",         "`Schedule`, an index, a `VanillaSwap`, an exercise, an engine", "Times and coupons as vectors",
+  "Wrapper", "Dates",        "Dates through the curve's day counter",                  "Times in years from the curve's date",
+  "Wrapper", "Fixed leg",    "A rate and a day counter",                               "Coupon amounts, in the units of the notional",
+  "Core",    "European",     "Jamshidian; searches `r*` to 1e-8",                      "Jamshidian; searches to 1e-12 and refines by Newton",
+  "Core",    "Bermudan",     "Trinomial tree; converges with the steps",               "Exact conditional expectation on a state grid",
+  "Core",    "Model values", "The model holds its parameters and observes the curve",  "Parameters are arguments; no model object",
+  "Core",    "Derivatives",  "Not exposed",                                            "Automatic differentiation for the European swaption"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch11_hull_white")
+```

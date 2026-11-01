@@ -1,0 +1,77 @@
+# All results {#sec-results}
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+all_results <- list.files("results", pattern = "^ch.*csv$", full.names = TRUE) |>
+  map(\(f) read_csv(f, show_col_types = FALSE, col_types = cols(note = col_character()))) |>
+  list_rbind()
+```
+
+## Verdicts by chapter
+
+```{r}
+#| label: summary
+#| echo: false
+all_results |>
+  count(Chapter = chapter, verdict) |>
+  pivot_wider(names_from = verdict, values_from = n, values_fill = 0L) |>
+  knitr::kable()
+```
+
+## Rows that failed
+
+```{r}
+#| label: failures
+#| echo: false
+all_results |>
+  filter(verdict == "FAIL") |>
+  transmute(
+    Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
+    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value), Difference = format_4(difference)
+  ) |>
+  knitr::kable()
+```
+
+## Largest passing difference by chapter
+
+The tables show 4 decimals, so this is the one place with more digits. It shows how far inside the tolerance each chapter is.
+
+```{r}
+#| label: largest
+#| echo: false
+all_results |>
+  filter(verdict == "PASS") |>
+  summarise(`Largest absolute difference` = formatC(max(abs(difference)), format = "e", digits = 2), .by = chapter) |>
+  rename(Chapter = chapter) |>
+  knitr::kable()
+```
+
+## Rows without a verdict
+
+```{r}
+#| label: not-comparable
+#| echo: false
+all_results |>
+  filter(verdict == "N/C") |>
+  transmute(
+    Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
+    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value), Reason = note
+  ) |>
+  knitr::kable()
+```
+
+## Every row
+
+```{r}
+#| label: every-row
+#| echo: false
+all_results |>
+  transmute(
+    Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
+    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value),
+    Difference = format_4(difference), Tolerance = format_4(tolerance), Verdict = verdict
+  ) |>
+  knitr::kable()
+```
