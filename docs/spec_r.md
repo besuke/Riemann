@@ -1,6 +1,6 @@
 # R の入口の仕様（P4）
 
-R から Riemann を直接呼ぶ入口である。R パッケージ名は `RiemannFinMath`、場所は `crates/riemann-r`。プロジェクト名と Rust の crate 名は Riemann（`riemann`、`riemann-r`）のままである。金融の計算はすべて Rust の `riemann` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
+R から RiemannFinMath を直接呼ぶ入口である。場所は `crates/riemann-r`。リポジトリ名と Rust の crate 名（`riemann`、`riemann-r`）は変えていない。金融の計算はすべて Rust の `riemann` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
 
 | 区分 | 状態 |
 |---|---|

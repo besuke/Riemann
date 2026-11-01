@@ -1,8 +1,8 @@
 # RiemannFinMath（R パッケージ）
 
-Rust の金融計算ライブラリー Riemann を、R から直接呼ぶパッケージです。計算はすべて Rust にあり、R は日付の変換と表の組み立てだけを行います。仕様は `docs/spec_r.md` にあります。
+Rust の金融計算ライブラリー RiemannFinMath を、R から直接呼ぶパッケージです。計算はすべて Rust にあり、R は日付の変換と表の組み立てだけを行います。仕様は `docs/spec_r.md` にあります。
 
-プロジェクト名と Rust の crate 名は Riemann（`riemann`、`riemann-r`）で、R パッケージ名だけが `RiemannFinMath` です。CRAN には公開していません。
+リポジトリ名と Rust の crate 名は `riemann`、`riemann-r` のままです。CRAN には公開していません。
 
 ## 導入
 

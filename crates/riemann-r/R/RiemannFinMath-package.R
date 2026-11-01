@@ -1,4 +1,4 @@
-#' RiemannFinMath: bond and OIS curve calculations from the Riemann Rust library
+#' RiemannFinMath: bond and OIS curve calculations from a Rust library
 #'
 #' The calculations are in Rust. The R functions convert dates and return tibbles. There is no
 #' global state such as an evaluation date: dates, calendars and conventions are arguments.

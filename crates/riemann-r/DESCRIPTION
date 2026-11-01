@@ -1,12 +1,12 @@
 Package: RiemannFinMath
 Type: Package
-Title: Bond and OIS Curve Calculations from the Riemann Rust Library
+Title: Bond and OIS Curve Calculations from a Rust Library
 Version: 0.1.0
 Authors@R: c(
-    person("Eiichi", "Horigome", role = c("aut", "cre"), email = "besuke.poripori@gmail.com"),
+    person("Eiichi", "Horigome", role = c("aut", "cre", "cph"), email = "besuke.poripori@gmail.com"),
     person("The QuantLib authors", role = "cph", comment = "Rust code derived from QuantLib; see inst/THIRD_PARTY_NOTICES"),
     person("The authors of the bundled Rust crates", role = "cph", comment = "Bundled in src/rust/vendor.tar.xz of a source package"))
-Description: R entry point of the Riemann financial library. The calculations are
+Description: R entry point of the RiemannFinMath financial library. The calculations are
     in Rust; the R functions convert dates and return tibbles. Dates, calendars and
     conventions follow QuantLib, and everything is passed explicitly.
 License: MIT + file LICENSE | Apache License 2.0

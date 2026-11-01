@@ -4,7 +4,7 @@
 \name{RiemannFinMath-package}
 \alias{RiemannFinMath}
 \alias{RiemannFinMath-package}
-\title{RiemannFinMath: bond and OIS curve calculations from the Riemann Rust library}
+\title{RiemannFinMath: bond and OIS curve calculations from a Rust library}
 \description{
 The calculations are in Rust. The R functions convert dates and return tibbles. There is no
 global state such as an evaluation date: dates, calendars and conventions are arguments.
@@ -42,11 +42,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Eiichi Horigome \email{besuke.poripori@gmail.com}
+\strong{Maintainer}: Eiichi Horigome \email{besuke.poripori@gmail.com} [copyright holder]
 
 Authors:
 \itemize{
-  \item Eiichi Horigome \email{besuke.poripori@gmail.com}
+  \item Eiichi Horigome \email{besuke.poripori@gmail.com} [copyright holder]
 }
 
 Other contributors:

@@ -1,4 +1,4 @@
-# Riemann
+# RiemannFinMath（リポジトリ名・crate 名は Riemann）
 
 Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node 版（napi-rs）→ ブラウザー版（wasm-bindgen）の順に呼べるようにする。ユーザーとのやり取りは日本語。
 
@@ -24,7 +24,8 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 - **日本式債券計算の規則**：`docs/spec_bonds.md` 5.1 節の規則を採用し、GaussQuant の `R/bond_yen_GQL.R`（コミット `4ff081c`）と照合する。文書では計算規則を直接説明し、VBA を根拠にしない（「VBA 互換」などと書かない）。二次情報の「市場慣行」だけを根拠に別の規則へ変えない。2 月 29 日の応当日が平年になる場合は 2 月 28 日とし、その期間を 1 年とする（例：2024-02-29 から 2025-02-28 は残存 1 年）。この規則は日本式債券計算だけのもので、QuantLib 互換の日付・日数計算には適用しない。
 - **新興国カレンダーの用途**：当面は債券の受渡日と利払日の営業日判定に使う。スワップの規約や金利カーブには広げない。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限定する。
 - **カレンダーの照合の正**：QuantLib C++ v1.42 をビルドした値（`tools/golden/p1_all_calendars.sh`）。R パッケージは突き合わせに使う（`Germany::Euwax` と `Indonesia::IDX` は R から作れない）。
-- **R パッケージ名**：`RiemannFinMath`（CRAN の `Riemann` と衝突するため）。プロジェクト名と Rust の crate 名は Riemann（`riemann`、`riemann-r`）のまま。CRAN への公開申請はしていない。
+- **正式名称**：RiemannFinMath（R パッケージ名も同じ）。リポジトリ名、crate 名（`riemann`、`riemann-r`）、API 名は変えない。CRAN への公開申請はしていない。
+- **著作権とライセンス**：著作権者は Eiichi Horigome、ライセンスは MIT と Apache-2.0 の併用。QuantLib 由来の部分は元の著作権者のまま。配布は社内のみの想定。リポジトリは現在公開で、非公開化は保留。
 - **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。`Operand` trait は AD-1 の段階で入れる。
 - **ライセンス**：MIT と Apache-2.0 の併用。QuantLib から移したコードは、著作権表示をソースから写し（記憶で書かない）、ファイルの先頭と `THIRD_PARTY_NOTICES` に載せる。
 
