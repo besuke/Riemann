@@ -217,11 +217,47 @@ map(market_pairs, \(p) {
     compare_max(
       paste(p$currency, "effect of ModifiedFollowing on discount"), "discount factor, largest",
       ql_discount(p$modified, market_dates), RiemannFinMath::discount(p$riemann, market_dates),
-      note = "Different payment conventions; a FAIL here is the effect of the missing argument"
+      note = "Different payment conventions: the difference is the effect of the missing argument"
     )
   )
 }) |>
   list_rbind() |>
+  show_results()
+```
+
+## Against LagrangeFinance
+
+The legacy text keeps the TONAR curve as a table of dates, discount factors and zero rates, on a log-linear curve. For the SOFR curve and the 2026-10-06 curves it keeps no comparable table, so only the quote errors are judged there.
+
+```{r}
+#| label: lagrange
+grid_keys <- lagrange_values$key[str_starts(lagrange_values$key, "tona.discount.")]
+grid_dates <- as.Date(str_remove(grid_keys, "tona.discount."))
+# The first row is the curve's date, where the legacy table defines the zero rate as 0.
+reference_key <- paste0("tona.zero_pct.", tona_date)
+grid_keys <- grid_keys[grid_dates > as.Date(tona_date)]
+grid_dates <- grid_dates[grid_dates > as.Date(tona_date)]
+fair_dates_riemann <- RiemannFinMath::discount(tona_riemann$log_linear, fair_dates)
+bind_rows(
+  against_lagrange_max("TONAR discount factors, curve table", "discount factor, largest", grid_keys, RiemannFinMath::discount(tona_riemann$log_linear, grid_dates)),
+  against_lagrange_max(
+    "TONAR zero rates, curve table", "percent, largest", str_replace(grid_keys, "discount", "zero_pct"),
+    100 * RiemannFinMath::zero_rate(tona_riemann$log_linear, grid_dates, "actual_365_fixed", "continuous")
+  ),
+  lagrange_not_comparable(
+    "TONAR zero rate on the curve's date", "percent", reference_key,
+    100 * RiemannFinMath::zero_rate(tona_riemann$log_linear, tona_date, "actual_365_fixed", "continuous"),
+    "Different definitions at time 0: the legacy table sets 0, and RiemannFinMath uses a short period, as QuantLib does"
+  ),
+  against_lagrange("TONAR fair rate of the short swap", "percent", "tona.fair_rate_pct", fair_rate(fair_dates_riemann)),
+  map(market_pairs, \(p) {
+    against_lagrange(
+      paste(p$currency, "largest quote error"), "bp", paste0("market.quote_error_bp.", p$currency),
+      1e4 * max(RiemannFinMath::quote_repricing(p$riemann)$reproduction_error)
+    )
+  }) |>
+    list_rbind()
+) |>
   show_results()
 ```
 

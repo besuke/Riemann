@@ -122,7 +122,7 @@ bind_rows(
   show_results()
 ```
 
-The Bermudan methods are different: QuantLib rolls back on a trinomial tree, and RiemannFinMath takes an exact conditional expectation on a state grid at each step. A FAIL in these rows is a numerical difference between two methods. The rows on the tree against itself show how much of it is the tree's own convergence error.
+The Bermudan methods are different: QuantLib rolls back on a trinomial tree, and RiemannFinMath takes an exact conditional expectation on a state grid at each step. A difference in these rows is a numerical difference between two methods. The rows on the tree against itself show how much of it is the tree's own convergence error.
 
 ## Callable bond
 
@@ -179,6 +179,34 @@ bind_rows(
     sprintf("Callable, grid %d, nodes %d", grids$points, grids$nodes), "per 100",
     map2_dbl(grids$points, grids$nodes, \(p, n) baseline_callable(0.012, p, n)$callable_price),
     map2_dbl(grids$points, grids$nodes, \(p, n) riemann_callable(0.012, p, n)$callable), "Legacy R function"
+  )
+) |>
+  show_results()
+```
+
+## Against LagrangeFinance
+
+The swaptions have no value in the legacy text, so they stay reference rows.
+
+```{r}
+#| label: lagrange
+volatility_cases <- c(0, 0.006, 0.012, 0.02)
+grid_cases <- tibble(points = c(161L, 321L, 641L), nodes = c(16L, 24L, 32L))
+bind_rows(
+  against_lagrange(
+    sprintf("Option %.1fy on bond %.0fy", options_table$option_maturity, options_table$bond_maturity), "bp of a bond worth 1",
+    sprintf("hw.option_bp.%g.%g", options_table$option_maturity, options_table$bond_maturity), 1e4 * riemann_options
+  ),
+  against_lagrange("Bullet", "per 100", "callable.bullet", base_r$bullet),
+  against_lagrange("Callable", "per 100", "callable.callable", base_r$callable),
+  against_lagrange("Value of the issuer's call", "per 100", "callable.call_value", base_r$issuer_call_value),
+  against_lagrange(
+    sprintf("Callable, volatility %.3f", volatility_cases), "per 100", sprintf("callable.volatility.%g", volatility_cases),
+    map_dbl(volatility_cases, \(v) riemann_callable(v)$callable)
+  ),
+  against_lagrange(
+    sprintf("Callable, grid %d, nodes %d", grid_cases$points, grid_cases$nodes), "per 100", sprintf("callable.grid.%d", grid_cases$points),
+    map2_dbl(grid_cases$points, grid_cases$nodes, \(p, n) riemann_callable(0.012, p, n)$callable)
   )
 ) |>
   show_results()

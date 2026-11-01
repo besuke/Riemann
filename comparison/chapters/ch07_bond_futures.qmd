@@ -9,7 +9,7 @@ source("R/book.R")
 source("R/quantlib_side.R")
 ```
 
-QuantLib has no bond future basis calculation in its R binding. The baseline uses QuantLib for yields, durations, accrued amounts and cash flows, and the arithmetic of the legacy text in R for the basis.
+QuantLib has no bond future basis calculation in its R binding. The verdicts are against the results of the legacy text, at the end of the chapter. The reference rows use QuantLib for yields, durations, accrued amounts and cash flows, and the arithmetic of the legacy text in R for the basis.
 
 ## Inputs
 
@@ -165,6 +165,33 @@ bind_rows(
   compare_values(paste(issues, "net basis"), "per 100", stress_baseline$net_basis, stress_riemann$net_basis, baseline_name),
   compare_max("Implied repo, all issues", "percent, largest", 100 * stress_baseline$implied_repo, 100 * stress_riemann$implied_repo, baseline_name),
   compare_values("Cheapest to deliver: row in the basket", "row", which.min(stress_baseline$net_basis), which(stress_riemann$ctd), baseline_name)
+) |>
+  show_results()
+```
+
+## Against LagrangeFinance
+
+```{r}
+#| label: lagrange
+stress_prices <- map_dbl(riemann_bonds, riemann_stress_price)
+keys <- function(name) paste0(name, ".", basket$issue)
+bind_rows(
+  against_lagrange_max("Yield, all issues", "percent, largest", keys("future.yield_pct"), 100 * riemann_yields),
+  against_lagrange_max("Modified duration, all issues", "years, largest", keys("future.duration"), riemann_durations),
+  against_lagrange_max("Accrued at valuation, all issues", "per 100, largest", keys("future.accrued_start"), riemann$accrued_start),
+  against_lagrange_max("Accrued at delivery, all issues", "per 100, largest", keys("future.accrued_end"), riemann$accrued_end),
+  against_lagrange_max("Coupon income, all issues", "per 100, largest", keys("future.coupon_income"), riemann$coupon_income),
+  against_lagrange_max("Gross basis, all issues", "per 100, largest", keys("future.gross_basis"), riemann$gross_basis),
+  against_lagrange_max("Carry, all issues", "per 100, largest", keys("future.carry"), riemann$carry),
+  against_lagrange(paste(issues, "net basis"), "per 100", keys("future.net_basis"), riemann$net_basis),
+  against_lagrange(paste(issues, "implied repo"), "percent", keys("future.implied_repo_pct"), 100 * riemann$implied_repo),
+  against_lagrange("Cheapest to deliver", "issue number", "future.ctd_issue", basket$issue[riemann$ctd]),
+  against_lagrange("Scenario: futures price", "per 100", "stress.futures_price", stress_futures_riemann),
+  against_lagrange_max("Scenario: price at 8%, all issues", "per 100, largest", keys("stress.price"), stress_prices),
+  against_lagrange_max("Scenario: gross basis, all issues", "per 100, largest", keys("stress.gross_basis"), stress_riemann$gross_basis),
+  against_lagrange(paste("Scenario:", issues, "net basis"), "per 100", keys("stress.net_basis"), stress_riemann$net_basis),
+  against_lagrange_max("Scenario: implied repo, all issues", "percent, largest", keys("stress.implied_repo_pct"), 100 * stress_riemann$implied_repo),
+  against_lagrange("Scenario: cheapest to deliver", "issue number", "stress.ctd_issue", basket$issue[stress_riemann$ctd])
 ) |>
   show_results()
 ```

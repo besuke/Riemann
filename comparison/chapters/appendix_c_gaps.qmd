@@ -19,7 +19,7 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | II-4.5 | Barone-Adesi-Whaley and Bjerksund-Stensland approximations | Not implemented; the tree is compared |
 | II-4.6 | Sobol sequences and Longstaff-Schwartz | Not implemented |
 | II-5.2.5, II-5.6.4 | CDS cash flow and probability tables | Not returned |
-| II-5.6 | CDS trade date and cash settlement days | No argument. Effect shown in the CDS chapter |
+| II-5.6 | The settings of QuantLib's CDS builder: trade date, cash settlement days and, by estimate, the last period's day count | No argument. The legacy NPV, rebate, fair spread and fair upfront are not judged, and the coupon legs fail |
 | II-6.4 | Hull-White calibration | Not implemented |
 | II-6.5, II-7.3 to II-7.5 | BGM/LMM, HJM, FMM | Not implemented |
 | II-7.2 | Simulated Hull-White paths | Not returned |
@@ -31,6 +31,21 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | III-3 | Scenario grid with a proxy PRDC formula | R code in the legacy text, and no library calculation |
 | III-4, III-6 | General automatic differentiation on user functions, swaps and cash flow lists in `torch` | Derivatives exist only for the library's own calculations |
 | III-7, and the PRDC model generally | Stochastic rates, calls, target redemption, knock-outs | Not implemented |
+
+## Calculations with no LagrangeFinance baseline
+
+These appear as reference rows, without a verdict.
+
+| Item | Why |
+|---|---|
+| Bonds and curves on the R package's reference rows | The legacy text keeps no table of those values |
+| SOFR curve (II-3.4), and the curve values of 2026-10-06 (II-3.7) | Not kept as tables. Only the quote errors of the 2026 curves are judged |
+| Benchmark TONAR and ESTR curves (II-1.2.4, II-3.1.2) | Not included here: their quotes come from GaussQuant, and their conventions have not been matched |
+| Bond value on a curve and curve risk | No such example in the legacy text |
+| Barrier options, Bachelier, normal SABR, hazard bootstrap | No numeric example in the legacy text |
+| Swaptions, European and Bermudan | The legacy text describes them without a value |
+| PRDC | The legacy text has only Monte Carlo values, with standard errors far above the tolerance |
+| Parallel batches | The legacy text's parallel examples use no pricing library |
 
 ## Missing from the QuantLib R binding
 

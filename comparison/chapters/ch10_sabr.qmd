@@ -121,6 +121,28 @@ bind_rows(
   show_results()
 ```
 
+## Against LagrangeFinance
+
+Volatilities are compared at the parameters that the legacy text fitted. The fitted parameters themselves are not judged, because the optimizers differ.
+
+```{r}
+#| label: lagrange
+strike_labels <- format(market$strike_pct, trim = TRUE, drop0trailing = TRUE)
+lagrange_parameters <- list(alpha = lagrange_value("sabr.alpha"), nu = lagrange_value("sabr.nu"), rho = lagrange_value("sabr.rho"))
+optimizers <- "Different optimizers; not the same calculation"
+bind_rows(
+  against_lagrange(
+    sprintf("Strike %.2f percent", market$strike_pct), "percent of volatility",
+    paste0("sabr.volatility_pct.", market$strike_pct),
+    100 * RiemannFinMath::sabr_volatility("lognormal", market$strike, forward, expiry, lagrange_parameters$alpha, beta, lagrange_parameters$nu, lagrange_parameters$rho)
+  ),
+  lagrange_not_comparable("alpha", "decimal", "sabr.alpha", riemann_fit$alpha, optimizers),
+  lagrange_not_comparable("nu", "decimal", "sabr.nu", riemann_fit$nu, optimizers),
+  lagrange_not_comparable("rho", "decimal", "sabr.rho", riemann_fit$rho, optimizers)
+) |>
+  show_results()
+```
+
 ## Differences of wrapper and core
 
 ```{r}

@@ -8,7 +8,7 @@ title: "Japanese bond yields"
 source("R/book.R")
 ```
 
-QuantLib has no counterpart for the Japanese simple-yield rules: remaining years truncated to 7 decimals, prices truncated to 3, and simple rates truncated to 7. The baseline of this chapter is therefore the R implementation in GaussQuant. These rows compare two implementations of one set of rules, and neither of them is C++. @sec-quantlib-yield shows what happens when QuantLib's own yield is placed next to them.
+QuantLib has no counterpart for the Japanese simple-yield rules: remaining years truncated to 7 decimals, prices truncated to 3, and simple rates truncated to 7. The verdicts are against the results of the legacy text, at the end of the chapter, which come from the R implementation in GaussQuant. So these rows compare two implementations of one set of rules, and neither of them is C++. The other rows call GaussQuant directly, as a reference. @sec-quantlib-yield shows what happens when QuantLib's own yield is placed next to them.
 
 ## Rules
 
@@ -153,6 +153,23 @@ quantlib_yield <- QuantLib::BondFunctions_yield(
 not_comparable(
   "QuantLib yield and Japanese compound yield", "percent", 100 * quantlib_yield, compound,
   "Different rules: dated cash flows against remaining years with truncation"
+) |>
+  show_results()
+```
+
+## Against LagrangeFinance
+
+```{r}
+#| label: lagrange
+bind_rows(
+  against_lagrange("Remaining years", "years", "yen.remaining_years", t),
+  against_lagrange("Price from simple rate", "per 100", "yen.simple_price", price),
+  against_lagrange("Simple rate from price", "percent", "yen.simple_rate_pct", simple),
+  against_lagrange("Compound yield from price", "percent", "yen.compound_yield_pct", compound),
+  against_lagrange("Price from compound yield", "per 100", "yen.compound_price", compound_price),
+  against_lagrange("BPV", "yen per 100, per bp", "yen.bpv_yen", riemann_risk$compound$bpv_yen),
+  against_lagrange("Modified duration", "years", "yen.modified_duration", riemann_risk$compound$modified_duration),
+  against_lagrange("Convexity", "years squared", "yen.convexity", riemann_risk$compound$convexity)
 ) |>
   show_results()
 ```

@@ -239,6 +239,45 @@ compare_values("Value on 1 and on 4 threads", "price", one_thread$value, four_th
   show_results()
 ```
 
+## Against LagrangeFinance
+
+The legacy text values the Black 76 option through a process whose spot is the forward and whose dividend yield equals the rate, so the same form is used here. Its implied volatility uses QuantLib's default accuracy of 1e-4 and is not judged, because `implied_volatility` here uses 1e-10.
+
+```{r}
+#| label: lagrange
+black_as_equity <- RiemannFinMath::european_option("call", black$forward, black$strike, black$rate, black$rate, black$volatility, black$time)
+tree_value <- function(kind, steps) riemann_tree$value[tree_cases$exercise == kind & tree_cases$steps == steps]
+european_put <- RiemannFinMath::european_option("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)
+bind_rows(
+  against_lagrange("Black 76 value", "price", "black.npv", black_as_equity$value),
+  against_lagrange("Black 76 delta", "per unit of forward", "black.delta", black_as_equity$delta),
+  against_lagrange("Black 76 gamma", "per unit of forward squared", "black.gamma", black_as_equity$gamma),
+  against_lagrange("Black 76 vega", "per unit of volatility", "black.vega", black_as_equity$vega),
+  against_lagrange("Black 76 theta", "per year", "black.theta", black_as_equity$theta),
+  lagrange_not_comparable(
+    "Black 76 implied volatility", "percent", "black.implied_volatility_pct",
+    100 * RiemannFinMath::implied_volatility("call", black_as_equity$value, black$forward, black$strike, black$rate, black$rate, black$time),
+    "Different solver accuracy: 1e-4 against 1e-10"
+  ),
+  against_lagrange("European put, analytic", "price", "tree.european.analytic", european_put$value),
+  against_lagrange("European put, 25 steps", "price", "tree.european.crr_25", tree_value("european", 25L)),
+  against_lagrange("European put, 100 steps", "price", "tree.european.crr_100", tree_value("european", 100L)),
+  against_lagrange("European put, 500 steps", "price", "tree.european.crr_500", tree_value("european", 500L)),
+  against_lagrange("American put, 25 steps", "price", "tree.american.crr_25", tree_value("american", 25L)),
+  against_lagrange("American put, 500 steps", "price", "tree.american.crr_500", tree_value("american", 500L)),
+  against_lagrange("European call value", "price", "greeks.npv", riemann_call$value),
+  against_lagrange("European call delta", "per unit of spot", "greeks.delta", riemann_call$delta),
+  against_lagrange("European call gamma", "per unit of spot squared", "greeks.gamma", riemann_call$gamma),
+  against_lagrange("European call vega", "per unit of volatility", "greeks.vega", riemann_call$vega),
+  against_lagrange("European call theta", "per year", "greeks.theta", riemann_call$theta),
+  lagrange_not_comparable(
+    "Black 76, Monte Carlo against the formula", "price", "mc.npv", riemann_black$value,
+    sprintf("The legacy value is a Monte Carlo estimate with a standard error of %.4f", lagrange_value("mc.standard_error"))
+  )
+) |>
+  show_results()
+```
+
 ## Not available
 
 Approximation engines (Barone-Adesi-Whaley, Bjerksund-Stensland), Sobol sequences and Longstaff-Schwartz are in the legacy text and not in RiemannFinMath. See @sec-gaps.

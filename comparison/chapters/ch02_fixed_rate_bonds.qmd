@@ -157,6 +157,28 @@ compare_values("Dirty price, flat curve against yield formula", "per 100", quant
 
 Two functions of the legacy text have no public counterpart. They are not approximated here: cash flow tables, and valuation with a zero spread on a curve. See @sec-gaps.
 
+## Against LagrangeFinance
+
+The yield and the price are the unrounded values of the legacy text.
+
+```{r}
+#| label: lagrange
+lagrange_yield <- lagrange_value("bond.compound_yield_pct") / 100
+lagrange_price <- lagrange_value("bond.market_price")
+bind_rows(
+  against_lagrange("Settlement date", "days", "bond.settlement", as.numeric(settlement)),
+  against_lagrange(
+    "Dirty price at the compound yield", "per 100", "bond.flat_dirty_price",
+    RiemannFinMath::dirty_price(bond, lagrange_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+  ),
+  against_lagrange(
+    "Yield from the clean price", "percent", "bond.yield_pct",
+    100 * RiemannFinMath::yield_from_price(bond, lagrange_price, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement)
+  )
+) |>
+  show_results()
+```
+
 ## Differences of wrapper and core
 
 ```{r}

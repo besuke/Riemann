@@ -1,7 +1,220 @@
 chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
-ch01_dates_calendars,japan: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
-ch01_dates_calendars,target: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
-ch01_dates_calendars,us_sofr: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
-ch01_dates_calendars,uk_exchange: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
-ch01_dates_calendars,weekends_only: holidays only in one list,dates,QuantLib C++,0,0,0,1e-4,PASS,NA
-ch01_dates_calendars,japan 2026: days that differ,days,QuantLib C++,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,null_calendar holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,weekends_only holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,argentina_merval holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,brazil_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,brazil_exchange holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,canada_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,canada_tsx holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,chile_sse holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,mexico_bmv holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_nyse holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_government_bond holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_nerc holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_libor_impact holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_federal_reserve holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_sofr holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,target holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,austria_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,austria_exchange holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,czech_republic_pse holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,denmark holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,finland holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,france_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,france_exchange holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_frankfurt_stock_exchange holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_xetra holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_eurex holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_euwax holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,hungary holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,iceland_icex holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,italy_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,italy_exchange holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,norway holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,poland_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,poland_wse holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,romania_public holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,romania_bvb holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,russia_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,russia_moex holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,slovakia_bsse holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,sweden holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,switzerland holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,ukraine_use holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_exchange holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_metals holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,botswana holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_tase holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_shir holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,saudi_arabia_tadawul holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_africa holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,turkey holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,japan holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,australia_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,australia_asx holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,china_sse holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,china_ib holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,hong_kong_hkex holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,india_nse holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_bej holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_jsx holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_idx holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,new_zealand_wellington holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,new_zealand_auckland holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,singapore_sgx holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_korea_settlement holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_korea_krx holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,taiwan_tsec holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,thailand holidays,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,null_calendar weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,weekends_only weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,argentina_merval weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,brazil_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,brazil_exchange weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,canada_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,canada_tsx weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,chile_sse weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,mexico_bmv weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_nyse weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_government_bond weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_nerc weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_libor_impact weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_federal_reserve weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_sofr weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,target weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,austria_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,austria_exchange weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,czech_republic_pse weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,denmark weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,finland weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,france_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,france_exchange weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_frankfurt_stock_exchange weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_xetra weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_eurex weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_euwax weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,hungary weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,iceland_icex weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,italy_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,italy_exchange weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,norway weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,poland_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,poland_wse weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,romania_public weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,romania_bvb weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,russia_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,russia_moex weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,slovakia_bsse weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,sweden weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,switzerland weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,ukraine_use weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_exchange weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_metals weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,botswana weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_tase weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_shir weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,saudi_arabia_tadawul weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_africa weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,turkey weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,japan weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,australia_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,australia_asx weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,china_sse weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,china_ib weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,hong_kong_hkex weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,india_nse weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_bej weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_jsx weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_idx weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,new_zealand_wellington weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,new_zealand_auckland weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,singapore_sgx weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_korea_settlement weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_korea_krx weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,taiwan_tsec weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,thailand weekend business days,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,null_calendar error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,weekends_only error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,argentina_merval error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,brazil_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,brazil_exchange error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,canada_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,canada_tsx error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,chile_sse error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,mexico_bmv error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_nyse error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_government_bond error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_nerc error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_libor_impact error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_federal_reserve error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,us_sofr error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,target error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,austria_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,austria_exchange error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,czech_republic_pse error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,denmark error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,finland error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,france_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,france_exchange error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_frankfurt_stock_exchange error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_xetra error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_eurex error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,germany_euwax error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,hungary error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,iceland_icex error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,italy_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,italy_exchange error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,norway error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,poland_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,poland_wse error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,romania_public error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,romania_bvb error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,russia_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,russia_moex error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,slovakia_bsse error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,sweden error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,switzerland error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,ukraine_use error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_exchange error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,uk_metals error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,botswana error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_tase error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,israel_shir error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,saudi_arabia_tadawul error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_africa error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,turkey error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,japan error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,australia_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,australia_asx error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,china_sse error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,china_ib error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,hong_kong_hkex error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,india_nse error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_bej error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_jsx error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,indonesia_idx error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,new_zealand_wellington error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,new_zealand_auckland error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,singapore_sgx error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_korea_settlement error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,south_korea_krx error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,taiwan_tsec error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,thailand error dates,dates that differ,QuantLib C++ v1.42,0,0,0,1e-4,PASS,NA
+ch01_dates_calendars,japan: holidays only in one list,dates,QuantLib C++,0,0,0,NA,REF,NA
+ch01_dates_calendars,target: holidays only in one list,dates,QuantLib C++,0,0,0,NA,REF,NA
+ch01_dates_calendars,us_sofr: holidays only in one list,dates,QuantLib C++,0,0,0,NA,REF,NA
+ch01_dates_calendars,uk_exchange: holidays only in one list,dates,QuantLib C++,0,0,0,NA,REF,NA
+ch01_dates_calendars,weekends_only: holidays only in one list,dates,QuantLib C++,0,0,0,NA,REF,NA
+ch01_dates_calendars,japan 2026: days that differ,days,QuantLib C++,0,0,0,NA,REF,NA

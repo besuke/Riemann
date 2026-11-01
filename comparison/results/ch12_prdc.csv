@@ -1,23 +1,34 @@
 chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
-ch12_prdc,NPV,yen,QuantLib blackFormula,334146942.17058223,334146942.1705823,5.960464477539063e-8,1e-4,PASS,NA
-ch12_prdc,NPV,percent of notional,QuantLib blackFormula,111.38231405686075,111.38231405686076,1.4210854715202004e-14,1e-4,PASS,NA
-ch12_prdc,FX delta,yen per yen of spot,"QuantLib blackFormula, finite difference",1079052.0397424698,1079052.0396574696,-8.500018157064915e-5,1e-4,PASS,NA
-ch12_prdc,FX vega,yen per percent,Black vega formula in R,-1003800.6456452246,-1003800.6456452318,-7.2177499532699585e-9,1e-4,PASS,NA
-ch12_prdc,"Domestic curve, parallel",yen per bp,"QuantLib blackFormula, finite difference",-433901.5585780144,-433901.55853202497,4.598940722644329e-5,1e-4,PASS,NA
-ch12_prdc,"Foreign curve, parallel",yen per bp,"QuantLib blackFormula, finite difference",-120924.71950352192,-120924.71952198498,-1.8463062588125467e-5,1e-4,PASS,NA
-ch12_prdc,Spot 119.9413,yen,QuantLib blackFormula,317843574.26274943,317843574.26274943,0,1e-4,PASS,NA
-ch12_prdc,Spot 126.6047,yen,QuantLib blackFormula,326481137.68526083,326481137.6852608,-5.960464477539063e-8,1e-4,PASS,NA
-ch12_prdc,Spot 139.9315,yen,QuantLib blackFormula,340899348.7824985,340899348.7824985,0,1e-4,PASS,NA
-ch12_prdc,Spot 146.5949,yen,QuantLib blackFormula,346849483.0840821,346849483.0840821,0,1e-4,PASS,NA
-ch12_prdc,Volatility 0.050,yen,QuantLib blackFormula,338708700.8719248,338708700.8719249,5.960464477539063e-8,1e-4,PASS,NA
-ch12_prdc,Volatility 0.075,yen,QuantLib blackFormula,336627223.1345405,336627223.13454056,5.960464477539063e-8,1e-4,PASS,NA
-ch12_prdc,Volatility 0.125,yen,QuantLib blackFormula,331665674.9041632,331665674.9041632,0,1e-4,PASS,NA
-ch12_prdc,Volatility 0.150,yen,QuantLib blackFormula,329279638.30764604,329279638.30764604,0,1e-4,PASS,NA
+ch12_prdc,NPV,yen,QuantLib blackFormula,334146942.17058223,334146942.1705823,5.960464477539063e-8,NA,REF,NA
+ch12_prdc,NPV,percent of notional,QuantLib blackFormula,111.38231405686075,111.38231405686076,1.4210854715202004e-14,NA,REF,NA
+ch12_prdc,FX delta,yen per yen of spot,"QuantLib blackFormula, finite difference",1079052.0397424698,1079052.0396574696,-8.500018157064915e-5,NA,REF,NA
+ch12_prdc,FX vega,yen per percent,Black vega formula in R,-1003800.6456452246,-1003800.6456452318,-7.2177499532699585e-9,NA,REF,NA
+ch12_prdc,"Domestic curve, parallel",yen per bp,"QuantLib blackFormula, finite difference",-433901.5585780144,-433901.55853202497,4.598940722644329e-5,NA,REF,NA
+ch12_prdc,"Foreign curve, parallel",yen per bp,"QuantLib blackFormula, finite difference",-120924.71950352192,-120924.71952198498,-1.8463062588125467e-5,NA,REF,NA
+ch12_prdc,Spot 119.9413,yen,QuantLib blackFormula,317843574.26274943,317843574.26274943,0,NA,REF,NA
+ch12_prdc,Spot 126.6047,yen,QuantLib blackFormula,326481137.68526083,326481137.6852608,-5.960464477539063e-8,NA,REF,NA
+ch12_prdc,Spot 139.9315,yen,QuantLib blackFormula,340899348.7824985,340899348.7824985,0,NA,REF,NA
+ch12_prdc,Spot 146.5949,yen,QuantLib blackFormula,346849483.0840821,346849483.0840821,0,NA,REF,NA
+ch12_prdc,Volatility 0.050,yen,QuantLib blackFormula,338708700.8719248,338708700.8719249,5.960464477539063e-8,NA,REF,NA
+ch12_prdc,Volatility 0.075,yen,QuantLib blackFormula,336627223.1345405,336627223.13454056,5.960464477539063e-8,NA,REF,NA
+ch12_prdc,Volatility 0.125,yen,QuantLib blackFormula,331665674.9041632,331665674.9041632,0,NA,REF,NA
+ch12_prdc,Volatility 0.150,yen,QuantLib blackFormula,329279638.30764604,329279638.30764604,0,NA,REF,NA
 ch12_prdc,"NPV, Monte Carlo against the closed form",yen,QuantLib blackFormula,334146942.17058223,334088185.6990598,-58756.47152245045,NA,N/C,100000 paths; -1.60 standard errors from the closed form; standard error 36768 yen
-ch12_prdc,NPV on 1 and on 4 threads,yen,RiemannFinMath itself,334088185.6990598,334088185.6990598,0,1e-4,PASS,NA
+ch12_prdc,NPV on 1 and on 4 threads,yen,RiemannFinMath itself,334088185.6990598,334088185.6990598,0,NA,REF,NA
 ch12_prdc,"NPV, closed form",yen,torch,104242624,104114695.16506039,-127928.83493961394,NA,N/C,Different random numbers and different times of the curve nodes
 ch12_prdc,"NPV, Monte Carlo",yen,torch,104242624,104059837.48007356,-182786.5199264437,NA,N/C,Different random numbers and different times of the curve nodes; standard error of RiemannFinMath 55744 yen
 ch12_prdc,FX delta,yen per yen of spot,torch,473469.34375,467194.62077835674,-6274.722971643263,NA,N/C,Different random numbers and different times of the curve nodes
 ch12_prdc,FX vega,yen per percent,torch,401208.12,397135.05582239205,-4073.064177607943,NA,N/C,Different random numbers and different times of the curve nodes
 ch12_prdc,"JPY curve, total",yen per bp,torch,-31792.727600000002,-31805.078299056524,-12.35069905652199,NA,N/C,Different risk factors: a yearly forward rate against a node's zero rate
 ch12_prdc,"Foreign curve, total",yen per bp,torch,-17996.6101,-17936.853809576758,59.75629042324363,NA,N/C,Different risk factors: a yearly forward rate against a node's zero rate
+ch12_prdc,NPV,yen,LagrangeFinance II-9.3.3,335361060.7570027,334146942.1705823,-1214118.5864204168,NA,N/C,The legacy value is a Monte Carlo estimate; its standard error is 2045078 yen with 300 paths
+ch12_prdc,"Spot, spot_minus_10",yen,LagrangeFinance II-9.5.1,321139115.97740567,317843574.26274943,-3295541.714656234,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Spot, spot_minus_5",yen,LagrangeFinance II-9.5.1,330408227.1704538,326481137.6852608,-3927089.485193014,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Spot, base",yen,LagrangeFinance II-9.5.1,338436264.7812228,334146942.1705823,-4289322.610640526,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Spot, spot_plus_5",yen,LagrangeFinance II-9.5.1,345370835.54999864,340899348.7824985,-4471486.767500162,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Spot, spot_plus_10",yen,LagrangeFinance II-9.5.1,351322971.21403074,346849483.0840821,-4473488.129948616,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Volatility, vol_5pct",yen,LagrangeFinance II-9.5.2,341673690.444573,338708700.8719249,-2964989.572648108,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Volatility, vol_7_5pct",yen,LagrangeFinance II-9.5.2,340419232.68661803,336627223.13454056,-3792009.552077472,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Volatility, base",yen,LagrangeFinance II-9.5.2,338436264.7812228,334146942.1705823,-4289322.610640526,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Volatility, vol_12_5pct",yen,LagrangeFinance II-9.5.2,336154661.62069327,331665674.9041632,-4488986.716530085,NA,N/C,Monte Carlo estimate with 100 paths
+ch12_prdc,"Volatility, vol_15pct",yen,LagrangeFinance II-9.5.2,333808877.00124395,329279638.30764604,-4529238.693597913,NA,N/C,Monte Carlo estimate with 100 paths

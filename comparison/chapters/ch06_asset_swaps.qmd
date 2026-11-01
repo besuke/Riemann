@@ -9,7 +9,7 @@ source("R/book.R")
 source("R/quantlib_side.R")
 ```
 
-QuantLib has no OIS asset swap instrument. As in the legacy text, the baseline is GaussQuant's R function, which evaluates the legs in R from a QuantLib curve. So the discount factors come from C++ and the asset swap formula from R. The rows compare two implementations of the formula, and GaussQuant is called only in this explicit role.
+QuantLib has no OIS asset swap instrument. The verdicts are against the results of the legacy text, at the end of the chapter. Those come from GaussQuant's R function, which evaluates the legs in R from a QuantLib curve, so the discount factors come from C++ and the asset swap formula from R. The reference rows call the same function with `Following` on the OIS payments.
 
 ## Inputs
 
@@ -197,6 +197,42 @@ riemann_sensitivity <- RiemannFinMath::asset_swap_quote_sensitivity(riemann_bond
 compare_values(
   paste("Quote", quotes[["JPY"]]$tenor), "bp of spread per bp of quote",
   baseline_sensitivity, riemann_sensitivity$spread_bp_per_quote_bp, "GaussQuant R, finite difference"
+) |>
+  show_results()
+```
+
+## Against LagrangeFinance
+
+The legacy text builds its curves with `ModifiedFollowing` on the OIS payments, and RiemannFinMath has only `Following`. These rows keep that difference, and a FAIL may come from it.
+
+```{r}
+#| label: lagrange
+native_map <- c(accrued = "accrued", fair_spread_bp = "fair_spread_bp", spread_annuity = "spread_annuity", npv = "npv", bond_leg_pv = "bond_leg_pv", overnight_leg_pv = "overnight_leg_pv", principal_pv = "principal_pv", upfront_pv = "upfront_pv")
+native_units <- c(accrued = "per 100", fair_spread_bp = "bp", spread_annuity = "per 100, per unit of spread", npv = "per 100", bond_leg_pv = "per 100", overnight_leg_pv = "per 100", principal_pv = "per 100", upfront_pv = "per 100")
+judged_native <- map(terms$currency, \(ccy) {
+  imap(native_map, \(column, name) {
+    against_lagrange(paste(ccy, name), native_units[[name]], paste("asw", ccy, name, sep = "."), riemann_native[[ccy]][[column]])
+  }) |>
+    list_rbind()
+}) |>
+  list_rbind()
+judged_yen <- map(foreign, \(ccy) {
+  r <- riemann_yen[[ccy]]
+  bind_rows(
+    against_lagrange(paste(ccy, "native spread"), "bp", paste("yen_asw", ccy, "native_asw_bp", sep = "."), r$native_asw_bp),
+    against_lagrange(paste(ccy, "yen spread"), "bp", paste("yen_asw", ccy, "jpy_asw_bp", sep = "."), r$yen_asw_bp),
+    against_lagrange(paste(ccy, "simple sum"), "bp", paste("yen_asw", ccy, "simple_sum_bp", sep = "."), r$simple_sum_bp),
+    against_lagrange(paste(ccy, "calibrated discount spread"), "bp", paste("yen_asw", ccy, "calibrated_discount_spread_bp", sep = "."), r$calibrated_discount_spread_bp)
+  )
+}) |>
+  list_rbind()
+basis_scenarios <- c(-50, -30, -10, 0)
+fx_scenarios <- c(140, 150, 160)
+bind_rows(
+  judged_native,
+  judged_yen,
+  against_lagrange(sprintf("USD yen spread, basis %.0f bp", basis_scenarios), "bp", paste0("yen_asw.basis.", basis_scenarios), map_dbl(basis_scenarios, \(b) riemann_yen_call("USD", 150, b)$yen_asw_bp)),
+  against_lagrange(sprintf("USD yen spread, FX %.0f", fx_scenarios), "bp", paste0("yen_asw.fx.", fx_scenarios), map_dbl(fx_scenarios, \(x) riemann_yen_call("USD", x, -30)$yen_asw_bp))
 ) |>
   show_results()
 ```

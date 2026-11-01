@@ -9,7 +9,7 @@ source("R/book.R")
 source("R/quantlib_side.R")
 ```
 
-The legacy text computes curve risk on a swap and on a short cash flow list with `torch`, and neither is in the public API of RiemannFinMath. The items here use the TONAR curve of the OIS chapter and a bond that is not in the legacy text. QuantLib has no automatic differentiation in its R binding, so its side is a central difference that rebuilds the curve, with a bump of 1e-6 in rate.
+**No row of this chapter has a verdict: the legacy text has no value to use as the baseline.** The legacy text computes curve risk on a swap and on a short cash flow list with `torch`, and neither is in the public API of RiemannFinMath. The items here use the TONAR curve of the OIS chapter and a bond that is not in the legacy text. QuantLib has no automatic differentiation in its R binding, so its side is a central difference that rebuilds the curve, with a bump of 1e-6 in rate.
 
 ## Inputs
 

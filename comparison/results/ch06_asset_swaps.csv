@@ -1,80 +1,131 @@
 chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
-ch06_asset_swaps,EUR accrued,per 100,GaussQuant R on QuantLib curve,0.07777777777777661,0.07777777777777661,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR fair spread,bp,GaussQuant R on QuantLib curve,20.00553894448812,20.00553894448812,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,859.2328809967528,859.2328809967529,1.1368683772161603e-13,1e-4,PASS,NA
-ch06_asset_swaps,EUR NPV,per 100,GaussQuant R on QuantLib curve,-1.7189416863165263,-1.7189416863165263,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR bond leg,per 100,GaussQuant R on QuantLib curve,-101.28322421141682,-101.28322421141681,1.4210854715202004e-14,1e-4,PASS,NA
-ch06_asset_swaps,EUR overnight leg,per 100,GaussQuant R on QuantLib curve,28.416048277898653,28.416048277898646,-7.105427357601002e-15,1e-4,PASS,NA
-ch06_asset_swaps,EUR principal,per 100,GaussQuant R on QuantLib curve,71.57039924786598,71.57039924786598,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR upfront,per 100,GaussQuant R on QuantLib curve,-0.42216500066433005,-0.42216500066433005,0,1e-4,PASS,NA
-ch06_asset_swaps,USD accrued,per 100,GaussQuant R on QuantLib curve,0.11111111111110628,0.11111111111110628,0,1e-4,PASS,NA
-ch06_asset_swaps,USD fair spread,bp,GaussQuant R on QuantLib curve,15.935733063472272,15.935733063472451,1.794120407794253e-13,1e-4,PASS,NA
-ch06_asset_swaps,USD spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,796.5715017372081,796.5715017372081,0,1e-4,PASS,NA
-ch06_asset_swaps,USD NPV,per 100,GaussQuant R on QuantLib curve,-1.2693950817653388,-1.269395081765353,-1.4210854715202004e-14,1e-4,PASS,NA
-ch06_asset_swaps,USD bond leg,per 100,GaussQuant R on QuantLib curve,-100.85900738988033,-100.85900738988035,-1.4210854715202004e-14,1e-4,PASS,NA
-ch06_asset_swaps,USD overnight leg,per 100,GaussQuant R on QuantLib curve,38.478217634391605,38.4782176343916,-7.105427357601002e-15,1e-4,PASS,NA
-ch06_asset_swaps,USD principal,per 100,GaussQuant R on QuantLib curve,61.50019962975062,61.50019962975062,0,1e-4,PASS,NA
-ch06_asset_swaps,USD upfront,per 100,GaussQuant R on QuantLib curve,-0.388804956027236,-0.388804956027236,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY accrued,per 100,GaussQuant R on QuantLib curve,0.06575342465753309,0.06575342465753309,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY fair spread,bp,GaussQuant R on QuantLib curve,12.106696524174344,12.106696524174344,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,874.9070089436867,874.9070089436867,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY NPV,per 100,GaussQuant R on QuantLib curve,-1.0592233644154305,-1.0592233644154305,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY bond leg,per 100,GaussQuant R on QuantLib curve,-100.61832895740027,-100.61832895740027,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY overnight leg,per 100,GaussQuant R on QuantLib curve,25.68643557680184,25.68643557680184,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY principal,per 100,GaussQuant R on QuantLib curve,74.30688759763913,74.30688759763913,0,1e-4,PASS,NA
-ch06_asset_swaps,JPY upfront,per 100,GaussQuant R on QuantLib curve,-0.43421758145613565,-0.43421758145613565,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP accrued,per 100,GaussQuant R on QuantLib curve,0.11111111111110628,0.11111111111110628,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP fair spread,bp,GaussQuant R on QuantLib curve,14.515922018324776,14.515922018324778,1.7763568394002505e-15,1e-4,PASS,NA
-ch06_asset_swaps,GBP spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,786.5962106507071,786.596210650707,-1.1368683772161603e-13,1e-4,PASS,NA
-ch06_asset_swaps,GBP NPV,per 100,GaussQuant R on QuantLib curve,-1.1418169253715433,-1.1418169253715433,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP bond leg,per 100,GaussQuant R on QuantLib curve,-100.7325506037094,-100.7325506037094,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP overnight leg,per 100,GaussQuant R on QuantLib curve,38.65237802705169,38.65237802705169,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP principal,per 100,GaussQuant R on QuantLib curve,61.3271649852228,61.3271649852228,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP upfront,per 100,GaussQuant R on QuantLib curve,-0.38880933393663936,-0.38880933393663936,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR native spread,bp,GaussQuant R on QuantLib curve,20.00553894448812,20.00553894448812,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR yen spread,bp,GaussQuant R on QuantLib curve,-0.3570114526001515,-0.35701145259989947,2.5202062658991053e-13,1e-4,PASS,NA
-ch06_asset_swaps,EUR simple sum,bp,GaussQuant R on QuantLib curve,0.005538944488119313,0.005538944488118168,-1.1449174941446927e-15,1e-4,PASS,NA
-ch06_asset_swaps,EUR calibrated discount spread,bp,GaussQuant R on QuantLib curve,20.503196805851964,20.503196805851605,-3.588240815588506e-13,1e-4,PASS,NA
-ch06_asset_swaps,EUR NPV,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,5.1538050655253755,5.153805065521738,-3.637978807091713e-12,1e-4,PASS,NA
-ch06_asset_swaps,EUR hedged bond,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,16424.082503572376,16424.08250357238,3.637978807091713e-12,1e-4,PASS,NA
-ch06_asset_swaps,EUR base yen leg,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,16498.89832378276,16498.89832378276,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR upfront,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,-69.66201514485897,-69.66201514485897,0,1e-4,PASS,NA
-ch06_asset_swaps,EUR spread annuity,"yen, per unit of spread",GaussQuant R on QuantLib curve,144359.6564757083,144359.6564757083,0,1e-4,PASS,NA
-ch06_asset_swaps,USD native spread,bp,GaussQuant R on QuantLib curve,15.935733063472272,15.935733063472451,1.794120407794253e-13,1e-4,PASS,NA
-ch06_asset_swaps,USD yen spread,bp,GaussQuant R on QuantLib curve,-15.46333844854865,-15.463338448539917,8.732570222491631e-12,1e-4,PASS,NA
-ch06_asset_swaps,USD simple sum,bp,GaussQuant R on QuantLib curve,-14.064266936527728,-14.064266936527549,1.794120407794253e-13,1e-4,PASS,NA
-ch06_asset_swaps,USD calibrated discount spread,bp,GaussQuant R on QuantLib curve,33.10365107152961,33.10365107152003,-9.585221505403752e-12,1e-4,PASS,NA
-ch06_asset_swaps,USD NPV,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,202.93474785455328,202.93474785443868,-1.1459633242338896e-10,1e-4,PASS,NA
-ch06_asset_swaps,USD hedged bond,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,14737.734289793165,14737.73428979328,1.1459633242338896e-10,1e-4,PASS,NA
-ch06_asset_swaps,USD base yen leg,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,14998.998476166145,14998.998476166145,0,1e-4,PASS,NA
-ch06_asset_swaps,USD upfront,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,-58.32943851842635,-58.32943851842635,0,1e-4,PASS,NA
-ch06_asset_swaps,USD spread annuity,"yen, per unit of spread",GaussQuant R on QuantLib curve,131236.05134155301,131236.05134155301,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP native spread,bp,GaussQuant R on QuantLib curve,14.515922018324776,14.515922018324778,1.7763568394002505e-15,1e-4,PASS,NA
-ch06_asset_swaps,GBP yen spread,bp,GaussQuant R on QuantLib curve,-11.846532860514031,-11.846532860512113,1.9184653865522705e-12,1e-4,PASS,NA
-ch06_asset_swaps,GBP simple sum,bp,GaussQuant R on QuantLib curve,-10.484077981675224,-10.484077981675222,1.7763568394002505e-15,1e-4,PASS,NA
-ch06_asset_swaps,GBP calibrated discount spread,bp,GaussQuant R on QuantLib curve,27.480917304900313,27.480917304898192,-2.120970066243899e-12,1e-4,PASS,NA
-ch06_asset_swaps,GBP NPV,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,202.1099853112355,202.10998531120276,-3.2741809263825417e-11,1e-4,PASS,NA
-ch06_asset_swaps,GBP hedged bond,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,19220.7597636308,19220.75976363083,3.2741809263825417e-11,1e-4,PASS,NA
-ch06_asset_swaps,GBP base yen leg,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,19498.69801901599,19498.69801901599,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP upfront,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,-75.82827007395426,-75.82827007395426,0,1e-4,PASS,NA
-ch06_asset_swaps,GBP spread annuity,"yen, per unit of spread",GaussQuant R on QuantLib curve,170606.86674401892,170606.86674401892,0,1e-4,PASS,NA
-ch06_asset_swaps,"USD, FX 150, basis -50 bp",bp,GaussQuant R on QuantLib curve,-35.447254857894386,-35.447254857894386,0,1e-4,PASS,NA
-ch06_asset_swaps,"USD, FX 150, basis -30 bp",bp,GaussQuant R on QuantLib curve,-15.46333844854865,-15.463338448539917,8.732570222491631e-12,1e-4,PASS,NA
-ch06_asset_swaps,"USD, FX 150, basis -10 bp",bp,GaussQuant R on QuantLib curve,4.519795527624847,4.5197955312206615,3.595814312973289e-9,1e-4,PASS,NA
-ch06_asset_swaps,"USD, FX 150, basis 0 bp",bp,GaussQuant R on QuantLib curve,14.511077457671442,14.511077457671583,1.4033219031261979e-13,1e-4,PASS,NA
-ch06_asset_swaps,"USD, FX 140, basis -30 bp",bp,GaussQuant R on QuantLib curve,-15.463338448548738,-15.463338448540421,8.316902722071973e-12,1e-4,PASS,NA
-ch06_asset_swaps,"USD, FX 160, basis -30 bp",bp,GaussQuant R on QuantLib curve,-15.4633384485487,-15.463338448540124,8.57625082062441e-12,1e-4,PASS,NA
-ch06_asset_swaps,Quote 1M,bp of spread per bp of quote,"GaussQuant R, finite difference",2.3850302977024285e-5,2.3850337867017255e-5,3.488999297061716e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 3M,bp of spread per bp of quote,"GaussQuant R, finite difference",-1.447809811594425e-4,-1.4478096185842449e-4,1.9301018004984002e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 6M,bp of spread per bp of quote,"GaussQuant R, finite difference",-4.603998448260427e-4,-4.6039982503070733e-4,1.97953353470344e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 1Y,bp of spread per bp of quote,"GaussQuant R, finite difference",5.425539167269733e-4,5.425538952029589e-4,-2.152401434168949e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 2Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-6.82033471477439e-5,-6.820340311785467e-5,-5.597011077534703e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 3Y,bp of spread per bp of quote,"GaussQuant R, finite difference",2.3739813803658194e-4,2.373981446597437e-4,6.623161762954466e-12,1e-4,PASS,NA
-ch06_asset_swaps,Quote 4Y,bp of spread per bp of quote,"GaussQuant R, finite difference",3.041281764204484e-4,3.041281650982417e-4,-1.132220673553258e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 5Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-1.607571203265934e-4,-1.6075715905107418e-4,-3.872448078889347e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 7Y,bp of spread per bp of quote,"GaussQuant R, finite difference",0.005765040279914757,0.005765040279114585,-8.001724283168699e-13,1e-4,PASS,NA
-ch06_asset_swaps,Quote 8Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-0.013556087422905705,-0.01355608739242709,3.047861442395661e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 10Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-0.9773967633748271,-0.9773967633768533,-2.0262680422433732e-12,1e-4,PASS,NA
-ch06_asset_swaps,Quote 15Y,bp of spread per bp of quote,"GaussQuant R, finite difference",0.003203705576115823,0.0032037056002628163,2.4146993432561104e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 20Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-9.784364435994064e-4,-9.784364770504962e-4,-3.345108977141631e-11,1e-4,PASS,NA
-ch06_asset_swaps,Quote 30Y,bp of spread per bp of quote,"GaussQuant R, finite difference",1.2250854366513408e-4,1.225085384352564e-4,-5.229877674591682e-12,1e-4,PASS,NA
+ch06_asset_swaps,EUR accrued,per 100,GaussQuant R on QuantLib curve,0.07777777777777661,0.07777777777777661,0,NA,REF,NA
+ch06_asset_swaps,EUR fair spread,bp,GaussQuant R on QuantLib curve,20.00553894448812,20.00553894448812,0,NA,REF,NA
+ch06_asset_swaps,EUR spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,859.2328809967528,859.2328809967529,1.1368683772161603e-13,NA,REF,NA
+ch06_asset_swaps,EUR NPV,per 100,GaussQuant R on QuantLib curve,-1.7189416863165263,-1.7189416863165263,0,NA,REF,NA
+ch06_asset_swaps,EUR bond leg,per 100,GaussQuant R on QuantLib curve,-101.28322421141682,-101.28322421141681,1.4210854715202004e-14,NA,REF,NA
+ch06_asset_swaps,EUR overnight leg,per 100,GaussQuant R on QuantLib curve,28.416048277898653,28.416048277898646,-7.105427357601002e-15,NA,REF,NA
+ch06_asset_swaps,EUR principal,per 100,GaussQuant R on QuantLib curve,71.57039924786598,71.57039924786598,0,NA,REF,NA
+ch06_asset_swaps,EUR upfront,per 100,GaussQuant R on QuantLib curve,-0.42216500066433005,-0.42216500066433005,0,NA,REF,NA
+ch06_asset_swaps,USD accrued,per 100,GaussQuant R on QuantLib curve,0.11111111111110628,0.11111111111110628,0,NA,REF,NA
+ch06_asset_swaps,USD fair spread,bp,GaussQuant R on QuantLib curve,15.935733063472272,15.935733063472451,1.794120407794253e-13,NA,REF,NA
+ch06_asset_swaps,USD spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,796.5715017372081,796.5715017372081,0,NA,REF,NA
+ch06_asset_swaps,USD NPV,per 100,GaussQuant R on QuantLib curve,-1.2693950817653388,-1.269395081765353,-1.4210854715202004e-14,NA,REF,NA
+ch06_asset_swaps,USD bond leg,per 100,GaussQuant R on QuantLib curve,-100.85900738988033,-100.85900738988035,-1.4210854715202004e-14,NA,REF,NA
+ch06_asset_swaps,USD overnight leg,per 100,GaussQuant R on QuantLib curve,38.478217634391605,38.4782176343916,-7.105427357601002e-15,NA,REF,NA
+ch06_asset_swaps,USD principal,per 100,GaussQuant R on QuantLib curve,61.50019962975062,61.50019962975062,0,NA,REF,NA
+ch06_asset_swaps,USD upfront,per 100,GaussQuant R on QuantLib curve,-0.388804956027236,-0.388804956027236,0,NA,REF,NA
+ch06_asset_swaps,JPY accrued,per 100,GaussQuant R on QuantLib curve,0.06575342465753309,0.06575342465753309,0,NA,REF,NA
+ch06_asset_swaps,JPY fair spread,bp,GaussQuant R on QuantLib curve,12.106696524174344,12.106696524174344,0,NA,REF,NA
+ch06_asset_swaps,JPY spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,874.9070089436867,874.9070089436867,0,NA,REF,NA
+ch06_asset_swaps,JPY NPV,per 100,GaussQuant R on QuantLib curve,-1.0592233644154305,-1.0592233644154305,0,NA,REF,NA
+ch06_asset_swaps,JPY bond leg,per 100,GaussQuant R on QuantLib curve,-100.61832895740027,-100.61832895740027,0,NA,REF,NA
+ch06_asset_swaps,JPY overnight leg,per 100,GaussQuant R on QuantLib curve,25.68643557680184,25.68643557680184,0,NA,REF,NA
+ch06_asset_swaps,JPY principal,per 100,GaussQuant R on QuantLib curve,74.30688759763913,74.30688759763913,0,NA,REF,NA
+ch06_asset_swaps,JPY upfront,per 100,GaussQuant R on QuantLib curve,-0.43421758145613565,-0.43421758145613565,0,NA,REF,NA
+ch06_asset_swaps,GBP accrued,per 100,GaussQuant R on QuantLib curve,0.11111111111110628,0.11111111111110628,0,NA,REF,NA
+ch06_asset_swaps,GBP fair spread,bp,GaussQuant R on QuantLib curve,14.515922018324776,14.515922018324778,1.7763568394002505e-15,NA,REF,NA
+ch06_asset_swaps,GBP spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,786.5962106507071,786.596210650707,-1.1368683772161603e-13,NA,REF,NA
+ch06_asset_swaps,GBP NPV,per 100,GaussQuant R on QuantLib curve,-1.1418169253715433,-1.1418169253715433,0,NA,REF,NA
+ch06_asset_swaps,GBP bond leg,per 100,GaussQuant R on QuantLib curve,-100.7325506037094,-100.7325506037094,0,NA,REF,NA
+ch06_asset_swaps,GBP overnight leg,per 100,GaussQuant R on QuantLib curve,38.65237802705169,38.65237802705169,0,NA,REF,NA
+ch06_asset_swaps,GBP principal,per 100,GaussQuant R on QuantLib curve,61.3271649852228,61.3271649852228,0,NA,REF,NA
+ch06_asset_swaps,GBP upfront,per 100,GaussQuant R on QuantLib curve,-0.38880933393663936,-0.38880933393663936,0,NA,REF,NA
+ch06_asset_swaps,EUR native spread,bp,GaussQuant R on QuantLib curve,20.00553894448812,20.00553894448812,0,NA,REF,NA
+ch06_asset_swaps,EUR yen spread,bp,GaussQuant R on QuantLib curve,-0.3570114526001515,-0.35701145259989947,2.5202062658991053e-13,NA,REF,NA
+ch06_asset_swaps,EUR simple sum,bp,GaussQuant R on QuantLib curve,0.005538944488119313,0.005538944488118168,-1.1449174941446927e-15,NA,REF,NA
+ch06_asset_swaps,EUR calibrated discount spread,bp,GaussQuant R on QuantLib curve,20.503196805851964,20.503196805851605,-3.588240815588506e-13,NA,REF,NA
+ch06_asset_swaps,EUR NPV,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,5.1538050655253755,5.153805065521738,-3.637978807091713e-12,NA,REF,NA
+ch06_asset_swaps,EUR hedged bond,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,16424.082503572376,16424.08250357238,3.637978807091713e-12,NA,REF,NA
+ch06_asset_swaps,EUR base yen leg,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,16498.89832378276,16498.89832378276,0,NA,REF,NA
+ch06_asset_swaps,EUR upfront,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,-69.66201514485897,-69.66201514485897,0,NA,REF,NA
+ch06_asset_swaps,EUR spread annuity,"yen, per unit of spread",GaussQuant R on QuantLib curve,144359.6564757083,144359.6564757083,0,NA,REF,NA
+ch06_asset_swaps,USD native spread,bp,GaussQuant R on QuantLib curve,15.935733063472272,15.935733063472451,1.794120407794253e-13,NA,REF,NA
+ch06_asset_swaps,USD yen spread,bp,GaussQuant R on QuantLib curve,-15.46333844854865,-15.463338448539917,8.732570222491631e-12,NA,REF,NA
+ch06_asset_swaps,USD simple sum,bp,GaussQuant R on QuantLib curve,-14.064266936527728,-14.064266936527549,1.794120407794253e-13,NA,REF,NA
+ch06_asset_swaps,USD calibrated discount spread,bp,GaussQuant R on QuantLib curve,33.10365107152961,33.10365107152003,-9.585221505403752e-12,NA,REF,NA
+ch06_asset_swaps,USD NPV,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,202.93474785455328,202.93474785443868,-1.1459633242338896e-10,NA,REF,NA
+ch06_asset_swaps,USD hedged bond,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,14737.734289793165,14737.73428979328,1.1459633242338896e-10,NA,REF,NA
+ch06_asset_swaps,USD base yen leg,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,14998.998476166145,14998.998476166145,0,NA,REF,NA
+ch06_asset_swaps,USD upfront,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,-58.32943851842635,-58.32943851842635,0,NA,REF,NA
+ch06_asset_swaps,USD spread annuity,"yen, per unit of spread",GaussQuant R on QuantLib curve,131236.05134155301,131236.05134155301,0,NA,REF,NA
+ch06_asset_swaps,GBP native spread,bp,GaussQuant R on QuantLib curve,14.515922018324776,14.515922018324778,1.7763568394002505e-15,NA,REF,NA
+ch06_asset_swaps,GBP yen spread,bp,GaussQuant R on QuantLib curve,-11.846532860514031,-11.846532860512113,1.9184653865522705e-12,NA,REF,NA
+ch06_asset_swaps,GBP simple sum,bp,GaussQuant R on QuantLib curve,-10.484077981675224,-10.484077981675222,1.7763568394002505e-15,NA,REF,NA
+ch06_asset_swaps,GBP calibrated discount spread,bp,GaussQuant R on QuantLib curve,27.480917304900313,27.480917304898192,-2.120970066243899e-12,NA,REF,NA
+ch06_asset_swaps,GBP NPV,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,202.1099853112355,202.10998531120276,-3.2741809263825417e-11,NA,REF,NA
+ch06_asset_swaps,GBP hedged bond,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,19220.7597636308,19220.75976363083,3.2741809263825417e-11,NA,REF,NA
+ch06_asset_swaps,GBP base yen leg,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,19498.69801901599,19498.69801901599,0,NA,REF,NA
+ch06_asset_swaps,GBP upfront,yen per 100 of foreign notional,GaussQuant R on QuantLib curve,-75.82827007395426,-75.82827007395426,0,NA,REF,NA
+ch06_asset_swaps,GBP spread annuity,"yen, per unit of spread",GaussQuant R on QuantLib curve,170606.86674401892,170606.86674401892,0,NA,REF,NA
+ch06_asset_swaps,"USD, FX 150, basis -50 bp",bp,GaussQuant R on QuantLib curve,-35.447254857894386,-35.447254857894386,0,NA,REF,NA
+ch06_asset_swaps,"USD, FX 150, basis -30 bp",bp,GaussQuant R on QuantLib curve,-15.46333844854865,-15.463338448539917,8.732570222491631e-12,NA,REF,NA
+ch06_asset_swaps,"USD, FX 150, basis -10 bp",bp,GaussQuant R on QuantLib curve,4.519795527624847,4.5197955312206615,3.595814312973289e-9,NA,REF,NA
+ch06_asset_swaps,"USD, FX 150, basis 0 bp",bp,GaussQuant R on QuantLib curve,14.511077457671442,14.511077457671583,1.4033219031261979e-13,NA,REF,NA
+ch06_asset_swaps,"USD, FX 140, basis -30 bp",bp,GaussQuant R on QuantLib curve,-15.463338448548738,-15.463338448540421,8.316902722071973e-12,NA,REF,NA
+ch06_asset_swaps,"USD, FX 160, basis -30 bp",bp,GaussQuant R on QuantLib curve,-15.4633384485487,-15.463338448540124,8.57625082062441e-12,NA,REF,NA
+ch06_asset_swaps,Quote 1M,bp of spread per bp of quote,"GaussQuant R, finite difference",2.3850302977024285e-5,2.3850337867017255e-5,3.488999297061716e-11,NA,REF,NA
+ch06_asset_swaps,Quote 3M,bp of spread per bp of quote,"GaussQuant R, finite difference",-1.447809811594425e-4,-1.4478096185842449e-4,1.9301018004984002e-11,NA,REF,NA
+ch06_asset_swaps,Quote 6M,bp of spread per bp of quote,"GaussQuant R, finite difference",-4.603998448260427e-4,-4.6039982503070733e-4,1.97953353470344e-11,NA,REF,NA
+ch06_asset_swaps,Quote 1Y,bp of spread per bp of quote,"GaussQuant R, finite difference",5.425539167269733e-4,5.425538952029589e-4,-2.152401434168949e-11,NA,REF,NA
+ch06_asset_swaps,Quote 2Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-6.82033471477439e-5,-6.820340311785467e-5,-5.597011077534703e-11,NA,REF,NA
+ch06_asset_swaps,Quote 3Y,bp of spread per bp of quote,"GaussQuant R, finite difference",2.3739813803658194e-4,2.373981446597437e-4,6.623161762954466e-12,NA,REF,NA
+ch06_asset_swaps,Quote 4Y,bp of spread per bp of quote,"GaussQuant R, finite difference",3.041281764204484e-4,3.041281650982417e-4,-1.132220673553258e-11,NA,REF,NA
+ch06_asset_swaps,Quote 5Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-1.607571203265934e-4,-1.6075715905107418e-4,-3.872448078889347e-11,NA,REF,NA
+ch06_asset_swaps,Quote 7Y,bp of spread per bp of quote,"GaussQuant R, finite difference",0.005765040279914757,0.005765040279114585,-8.001724283168699e-13,NA,REF,NA
+ch06_asset_swaps,Quote 8Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-0.013556087422905705,-0.01355608739242709,3.047861442395661e-11,NA,REF,NA
+ch06_asset_swaps,Quote 10Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-0.9773967633748271,-0.9773967633768533,-2.0262680422433732e-12,NA,REF,NA
+ch06_asset_swaps,Quote 15Y,bp of spread per bp of quote,"GaussQuant R, finite difference",0.003203705576115823,0.0032037056002628163,2.4146993432561104e-11,NA,REF,NA
+ch06_asset_swaps,Quote 20Y,bp of spread per bp of quote,"GaussQuant R, finite difference",-9.784364435994064e-4,-9.784364770504962e-4,-3.345108977141631e-11,NA,REF,NA
+ch06_asset_swaps,Quote 30Y,bp of spread per bp of quote,"GaussQuant R, finite difference",1.2250854366513408e-4,1.225085384352564e-4,-5.229877674591682e-12,NA,REF,NA
+ch06_asset_swaps,EUR accrued,per 100,LagrangeFinance II-3.7.3,0.07777777777777661,0.07777777777777661,0,1e-4,PASS,NA
+ch06_asset_swaps,EUR fair_spread_bp,bp,LagrangeFinance II-3.7.3,20.00553894448812,20.00553894448812,0,1e-4,PASS,NA
+ch06_asset_swaps,EUR spread_annuity,"per 100, per unit of spread",LagrangeFinance II-3.7.3,859.2328809967528,859.2328809967529,1.1368683772161603e-13,1e-4,PASS,NA
+ch06_asset_swaps,EUR npv,per 100,LagrangeFinance II-3.7.3,-1.7189416863165263,-1.7189416863165263,0,1e-4,PASS,NA
+ch06_asset_swaps,EUR bond_leg_pv,per 100,LagrangeFinance II-3.7.3,-101.28322421141682,-101.28322421141681,1.4210854715202004e-14,1e-4,PASS,NA
+ch06_asset_swaps,EUR overnight_leg_pv,per 100,LagrangeFinance II-3.7.3,28.416048277898653,28.416048277898646,-7.105427357601002e-15,1e-4,PASS,NA
+ch06_asset_swaps,EUR principal_pv,per 100,LagrangeFinance II-3.7.3,71.57039924786598,71.57039924786598,0,1e-4,PASS,NA
+ch06_asset_swaps,EUR upfront_pv,per 100,LagrangeFinance II-3.7.3,-0.4221650006643301,-0.42216500066433005,5.551115123125783e-17,1e-4,PASS,NA
+ch06_asset_swaps,USD accrued,per 100,LagrangeFinance II-3.7.3,0.11111111111110628,0.11111111111110628,0,1e-4,PASS,NA
+ch06_asset_swaps,USD fair_spread_bp,bp,LagrangeFinance II-3.7.3,15.935733063472272,15.935733063472451,1.794120407794253e-13,1e-4,PASS,NA
+ch06_asset_swaps,USD spread_annuity,"per 100, per unit of spread",LagrangeFinance II-3.7.3,796.5715017372081,796.5715017372081,0,1e-4,PASS,NA
+ch06_asset_swaps,USD npv,per 100,LagrangeFinance II-3.7.3,-1.2693950817653388,-1.269395081765353,-1.4210854715202004e-14,1e-4,PASS,NA
+ch06_asset_swaps,USD bond_leg_pv,per 100,LagrangeFinance II-3.7.3,-100.85900738988032,-100.85900738988035,-2.842170943040401e-14,1e-4,PASS,NA
+ch06_asset_swaps,USD overnight_leg_pv,per 100,LagrangeFinance II-3.7.3,38.478217634391605,38.4782176343916,-7.105427357601002e-15,1e-4,PASS,NA
+ch06_asset_swaps,USD principal_pv,per 100,LagrangeFinance II-3.7.3,61.50019962975062,61.50019962975062,0,1e-4,PASS,NA
+ch06_asset_swaps,USD upfront_pv,per 100,LagrangeFinance II-3.7.3,-0.388804956027236,-0.388804956027236,0,1e-4,PASS,NA
+ch06_asset_swaps,JPY accrued,per 100,LagrangeFinance II-3.7.3,0.06575342465753309,0.06575342465753309,0,1e-4,PASS,NA
+ch06_asset_swaps,JPY fair_spread_bp,bp,LagrangeFinance II-3.7.3,12.106696524174344,12.106696524174344,0,1e-4,PASS,NA
+ch06_asset_swaps,JPY spread_annuity,"per 100, per unit of spread",LagrangeFinance II-3.7.3,874.9070089436867,874.9070089436867,0,1e-4,PASS,NA
+ch06_asset_swaps,JPY npv,per 100,LagrangeFinance II-3.7.3,-1.0592233644154303,-1.0592233644154305,-2.220446049250313e-16,1e-4,PASS,NA
+ch06_asset_swaps,JPY bond_leg_pv,per 100,LagrangeFinance II-3.7.3,-100.61832895740028,-100.61832895740027,1.4210854715202004e-14,1e-4,PASS,NA
+ch06_asset_swaps,JPY overnight_leg_pv,per 100,LagrangeFinance II-3.7.3,25.68643557680184,25.68643557680184,0,1e-4,PASS,NA
+ch06_asset_swaps,JPY principal_pv,per 100,LagrangeFinance II-3.7.3,74.30688759763913,74.30688759763913,0,1e-4,PASS,NA
+ch06_asset_swaps,JPY upfront_pv,per 100,LagrangeFinance II-3.7.3,-0.4342175814561357,-0.43421758145613565,5.551115123125783e-17,1e-4,PASS,NA
+ch06_asset_swaps,GBP accrued,per 100,LagrangeFinance II-3.7.3,0.11111111111110628,0.11111111111110628,0,1e-4,PASS,NA
+ch06_asset_swaps,GBP fair_spread_bp,bp,LagrangeFinance II-3.7.3,14.515922018324776,14.515922018324778,1.7763568394002505e-15,1e-4,PASS,NA
+ch06_asset_swaps,GBP spread_annuity,"per 100, per unit of spread",LagrangeFinance II-3.7.3,786.5962106507071,786.596210650707,-1.1368683772161603e-13,1e-4,PASS,NA
+ch06_asset_swaps,GBP npv,per 100,LagrangeFinance II-3.7.3,-1.1418169253715431,-1.1418169253715433,-2.220446049250313e-16,1e-4,PASS,NA
+ch06_asset_swaps,GBP bond_leg_pv,per 100,LagrangeFinance II-3.7.3,-100.7325506037094,-100.7325506037094,0,1e-4,PASS,NA
+ch06_asset_swaps,GBP overnight_leg_pv,per 100,LagrangeFinance II-3.7.3,38.65237802705169,38.65237802705169,0,1e-4,PASS,NA
+ch06_asset_swaps,GBP principal_pv,per 100,LagrangeFinance II-3.7.3,61.3271649852228,61.3271649852228,0,1e-4,PASS,NA
+ch06_asset_swaps,GBP upfront_pv,per 100,LagrangeFinance II-3.7.3,-0.38880933393663936,-0.38880933393663936,0,1e-4,PASS,NA
+ch06_asset_swaps,EUR native spread,bp,LagrangeFinance II-3.7.4,20.00553894448812,20.00553894448812,0,1e-4,PASS,NA
+ch06_asset_swaps,EUR yen spread,bp,LagrangeFinance II-3.7.4,-0.3570114526001515,-0.35701145259989947,2.5202062658991053e-13,1e-4,PASS,NA
+ch06_asset_swaps,EUR simple sum,bp,LagrangeFinance II-3.7.4,0.00553894448811931,0.005538944488118168,-1.1423154089307275e-15,1e-4,PASS,NA
+ch06_asset_swaps,EUR calibrated discount spread,bp,LagrangeFinance II-3.7.4,20.503196805851964,20.503196805851605,-3.588240815588506e-13,1e-4,PASS,NA
+ch06_asset_swaps,USD native spread,bp,LagrangeFinance II-3.7.4,15.935733063472272,15.935733063472451,1.794120407794253e-13,1e-4,PASS,NA
+ch06_asset_swaps,USD yen spread,bp,LagrangeFinance II-3.7.4,-15.46333844854865,-15.463338448539917,8.732570222491631e-12,1e-4,PASS,NA
+ch06_asset_swaps,USD simple sum,bp,LagrangeFinance II-3.7.4,-14.064266936527728,-14.064266936527549,1.794120407794253e-13,1e-4,PASS,NA
+ch06_asset_swaps,USD calibrated discount spread,bp,LagrangeFinance II-3.7.4,33.10365107152961,33.10365107152003,-9.585221505403752e-12,1e-4,PASS,NA
+ch06_asset_swaps,GBP native spread,bp,LagrangeFinance II-3.7.4,14.515922018324776,14.515922018324778,1.7763568394002505e-15,1e-4,PASS,NA
+ch06_asset_swaps,GBP yen spread,bp,LagrangeFinance II-3.7.4,-11.846532860514031,-11.846532860512113,1.9184653865522705e-12,1e-4,PASS,NA
+ch06_asset_swaps,GBP simple sum,bp,LagrangeFinance II-3.7.4,-10.484077981675224,-10.484077981675222,1.7763568394002505e-15,1e-4,PASS,NA
+ch06_asset_swaps,GBP calibrated discount spread,bp,LagrangeFinance II-3.7.4,27.480917304900313,27.480917304898192,-2.120970066243899e-12,1e-4,PASS,NA
+ch06_asset_swaps,"USD yen spread, basis -50 bp",bp,LagrangeFinance II-3.7.4,-35.447254857894386,-35.447254857894386,0,1e-4,PASS,NA
+ch06_asset_swaps,"USD yen spread, basis -30 bp",bp,LagrangeFinance II-3.7.4,-15.46333844854865,-15.463338448539917,8.732570222491631e-12,1e-4,PASS,NA
+ch06_asset_swaps,"USD yen spread, basis -10 bp",bp,LagrangeFinance II-3.7.4,4.519795527624847,4.5197955312206615,3.595814312973289e-9,1e-4,PASS,NA
+ch06_asset_swaps,"USD yen spread, basis 0 bp",bp,LagrangeFinance II-3.7.4,14.511077457671442,14.511077457671583,1.4033219031261979e-13,1e-4,PASS,NA
+ch06_asset_swaps,"USD yen spread, FX 140",bp,LagrangeFinance II-3.7.4,-15.463338448548738,-15.463338448540421,8.316902722071973e-12,1e-4,PASS,NA
+ch06_asset_swaps,"USD yen spread, FX 150",bp,LagrangeFinance II-3.7.4,-15.46333844854865,-15.463338448539917,8.732570222491631e-12,1e-4,PASS,NA
+ch06_asset_swaps,"USD yen spread, FX 160",bp,LagrangeFinance II-3.7.4,-15.4633384485487,-15.463338448540124,8.57625082062441e-12,1e-4,PASS,NA

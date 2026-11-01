@@ -48,7 +48,23 @@ all_results |>
   knitr::kable()
 ```
 
-## Rows without a verdict
+## Reference rows above 0.0001
+
+These rows have no verdict, because the other side is not a baseline.
+
+```{r}
+#| label: reference-above
+#| echo: false
+all_results |>
+  filter(verdict == "REF", abs(difference) > comparison_tolerance) |>
+  transmute(
+    Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
+    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value), Difference = format_4(difference)
+  ) |>
+  knitr::kable()
+```
+
+## Comparable rows without a verdict
 
 ```{r}
 #| label: not-comparable

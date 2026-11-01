@@ -298,6 +298,40 @@ bind_rows(
   show_results()
 ```
 
+## Against LagrangeFinance
+
+The legacy text makes the standard swap with QuantLib's builder, and `credit_default_swap` cannot express all of its settings. Rows that depend on the rebate or the upfront are not judged. The hazard rate is the legacy text's.
+
+The two coupon legs below fail, and the cause is an estimate: one more day of coupon in the last period. On this swap that day is 1e7 x 0.01 / 360 x discount x survival, about 267.69, and the ISDA difference is 267.70. The builder's source has not been read to confirm this.
+
+```{r}
+#| label: lagrange
+lagrange_hazard <- RiemannFinMath::hazard_curve(isda$trade, "2060-01-01", lagrange_value("cds.isda.hazard"))
+on_lagrange <- function(engine) RiemannFinMath::cds_value(standard_swap, lagrange_hazard, isda$recovery, isda_rates, isda$trade, engine)
+isda_value <- on_lagrange("isda")
+midpoint_value <- on_lagrange("midpoint")
+missing_arguments <- "RiemannFinMath's swap has no trade date or cash settlement days"
+bind_rows(
+  against_lagrange("One year: NPV", "currency", "cds.flat.npv", riemann_flat$npv),
+  against_lagrange("One year: coupon leg", "currency", "cds.flat.coupon_leg", riemann_flat$coupon_leg_npv),
+  against_lagrange("One year: default leg", "currency", "cds.flat.default_leg", riemann_flat$default_leg_npv),
+  against_lagrange("One year: fair spread", "bp", "cds.flat.fair_spread_bp", 1e4 * riemann_flat$fair_spread),
+  against_lagrange("One year: hazard rate at zero NPV", "percent", "cds.flat.hazard_pct", 100 * uniroot(riemann_at_hazard, c(1e-8, 0.5), tol = 1e-10)$root),
+  against_lagrange("Maturity of the standard swap", "days", "cds.isda.maturity", as.numeric(riemann_maturity)),
+  against_lagrange("ISDA: coupon leg", "currency", "cds.isda.coupon_leg", isda_value$coupon_leg_npv, "Estimated cause: one more day in the last period"),
+  against_lagrange("ISDA: default leg", "currency", "cds.isda.default_leg", isda_value$default_leg_npv),
+  lagrange_not_comparable("ISDA: NPV", "currency", "cds.isda.npv", isda_value$npv, missing_arguments),
+  lagrange_not_comparable("ISDA: accrual rebate", "currency", "cds.isda.rebate", isda_value$accrual_rebate_npv, missing_arguments),
+  lagrange_not_comparable("ISDA: fair spread", "bp", "cds.isda.fair_spread_bp", 1e4 * isda_value$fair_spread, missing_arguments),
+  lagrange_not_comparable("ISDA: fair upfront", "percent of notional", "cds.isda.fair_upfront_pct", 100 * isda_value$fair_upfront, missing_arguments),
+  against_lagrange("MidPoint: coupon leg", "currency", "cds.midpoint.coupon_leg", midpoint_value$coupon_leg_npv, "Estimated cause: one more day in the last period"),
+  against_lagrange("MidPoint: default leg", "currency", "cds.midpoint.default_leg", midpoint_value$default_leg_npv),
+  lagrange_not_comparable("MidPoint: NPV", "currency", "cds.midpoint.npv", midpoint_value$npv, missing_arguments),
+  lagrange_not_comparable("MidPoint: fair spread", "bp", "cds.midpoint.fair_spread_bp", 1e4 * midpoint_value$fair_spread, missing_arguments)
+) |>
+  show_results()
+```
+
 ## Differences of wrapper and core
 
 ```{r}

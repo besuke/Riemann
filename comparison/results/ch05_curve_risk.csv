@@ -1,36 +1,36 @@
 chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
-ch05_curve_risk,NPV,"per 100, at the curve date",QuantLib C++,100.21850362561558,100.21850362561558,0,1e-4,PASS,NA
-ch05_curve_risk,Settlement value,"per 100, at settlement",QuantLib C++,100.21839486793586,100.21839486793586,0,1e-4,PASS,NA
-ch05_curve_risk,Dirty price,"per 100, at settlement",QuantLib C++,100.21839486793586,100.21839486793586,0,1e-4,PASS,NA
-ch05_curve_risk,Clean price,"per 100, at settlement",QuantLib C++,100.13291541588106,100.13291541588106,0,1e-4,PASS,NA
-ch05_curve_risk,Quote ON,"per 100, per bp of quote",QuantLib C++,-8.237143447331619e-5,-8.237143377526519e-5,6.980509920095912e-13,1e-4,PASS,NA
-ch05_curve_risk,Quote 1W,"per 100, per bp of quote",QuantLib C++,-2.7457192430802024e-5,-2.7457190682257227e-5,1.7485447971802258e-12,1e-4,PASS,NA
-ch05_curve_risk,Quote 2W,"per 100, per bp of quote",QuantLib C++,-1.1601599680943764e-7,-1.1601660426779114e-7,-6.074583535010417e-13,1e-4,PASS,NA
-ch05_curve_risk,Quote 1M,"per 100, per bp of quote",QuantLib C++,-6.574353506039188e-7,-6.574347860542693e-7,5.645496494545554e-13,1e-4,PASS,NA
-ch05_curve_risk,Quote 3M,"per 100, per bp of quote",QuantLib C++,0,0,0,1e-4,PASS,NA
-ch05_curve_risk,Quote 6M,"per 100, per bp of quote",QuantLib C++,-3.6554020255152864e-6,-3.6554013951260875e-6,6.303891988897496e-13,1e-4,PASS,NA
-ch05_curve_risk,Quote 9M,"per 100, per bp of quote",QuantLib C++,-2.023158884867371e-6,-2.023160408665509e-6,-1.523798138095212e-12,1e-4,PASS,NA
-ch05_curve_risk,Quote 12M,"per 100, per bp of quote",QuantLib C++,9.031368364276204e-6,9.03137017184617e-6,1.8075699662371218e-12,1e-4,PASS,NA
-ch05_curve_risk,Quote 18M,"per 100, per bp of quote",QuantLib C++,-1.5333210967583e-5,-1.5333211468752455e-5,-5.011694557347911e-13,1e-4,PASS,NA
-ch05_curve_risk,Quote 2Y,"per 100, per bp of quote",QuantLib C++,5.533382108069418e-6,5.533379342696696e-6,-2.765372722208625e-12,1e-4,PASS,NA
-ch05_curve_risk,Quote 3Y,"per 100, per bp of quote",QuantLib C++,-6.737814572943535e-6,-6.737812891627055e-6,1.6813164799474051e-12,1e-4,PASS,NA
-ch05_curve_risk,Quote 4Y,"per 100, per bp of quote",QuantLib C++,-9.31856263264308e-6,-9.318558268847887e-6,4.363795191828792e-12,1e-4,PASS,NA
-ch05_curve_risk,Quote 5Y,"per 100, per bp of quote",QuantLib C++,-0.01054277818184346,-0.01054277818511719,-3.273730245223483e-12,1e-4,PASS,NA
-ch05_curve_risk,Quote 7Y,"per 100, per bp of quote",QuantLib C++,-0.05496141085643558,-0.054961410856164336,2.7124136270373356e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2022-08-22,"per 100, per bp of zero rate",QuantLib C++,0,0,0,1e-4,PASS,NA
-ch05_curve_risk,Node 2022-08-30,"per 100, per bp of zero rate",QuantLib C++,0,-0,-0,1e-4,PASS,NA
-ch05_curve_risk,Node 2022-09-06,"per 100, per bp of zero rate",QuantLib C++,-1.491628154326463e-7,-1.491633650183764e-7,-5.495857300920203e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2022-09-26,"per 100, per bp of zero rate",QuantLib C++,-7.34767979793105e-7,-7.34767686942373e-7,2.9285073204645106e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2022-11-24,"per 100, per bp of zero rate",QuantLib C++,0,-0,-0,1e-4,PASS,NA
-ch05_curve_risk,Node 2023-02-24,"per 100, per bp of zero rate",QuantLib C++,-3.735070919219652e-6,-3.735071515817312e-6,-5.965976601392394e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2023-05-23,"per 100, per bp of zero rate",QuantLib C++,-2.0528077016024326e-6,-2.052807162463089e-6,5.391393436396028e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2023-08-23,"per 100, per bp of zero rate",QuantLib C++,-8.664979844752452e-6,-8.66497988746241e-6,-4.2709957545996637e-14,1e-4,PASS,NA
-ch05_curve_risk,Node 2024-02-26,"per 100, per bp of zero rate",QuantLib C++,-1.5446453716094766e-5,-1.5446453679768934e-5,3.63258312590254e-14,1e-4,PASS,NA
-ch05_curve_risk,Node 2024-08-23,"per 100, per bp of zero rate",QuantLib C++,-2.995382288872861e-5,-2.9953823193256487e-5,-3.0452787711768466e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2025-08-25,"per 100, per bp of zero rate",QuantLib C++,-6.008664783507811e-5,-6.008664810534649e-5,-2.7026837934535433e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2026-08-24,"per 100, per bp of zero rate",QuantLib C++,-7.957538201708303e-5,-7.957538195371773e-5,6.3365301504123e-14,1e-4,PASS,NA
-ch05_curve_risk,Node 2027-08-23,"per 100, per bp of zero rate",QuantLib C++,-0.010655794928737805,-0.010655794928990277,-2.524716546936645e-13,1e-4,PASS,NA
-ch05_curve_risk,Node 2029-08-23,"per 100, per bp of zero rate",QuantLib C++,-0.05475076518806077,-0.0547507651887894,-7.286324321675863e-13,1e-4,PASS,NA
-ch05_curve_risk,Dirty price,per 100,QuantLib C++,95.00200565673862,95.00200565673862,0,1e-4,PASS,NA
-ch05_curve_risk,First derivative,"per 100, per bp",QuantLib C++,-0.06176396428996948,-0.061763964289969435,4.163336342344337e-17,1e-4,PASS,NA
-ch05_curve_risk,Second derivative,"per 100, per percent squared",QuantLib C++,0.43425718342393693,0.4342571834239366,-3.3306690738754696e-16,1e-4,PASS,NA
+ch05_curve_risk,NPV,"per 100, at the curve date",QuantLib C++,100.21850362561558,100.21850362561558,0,NA,REF,NA
+ch05_curve_risk,Settlement value,"per 100, at settlement",QuantLib C++,100.21839486793586,100.21839486793586,0,NA,REF,NA
+ch05_curve_risk,Dirty price,"per 100, at settlement",QuantLib C++,100.21839486793586,100.21839486793586,0,NA,REF,NA
+ch05_curve_risk,Clean price,"per 100, at settlement",QuantLib C++,100.13291541588106,100.13291541588106,0,NA,REF,NA
+ch05_curve_risk,Quote ON,"per 100, per bp of quote",QuantLib C++,-8.237143447331619e-5,-8.237143377526519e-5,6.980509920095912e-13,NA,REF,NA
+ch05_curve_risk,Quote 1W,"per 100, per bp of quote",QuantLib C++,-2.7457192430802024e-5,-2.7457190682257227e-5,1.7485447971802258e-12,NA,REF,NA
+ch05_curve_risk,Quote 2W,"per 100, per bp of quote",QuantLib C++,-1.1601599680943764e-7,-1.1601660426779114e-7,-6.074583535010417e-13,NA,REF,NA
+ch05_curve_risk,Quote 1M,"per 100, per bp of quote",QuantLib C++,-6.574353506039188e-7,-6.574347860542693e-7,5.645496494545554e-13,NA,REF,NA
+ch05_curve_risk,Quote 3M,"per 100, per bp of quote",QuantLib C++,0,0,0,NA,REF,NA
+ch05_curve_risk,Quote 6M,"per 100, per bp of quote",QuantLib C++,-3.6554020255152864e-6,-3.6554013951260875e-6,6.303891988897496e-13,NA,REF,NA
+ch05_curve_risk,Quote 9M,"per 100, per bp of quote",QuantLib C++,-2.023158884867371e-6,-2.023160408665509e-6,-1.523798138095212e-12,NA,REF,NA
+ch05_curve_risk,Quote 12M,"per 100, per bp of quote",QuantLib C++,9.031368364276204e-6,9.03137017184617e-6,1.8075699662371218e-12,NA,REF,NA
+ch05_curve_risk,Quote 18M,"per 100, per bp of quote",QuantLib C++,-1.5333210967583e-5,-1.5333211468752455e-5,-5.011694557347911e-13,NA,REF,NA
+ch05_curve_risk,Quote 2Y,"per 100, per bp of quote",QuantLib C++,5.533382108069418e-6,5.533379342696696e-6,-2.765372722208625e-12,NA,REF,NA
+ch05_curve_risk,Quote 3Y,"per 100, per bp of quote",QuantLib C++,-6.737814572943535e-6,-6.737812891627055e-6,1.6813164799474051e-12,NA,REF,NA
+ch05_curve_risk,Quote 4Y,"per 100, per bp of quote",QuantLib C++,-9.31856263264308e-6,-9.318558268847887e-6,4.363795191828792e-12,NA,REF,NA
+ch05_curve_risk,Quote 5Y,"per 100, per bp of quote",QuantLib C++,-0.01054277818184346,-0.01054277818511719,-3.273730245223483e-12,NA,REF,NA
+ch05_curve_risk,Quote 7Y,"per 100, per bp of quote",QuantLib C++,-0.05496141085643558,-0.054961410856164336,2.7124136270373356e-13,NA,REF,NA
+ch05_curve_risk,Node 2022-08-22,"per 100, per bp of zero rate",QuantLib C++,0,0,0,NA,REF,NA
+ch05_curve_risk,Node 2022-08-30,"per 100, per bp of zero rate",QuantLib C++,0,-0,-0,NA,REF,NA
+ch05_curve_risk,Node 2022-09-06,"per 100, per bp of zero rate",QuantLib C++,-1.491628154326463e-7,-1.491633650183764e-7,-5.495857300920203e-13,NA,REF,NA
+ch05_curve_risk,Node 2022-09-26,"per 100, per bp of zero rate",QuantLib C++,-7.34767979793105e-7,-7.34767686942373e-7,2.9285073204645106e-13,NA,REF,NA
+ch05_curve_risk,Node 2022-11-24,"per 100, per bp of zero rate",QuantLib C++,0,-0,-0,NA,REF,NA
+ch05_curve_risk,Node 2023-02-24,"per 100, per bp of zero rate",QuantLib C++,-3.735070919219652e-6,-3.735071515817312e-6,-5.965976601392394e-13,NA,REF,NA
+ch05_curve_risk,Node 2023-05-23,"per 100, per bp of zero rate",QuantLib C++,-2.0528077016024326e-6,-2.052807162463089e-6,5.391393436396028e-13,NA,REF,NA
+ch05_curve_risk,Node 2023-08-23,"per 100, per bp of zero rate",QuantLib C++,-8.664979844752452e-6,-8.66497988746241e-6,-4.2709957545996637e-14,NA,REF,NA
+ch05_curve_risk,Node 2024-02-26,"per 100, per bp of zero rate",QuantLib C++,-1.5446453716094766e-5,-1.5446453679768934e-5,3.63258312590254e-14,NA,REF,NA
+ch05_curve_risk,Node 2024-08-23,"per 100, per bp of zero rate",QuantLib C++,-2.995382288872861e-5,-2.9953823193256487e-5,-3.0452787711768466e-13,NA,REF,NA
+ch05_curve_risk,Node 2025-08-25,"per 100, per bp of zero rate",QuantLib C++,-6.008664783507811e-5,-6.008664810534649e-5,-2.7026837934535433e-13,NA,REF,NA
+ch05_curve_risk,Node 2026-08-24,"per 100, per bp of zero rate",QuantLib C++,-7.957538201708303e-5,-7.957538195371773e-5,6.3365301504123e-14,NA,REF,NA
+ch05_curve_risk,Node 2027-08-23,"per 100, per bp of zero rate",QuantLib C++,-0.010655794928737805,-0.010655794928990277,-2.524716546936645e-13,NA,REF,NA
+ch05_curve_risk,Node 2029-08-23,"per 100, per bp of zero rate",QuantLib C++,-0.05475076518806077,-0.0547507651887894,-7.286324321675863e-13,NA,REF,NA
+ch05_curve_risk,Dirty price,per 100,QuantLib C++,95.00200565673862,95.00200565673862,0,NA,REF,NA
+ch05_curve_risk,First derivative,"per 100, per bp",QuantLib C++,-0.06176396428996948,-0.061763964289969435,4.163336342344337e-17,NA,REF,NA
+ch05_curve_risk,Second derivative,"per 100, per percent squared",QuantLib C++,0.43425718342393693,0.4342571834239366,-3.3306690738754696e-16,NA,REF,NA

@@ -8,6 +8,61 @@ title: "Dates and calendars"
 source("R/book.R")
 ```
 
+## Against QuantLib C++ {#sec-calendars-cpp}
+
+The baseline of this chapter is QuantLib C++ itself. `tools/golden/p1_all_calendars.sh` built the v1.42 tag (commit `41b0e14`) from source, and that program wrote every calendar and market on every date from 1901-01-01 to 2199-12-31. The files in `tests/golden` hold its result: holidays on non-weekend days, business days on weekend days, and the dates where the calendar throws an error. The build is not repeated when this document is rendered. The joint and bespoke calendars in those files are left out, because the R package does not expose them.
+
+```{r}
+#| label: cpp-inputs
+golden <- "../tests/golden"
+markets <- read_csv(file.path(golden, "calendar_markets.csv"), comment = "#", show_col_types = FALSE, col_types = cols(.default = col_character())) |>
+  filter(!str_starts(key, "joint_|bespoke_"))
+exceptions <- c("common", "americas", "asia_pacific", "europe", "middle_east_africa") |>
+  map(\(region) read_csv(file.path(golden, paste0("calendar_all_", region, ".csv")), comment = "#", show_col_types = FALSE)) |>
+  list_rbind()
+errors <- read_csv(file.path(golden, "calendar_all_errors.csv"), comment = "#", show_col_types = FALSE)
+serials <- 367:109574
+all_dates <- as.Date(serials - 25569L)
+day_of_week <- as.POSIXlt(all_dates)$wday + 1L
+show_inputs(list(calendars = nrow(markets), from = min(all_dates), to = max(all_dates), dates_for_each_calendar = length(all_dates)))
+```
+
+RiemannFinMath, one call for each calendar:
+
+```{r}
+#| label: cpp-riemann
+check_calendar <- function(name, weekend) {
+  flags <- RiemannFinMath::is_business_day(name, all_dates, on_error = "na")
+  weekend_days <- if (is.na(weekend)) integer() else as.integer(str_split_1(weekend, " "))
+  is_weekend <- day_of_week %in% weekend_days
+  expected <- exceptions |> filter(calendar == name)
+  error_rows <- errors |> filter(calendar == name)
+  error_serials <- map2(error_rows$first, error_rows$last, seq) |> list_c() |> as.integer()
+  known <- !is.na(flags)
+  tibble(
+    calendar = name,
+    holidays = length(setdiff(serials[known & !is_weekend & !flags], expected$serial[expected$kind == "H"])) +
+      length(setdiff(expected$serial[expected$kind == "H"], serials[known & !is_weekend & !flags])),
+    weekend_business_days = length(setdiff(serials[known & is_weekend & flags], expected$serial[expected$kind == "W"])) +
+      length(setdiff(expected$serial[expected$kind == "W"], serials[known & is_weekend & flags])),
+    error_dates = length(setdiff(serials[!known], error_serials)) + length(setdiff(error_serials, serials[!known]))
+  )
+}
+calendar_results <- map2(markets$key, markets$weekend, check_calendar) |> list_rbind()
+```
+
+```{r}
+#| label: cpp-results
+bind_rows(
+  judge_values(paste(calendar_results$calendar, "holidays"), "dates that differ", 0, calendar_results$holidays, "QuantLib C++ v1.42"),
+  judge_values(paste(calendar_results$calendar, "weekend business days"), "dates that differ", 0, calendar_results$weekend_business_days, "QuantLib C++ v1.42"),
+  judge_values(paste(calendar_results$calendar, "error dates"), "dates that differ", 0, calendar_results$error_dates, "QuantLib C++ v1.42")
+) |>
+  show_results()
+```
+
+The sections below use QuantLib's R package as a reference.
+
 ## Calendars
 
 ```{r}

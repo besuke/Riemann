@@ -22,9 +22,9 @@ add_rows <- function(rows) {
   rows
 }
 
-# Judges the unrounded values. A row stays FAIL when it fails: the cause goes in the chapter's text.
-compare_values <- function(item, unit, quantlib, riemann, baseline = "QuantLib C++", note = NA_character_) {
-  tibble(item = item, unit = unit, baseline = baseline, baseline_value = quantlib, riemann_value = riemann) |>
+# Judges the unrounded values against a baseline. A row stays FAIL when it fails: the cause goes in the text.
+judge_values <- function(item, unit, baseline_value, riemann, baseline, note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = baseline, baseline_value = baseline_value, riemann_value = riemann) |>
     mutate(
       difference = riemann_value - baseline_value,
       tolerance = comparison_tolerance,
@@ -34,16 +34,49 @@ compare_values <- function(item, unit, quantlib, riemann, baseline = "QuantLib C
     add_rows()
 }
 
-# The largest absolute difference over a vector, without showing the values themselves.
-compare_max <- function(item, unit, quantlib, riemann, baseline = "QuantLib C++", note = NA_character_) {
-  largest <- max(abs(riemann - quantlib))
-  tibble(item = item, unit = unit, baseline = baseline, baseline_value = NA_real_, riemann_value = NA_real_) |>
+# ---- the baseline of the chapters other than calendars ------------------------------------------
+lagrange_values <- read_csv("baseline/lagrange_values.csv", show_col_types = FALSE)
+
+lagrange_value <- function(key) {
+  found <- lagrange_values$value[match(key, lagrange_values$key)]
+  if (anyNA(found)) stop("No LagrangeFinance value for: ", paste(key[is.na(found)], collapse = ", "), call. = FALSE)
+  found
+}
+
+lagrange_label <- function(key) paste("LagrangeFinance", lagrange_values$section[match(key, lagrange_values$key)])
+
+against_lagrange <- function(item, unit, key, riemann, note = NA_character_) {
+  judge_values(item, unit, lagrange_value(key), riemann, lagrange_label(key), note)
+}
+
+# The largest absolute difference over many keys of one section.
+against_lagrange_max <- function(item, unit, key, riemann, note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = lagrange_label(key)[1], baseline_value = NA_real_, riemann_value = NA_real_) |>
     mutate(
-      difference = largest,
+      difference = max(abs(riemann - lagrange_value(key))),
       tolerance = comparison_tolerance,
       verdict = if_else(difference <= tolerance, "PASS", "FAIL"),
       note = note
     ) |>
+    add_rows()
+}
+
+# A LagrangeFinance value that is not the same calculation: shown, and not judged.
+lagrange_not_comparable <- function(item, unit, key, riemann, reason) {
+  not_comparable(item, unit, lagrange_value(key), riemann, reason, lagrange_label(key))
+}
+
+# ---- reference rows: QuantLib and others called directly, without a verdict ---------------------
+compare_values <- function(item, unit, quantlib, riemann, baseline = "QuantLib C++", note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = baseline, baseline_value = quantlib, riemann_value = riemann) |>
+    mutate(difference = riemann_value - baseline_value, tolerance = NA_real_, verdict = "REF", note = note) |>
+    add_rows()
+}
+
+# The largest absolute difference over a vector, without showing the values themselves.
+compare_max <- function(item, unit, quantlib, riemann, baseline = "QuantLib C++", note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = baseline, baseline_value = NA_real_, riemann_value = NA_real_) |>
+    mutate(difference = max(abs(riemann - quantlib)), tolerance = NA_real_, verdict = "REF", note = note) |>
     add_rows()
 }
 

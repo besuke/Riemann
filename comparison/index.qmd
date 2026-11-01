@@ -1,6 +1,11 @@
 # How to read this comparison {.unnumbered}
 
-This document calls QuantLib (C++, through its R binding) and RiemannFinMath (Rust, through its R package) from R on the same inputs. Each item gives the inputs, both calls, the results, the difference, the tolerance and the verdict. The inputs and examples come from the text *LagrangeFinance*, which this document does not change or translate.
+This document compares RiemannFinMath (Rust, through its R package) with two baselines:
+
+- **Calendars**: QuantLib C++ v1.42, built from source.
+- **Everything else**: the results of the text *LagrangeFinance*, recorded in `baseline/lagrange_values.csv`. This document does not change or translate that text.
+
+Only rows against these baselines have a verdict. Each chapter also calls QuantLib from R directly as a reference, to show the calls and the differences of implementation.
 
 ```{r}
 #| label: versions
@@ -13,7 +18,7 @@ tibble(
   knitr::kable()
 ```
 
-The QuantLib R package does not state its exact C++ commit, so these results are against that package and not against a known C++ commit.
+The QuantLib R package does not state its exact C++ commit, so its reference rows are against that package and not against a known C++ commit. The calendar baseline is a known commit, `41b0e14`.
 
 ## Verdicts
 
@@ -22,6 +27,7 @@ The QuantLib R package does not state its exact C++ commit, so these results are
 | PASS | The absolute difference is at most 0.0001 in the stated unit |
 | FAIL | The absolute difference is above 0.0001. The chapter states the cause where it is known |
 | N/C | Not comparable: the two numbers are not the same quantity under the same rules, so no verdict applies |
+| REF | Reference: the other side is not a baseline, so the difference is shown without a verdict, even when it is above 0.0001 |
 
 - Numbers are shown to 4 decimals. Verdicts use the unrounded values, which are in `results/*.csv`.
 - Every row names its unit. Rates are compared in percent or in basis points, on both sides alike, and the unit changes what 0.0001 means: 0.0001 percent is 0.01 bp.
@@ -30,11 +36,13 @@ The QuantLib R package does not state its exact C++ commit, so these results are
 
 ## Baselines
 
-The `Baseline` column says what each RiemannFinMath number is compared with. Only `QuantLib C++` and the rows built on it are C++.
+The `Baseline` column says what each RiemannFinMath number is compared with. The first two kinds are the baselines of the verdicts. The others appear in reference rows or in rows without a verdict.
 
 | Baseline | Meaning |
 |---|---|
-| QuantLib C++ | A QuantLib class or function called directly |
+| QuantLib C++ v1.42 | The calendars, from a build of the C++ source. The build is not repeated at rendering: its output is in `tests/golden` |
+| LagrangeFinance and a section | A result of the legacy text, recorded once from running its chapters. The text itself mostly calls GaussQuant on QuantLib, or R code |
+| QuantLib C++ | A class or function of the QuantLib R package, called directly |
 | QuantLib, finite difference | The same, bumped and revalued by the code shown |
 | QuantLib with R arithmetic | QuantLib values, combined by formulas in R |
 | GaussQuant R | An R implementation, used where QuantLib has no counterpart |

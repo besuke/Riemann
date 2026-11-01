@@ -1,19 +1,33 @@
 chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
-ch11_hull_white,Option 0.5y on bond 2y,bp of a bond worth 1,R closed form,106.18923522728862,106.18923522728862,0,1e-4,PASS,NA
-ch11_hull_white,Option 1.0y on bond 3y,bp of a bond worth 1,R closed form,77.73309575826947,77.73309575827392,4.447997525858227e-12,1e-4,PASS,NA
-ch11_hull_white,Option 2.0y on bond 5y,bp of a bond worth 1,R closed form,105.51068225127413,105.51068225127302,-1.1084466677857563e-12,1e-4,PASS,NA
-ch11_hull_white,Option 3.0y on bond 7y,bp of a bond worth 1,R closed form,205.00616693379436,205.00616693379382,-5.400124791776761e-13,1e-4,PASS,NA
-ch11_hull_white,European value,per 100,QuantLib C++,2.400328354245705,2.4003283542429728,-2.7320368189975852e-12,1e-4,PASS,NA
-ch11_hull_white,"European, derivative in mean reversion","per 100, per percent","QuantLib, finite difference",-0.07407574190043675,-0.07407574188186129,1.8575460614123074e-11,1e-4,PASS,NA
-ch11_hull_white,"European, derivative in volatility","per 100, per percent","QuantLib, finite difference",1.915824853635506,1.9158248536294742,-6.0318416927884755e-12,1e-4,PASS,NA
-ch11_hull_white,"Bermudan value, tree of 1000 steps",per 100,QuantLib C++,3.0939849464161435,3.0929043224067208,-0.0010806240094227704,1e-4,FAIL,NA
-ch11_hull_white,"Bermudan value, tree of 2000 steps",per 100,QuantLib C++,3.0926798498243664,3.0929043224067208,2.2447258235436252e-4,1e-4,FAIL,NA
+ch11_hull_white,Option 0.5y on bond 2y,bp of a bond worth 1,R closed form,106.18923522728862,106.18923522728862,0,NA,REF,NA
+ch11_hull_white,Option 1.0y on bond 3y,bp of a bond worth 1,R closed form,77.73309575826947,77.73309575827392,4.447997525858227e-12,NA,REF,NA
+ch11_hull_white,Option 2.0y on bond 5y,bp of a bond worth 1,R closed form,105.51068225127413,105.51068225127302,-1.1084466677857563e-12,NA,REF,NA
+ch11_hull_white,Option 3.0y on bond 7y,bp of a bond worth 1,R closed form,205.00616693379436,205.00616693379382,-5.400124791776761e-13,NA,REF,NA
+ch11_hull_white,European value,per 100,QuantLib C++,2.400328354245705,2.4003283542429728,-2.7320368189975852e-12,NA,REF,NA
+ch11_hull_white,"European, derivative in mean reversion","per 100, per percent","QuantLib, finite difference",-0.07407574190043675,-0.07407574188186129,1.8575460614123074e-11,NA,REF,NA
+ch11_hull_white,"European, derivative in volatility","per 100, per percent","QuantLib, finite difference",1.915824853635506,1.9158248536294742,-6.0318416927884755e-12,NA,REF,NA
+ch11_hull_white,"Bermudan value, tree of 1000 steps",per 100,QuantLib C++,3.0939849464161435,3.0929043224067208,-0.0010806240094227704,NA,REF,NA
+ch11_hull_white,"Bermudan value, tree of 2000 steps",per 100,QuantLib C++,3.0926798498243664,3.0929043224067208,2.2447258235436252e-4,NA,REF,NA
 ch11_hull_white,Bermudan: the tree from 500 to 1000 steps,per 100,QuantLib tree itself,3.0949394119926303,3.0939849464161435,-9.544655764868182e-4,NA,N/C,The tree against itself: how far the baseline still moves
 ch11_hull_white,Bermudan: the tree from 1000 to 2000 steps,per 100,QuantLib tree itself,3.0939849464161435,3.0926798498243664,-0.0013050965917771329,NA,N/C,The tree against itself: how far the baseline still moves
-ch11_hull_white,Bullet,per 100,Legacy R function,104.68710235460091,104.68710235460104,1.2789769243681803e-13,1e-4,PASS,NA
-ch11_hull_white,Callable,per 100,Legacy R function,100.45163090223686,100.45163090223691,5.684341886080802e-14,1e-4,PASS,NA
-ch11_hull_white,Value of the issuer's call,per 100,Legacy R function,4.235471452364052,4.2354714523641235,7.105427357601002e-14,1e-4,PASS,NA
-ch11_hull_white,"Callable, volatility 0.006",per 100,Legacy R function,100.93496269416052,100.93496269416057,5.684341886080802e-14,1e-4,PASS,NA
-ch11_hull_white,"Callable, volatility 0.020",per 100,Legacy R function,99.4248694848493,99.42486948484925,-4.263256414560601e-14,1e-4,PASS,NA
-ch11_hull_white,"Callable, grid 161, nodes 16",per 100,Legacy R function,100.44896415624503,100.44896415624466,-3.694822225952521e-13,1e-4,PASS,NA
-ch11_hull_white,"Callable, grid 641, nodes 32",per 100,Legacy R function,100.45211686073664,100.45211686073637,-2.7000623958883807e-13,1e-4,PASS,NA
+ch11_hull_white,Bullet,per 100,Legacy R function,104.68710235460091,104.68710235460104,1.2789769243681803e-13,NA,REF,NA
+ch11_hull_white,Callable,per 100,Legacy R function,100.45163090223686,100.45163090223691,5.684341886080802e-14,NA,REF,NA
+ch11_hull_white,Value of the issuer's call,per 100,Legacy R function,4.235471452364052,4.2354714523641235,7.105427357601002e-14,NA,REF,NA
+ch11_hull_white,"Callable, volatility 0.006",per 100,Legacy R function,100.93496269416052,100.93496269416057,5.684341886080802e-14,NA,REF,NA
+ch11_hull_white,"Callable, volatility 0.020",per 100,Legacy R function,99.4248694848493,99.42486948484925,-4.263256414560601e-14,NA,REF,NA
+ch11_hull_white,"Callable, grid 161, nodes 16",per 100,Legacy R function,100.44896415624503,100.44896415624466,-3.694822225952521e-13,NA,REF,NA
+ch11_hull_white,"Callable, grid 641, nodes 32",per 100,Legacy R function,100.45211686073664,100.45211686073637,-2.7000623958883807e-13,NA,REF,NA
+ch11_hull_white,Option 0.5y on bond 2y,bp of a bond worth 1,LagrangeFinance II-6.4.3,106.18923522728862,106.18923522728862,0,1e-4,PASS,NA
+ch11_hull_white,Option 1.0y on bond 3y,bp of a bond worth 1,LagrangeFinance II-6.4.3,77.73309575826947,77.73309575827392,4.447997525858227e-12,1e-4,PASS,NA
+ch11_hull_white,Option 2.0y on bond 5y,bp of a bond worth 1,LagrangeFinance II-6.4.3,105.51068225127412,105.51068225127302,-1.0942358130705543e-12,1e-4,PASS,NA
+ch11_hull_white,Option 3.0y on bond 7y,bp of a bond worth 1,LagrangeFinance II-6.4.3,205.00616693379436,205.00616693379382,-5.400124791776761e-13,1e-4,PASS,NA
+ch11_hull_white,Bullet,per 100,LagrangeFinance II-8.4.2,104.68710235460092,104.68710235460104,1.1368683772161603e-13,1e-4,PASS,NA
+ch11_hull_white,Callable,per 100,LagrangeFinance II-8.4.2,100.45163090223686,100.45163090223691,5.684341886080802e-14,1e-4,PASS,NA
+ch11_hull_white,Value of the issuer's call,per 100,LagrangeFinance II-8.4.2,4.235471452364052,4.2354714523641235,7.105427357601002e-14,1e-4,PASS,NA
+ch11_hull_white,"Callable, volatility 0.000",per 100,LagrangeFinance II-8.5,100.97524009125942,100.9752400912594,-2.842170943040401e-14,1e-4,PASS,NA
+ch11_hull_white,"Callable, volatility 0.006",per 100,LagrangeFinance II-8.5,100.93496269416052,100.93496269416057,5.684341886080802e-14,1e-4,PASS,NA
+ch11_hull_white,"Callable, volatility 0.012",per 100,LagrangeFinance II-8.5,100.45163090223686,100.45163090223691,5.684341886080802e-14,1e-4,PASS,NA
+ch11_hull_white,"Callable, volatility 0.020",per 100,LagrangeFinance II-8.5,99.4248694848493,99.42486948484925,-4.263256414560601e-14,1e-4,PASS,NA
+ch11_hull_white,"Callable, grid 161, nodes 16",per 100,LagrangeFinance II-8.6,100.44896415624504,100.44896415624466,-3.836930773104541e-13,1e-4,PASS,NA
+ch11_hull_white,"Callable, grid 321, nodes 24",per 100,LagrangeFinance II-8.6,100.45163090223686,100.45163090223691,5.684341886080802e-14,1e-4,PASS,NA
+ch11_hull_white,"Callable, grid 641, nodes 32",per 100,LagrangeFinance II-8.6,100.45211686073664,100.45211686073637,-2.7000623958883807e-13,1e-4,PASS,NA

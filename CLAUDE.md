@@ -78,12 +78,19 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ## QuantLib との比較資料（`comparison/`、2026-11-01 完了）
 
-LagrangeFinance の入力と計算例で、QuantLib（C++）と RiemannFinMath（Rust）を R から呼び比べる英語の資料。翻訳した教材ではない（当初の英語教材の案はユーザーの指示でこの形に変わった）。
+LagrangeFinance の入力と計算例で、RiemannFinMath（Rust）を基準と比べる英語の資料。翻訳した教材ではない（当初の英語教材の案はユーザーの指示でこの形に変わった）。
+
+- **基準（ユーザーの指示）**：カレンダーは本家 QuantLib C++（v1.42 をビルドした `tests/golden/calendar_all_*.csv`）、それ以外は LagrangeFinance の計算結果（`comparison/baseline/lagrange_values.csv`）。判定はこの基準に対する行だけ。QuantLib R パッケージなどを直接呼ぶ行は参考（REF）で、判定しない。
+- **基準値の作り直し**：`comparison/baseline/README.md`。LagrangeFinance が変わったら作り直す。今の値はコミット `05e1932` から。
 
 - **出力**：`quarto render --to html`（`comparison/` で実行）で `comparison/_book/index.html`。`_book` は git に入れない。丸める前の結果は `comparison/results/*.csv` で git に入れる。
 - **基準**：絶対誤差 1e-4、表示は小数 4 桁、判定は丸める前、単位を明記。この資料だけの基準で、ライブラリーの回帰テストの許容誤差は変えない。
 - **きまり**：文書に日本語を入れない。各項目に入力、両者の呼び出し、結果、差、許容誤差、判定を載せ、ラッパーの差と中核の差を分ける。同じ計算でないものは N/C にして判定しない。QuantLib に相当がないものは基準（GaussQuant など）を明記する。
-- **結果**：全 60 関数を呼んだ。FAIL は Bermudan の 2 行だけ（QuantLib の木と Riemann の格子の方法の差。木は 1000 段で差 0.0011、2000 段で 0.0002）。未比較は `appendix_c_gaps.qmd`。
+- **結果**：全 60 関数を呼んだ。件数は `comparison/results/`、未比較は `appendix_c_gaps.qmd`。FAIL は CDS の coupon leg の 2 行。Bermudan は基準値がなく参考行（木との差は 1000 段で 0.0011、2000 段で 0.0002）。
+- **次の作業（ユーザーが明日以降に指示する）**：
+  1. CDS の FAIL の原因確認。差 267.70 は最終期間に 1 日多い利息（約 267.69）と数値が合うが、QuantLib の `MakeCreditDefaultSwap` のソースは未確認。確かめたら、`credit_default_swap` に取引日・決済日数・最終期間の日数計算を足すかを決める。
+  2. 判定できない項目を減らすか決める。PRDC は旧版がモンテカルロの値だけで判定なし、第 5 章と第 13 章は旧版に対応する値がない。
+  3. `docs/library_comparison.md` の先頭の空行 1 行は未コミットのまま（由来不明）。扱いをユーザーに確認する。
 - **市場データ**：2026-10-06 の OIS 気配と受渡適格銘柄の価格は、描画時に `../../LagrangeFinance` から読むだけで、保存も表示もしない。
 - **注意**：bash のヒアドキュメントでは `\\` が `\` になる。バックスラッシュを含む R は Write で書く。
 

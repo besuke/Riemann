@@ -9,7 +9,7 @@ source("R/book.R")
 source("R/quantlib_side.R")
 ```
 
-The legacy text's parallel examples use `furrr` around arithmetic in R, and no pricing library, so they are not repeated. The items here use the bond of the bonds chapter and the curves of the OIS chapter.
+**No row of this chapter has a verdict: the legacy text has no value to use as the baseline.** Its parallel examples use `furrr` around arithmetic in R, and no pricing library, so they are not repeated. The items here use the bond of the bonds chapter and the curves of the OIS chapter.
 
 ## Many bonds
 

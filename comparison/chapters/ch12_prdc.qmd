@@ -8,7 +8,7 @@ title: "PRDC notes"
 source("R/book.R")
 ```
 
-QuantLib has no PRDC instrument. But in this model each coupon is a floor plus a call spread on the FX rate, so a baseline can be built from QuantLib's `blackFormula`. That is the C++ side of the judged rows. Monte Carlo values are shown without a verdict.
+QuantLib has no PRDC instrument. But in this model each coupon is a floor plus a call spread on the FX rate, so a reference can be built from QuantLib's `blackFormula`. The legacy text has only Monte Carlo values, so this chapter has no verdicts.
 
 ## Inputs
 
@@ -198,6 +198,23 @@ bind_rows(
   not_comparable("FX vega", "yen per percent", torch_gradients[[4]]$item() * 0.01, five_mc$summary$fx_vega * 0.01, reason, "torch"),
   not_comparable("JPY curve, total", "yen per bp", sum(as.numeric(torch_gradients[[2]])) * 1e-4, sum_of(five_mc, "domestic"), "Different risk factors: a yearly forward rate against a node's zero rate", "torch"),
   not_comparable("Foreign curve, total", "yen per bp", sum(as.numeric(torch_gradients[[3]])) * 1e-4, sum_of(five_mc, "foreign"), "Different risk factors: a yearly forward rate against a node's zero rate", "torch")
+) |>
+  show_results()
+```
+
+## Against LagrangeFinance
+
+**No row of this chapter can be judged against the legacy text.** Its values are Monte Carlo estimates: 300 paths for the NPV and 100 for the scenarios. So they appear with RiemannFinMath's closed form and without a verdict. The rows above against `blackFormula` are the reference for the closed form.
+
+```{r}
+#| label: lagrange
+sampling <- sprintf("The legacy value is a Monte Carlo estimate; its standard error is %.0f yen with 300 paths", lagrange_value("prdc.standard_error"))
+spot_cases <- tribble(~scenario, ~factor, "spot_minus_10", 0.90, "spot_minus_5", 0.95, "base", 1, "spot_plus_5", 1.05, "spot_plus_10", 1.10)
+volatility_cases <- tribble(~scenario, ~volatility, "vol_5pct", 0.05, "vol_7_5pct", 0.075, "base", 0.10, "vol_12_5pct", 0.125, "vol_15pct", 0.15)
+bind_rows(
+  lagrange_not_comparable("NPV", "yen", "prdc.npv", closed$summary$npv, sampling),
+  lagrange_not_comparable(paste("Spot,", spot_cases$scenario), "yen", paste0("prdc.spot.", spot_cases$scenario), map_dbl(spot_cases$factor, \(f) riemann_note(spot = terms$spot * f)$summary$npv), "Monte Carlo estimate with 100 paths"),
+  lagrange_not_comparable(paste("Volatility,", volatility_cases$scenario), "yen", paste0("prdc.volatility.", volatility_cases$scenario), map_dbl(volatility_cases$volatility, \(v) riemann_note(volatility = v)$summary$npv), "Monte Carlo estimate with 100 paths")
 ) |>
   show_results()
 ```
