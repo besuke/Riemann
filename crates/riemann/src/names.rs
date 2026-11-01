@@ -6,6 +6,7 @@ use crate::cashflow_analysis::DurationType;
 use crate::instruments::PriceType;
 use crate::interest_rate::Compounding;
 use crate::ois::{estr, sofr, sonia, tonar, OisInterpolation, OvernightIndex};
+use crate::options::{BarrierType, Exercise, ForwardModel, OptionType};
 use crate::time::{
     Actual365Kind, ActualActualKind, AustraliaMarket, AustriaMarket, BrazilMarket,
     BusinessDayConvention, Calendar, CanadaMarket, ChinaMarket, DateGenerationRule, DayCount,
@@ -143,6 +144,40 @@ pub fn day_count(name: &str) -> Result<DayCount, Error> {
         "one" => DayCount::One,
         "simple" => DayCount::Simple,
         other => return unknown("day count", other),
+    })
+}
+
+pub fn option_type(name: &str) -> Result<OptionType, Error> {
+    Ok(match name {
+        "call" => OptionType::Call,
+        "put" => OptionType::Put,
+        other => return unknown("option type", other),
+    })
+}
+
+pub fn barrier_type(name: &str) -> Result<BarrierType, Error> {
+    Ok(match name {
+        "down_in" => BarrierType::DownIn,
+        "up_in" => BarrierType::UpIn,
+        "down_out" => BarrierType::DownOut,
+        "up_out" => BarrierType::UpOut,
+        other => return unknown("barrier type", other),
+    })
+}
+
+pub fn exercise(name: &str) -> Result<Exercise, Error> {
+    Ok(match name {
+        "european" => Exercise::European,
+        "american" => Exercise::American,
+        other => return unknown("exercise", other),
+    })
+}
+
+pub fn forward_model(name: &str) -> Result<ForwardModel, Error> {
+    Ok(match name {
+        "black" => ForwardModel::Black,
+        "bachelier" => ForwardModel::Bachelier,
+        other => return unknown("forward model", other),
     })
 }
 

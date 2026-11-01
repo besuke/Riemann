@@ -70,6 +70,17 @@ used for verification:
 - crates/riemann/src/instruments/fixed_rate_bond.rs (value_on_curve):
   ql/pricingengines/bond/discountingbondengine.cpp (Copyright (C) 2007 Giorgio
   Facchinetti; (C) 2009 StatPro Italia srl) and ql/instruments/bond.cpp
+- crates/riemann/src/math/normal.rs: ql/math/errorfunction.cpp and
+  ql/math/distributions/normaldistribution.{cpp,hpp}. The error function is based on code
+  from the GNU C library, originally written by Sun: Copyright (C) 1993 by Sun Microsystems,
+  Inc. All rights reserved. Developed at SunPro, a Sun Microsystems, Inc. business.
+  Permission to use, copy, modify, and distribute this software is freely granted, provided
+  that this notice is preserved.
+- crates/riemann/src/options.rs: ql/pricingengines/vanilla/analyticeuropeanengine.cpp,
+  ql/pricingengines/blackcalculator.cpp, ql/pricingengines/blackformula.cpp,
+  ql/pricingengines/barrier/analyticbarrierengine.cpp,
+  ql/pricingengines/vanilla/binomialengine.hpp, ql/methods/lattices/binomialtree.cpp and
+  ql/methods/lattices/bsmlattice.hpp
 
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.

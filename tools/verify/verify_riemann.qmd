@@ -21,6 +21,7 @@ source("verify_bonds.R")
 source("verify_ois.R")
 source("verify_calendars.R")
 source("verify_autodiff.R")
+source("verify_options.R")
 results <- verify_bonds()
 summary_table <- summarise_verification(results)
 ois_results <- verify_ois()
@@ -29,6 +30,7 @@ ois_compare <- compare_interpolations(ois_results)
 ois_golden <- verify_ois_golden()
 parallel_results <- verify_parallel_batch()
 ad_results <- verify_autodiff()
+option_results <- verify_options()
 ois_curve_values <- ois_curves(ois_results)
 calendar_results <- verify_calendars()
 
@@ -55,7 +57,7 @@ Riemann の実装済みの計算を、合成データで QuantLib と比べる�
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
 - **Riemann の呼び方**：R パッケージ `RiemannFinMath`（`crates/riemann-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/riemann/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
 - **データ**：すべて合成の値で、市場データは使っていません。
-- **対象**：自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
+- **対象**：オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 
 ## 総合判定
 
@@ -70,6 +72,7 @@ ois_report_quotes_ok <- all(ois_results$quotes$pass)
 ois_golden_quotes_ok <- ois_miss_quotes == 0
 parallel_ok <- all(parallel_results$by_threads$identical_to_one_thread) && all(parallel_results$by_threads$input_order_kept)
 ad_ok <- all(ad_results$yield$pass) && all(ad_results$quotes$pass)
+option_ok <- all(option_results$values$pass) && option_results$value_within && option_results$threads_identical && max(option_results$monte_carlo$rel_diff) < 0.03
 calendar_ok <- all(calendar_results$by_market$result == "PASS") && sum(calendar_results$by_market$r_diff, na.rm = TRUE) == 0
 cat(sprintf(paste0("- 債券：**%s**\n",
                   "- OIS カーブ、QuantLib との照合：**%s**\n",
@@ -77,11 +80,12 @@ cat(sprintf(paste0("- 債券：**%s**\n",
                   "- OIS カーブ、入力気配の再現（照合用データ全件）：**%s**\n",
                   "- カレンダー（QuantLib との一致）：**%s**\n",
                   "- 並列バッチ（スレッド数を変えた結果と入力順の一致）：**%s**\n",
-                  "- 自動微分（解析式と数値差分との一致）：**%s**\n"),
+                  "- 自動微分（解析式と数値差分との一致）：**%s**\n",
+                  "- オプション（QuantLib との照合と MC）：**%s**\n"),
             pass_label(bond_ok), pass_label(ois_comparison_ok),
             if (ois_report_quotes_ok) "基準達成" else "基準未達",
             if (ois_golden_quotes_ok) "基準達成" else sprintf("基準未達（%d カーブ、%d 商品。QuantLib も同じカーブで未達）", ois_miss_curves, ois_miss_quotes),
-            pass_label(calendar_ok), pass_label(parallel_ok), pass_label(ad_ok)))
+            pass_label(calendar_ok), pass_label(parallel_ok), pass_label(ad_ok), pass_label(option_ok)))
 ```
 
 # 債券
@@ -615,6 +619,41 @@ ad_results$quotes |>
   mutate(max_abs_diff = sprintf("%.2e", max_abs_diff), result = if_else(pass, "PASS", "FAIL")) |>
   select(index, interpolation, quotes, max_abs_diff, result) |>
   knitr::kable(col.names = c("Index", "Interpolation", "Quotes", "Max abs. diff.", "Result"))
+```
+
+# オプション
+
+P6 の結果です。比較の相手は QuantLib R パッケージ（`tools/golden/p6_options.R`）で、入力はすべて合成の値です。Riemann のグリークスは自動微分で求めており、QuantLib の解析式を写していません。差は `|a - b| / (1 + |b|)` です。
+
+```{r}
+#| label: options-values
+option_results$values |>
+  mutate(max_rel_diff = sprintf("%.2e", max_rel_diff), limit = sprintf("%.0e", limit), result = if_else(pass, "PASS", "FAIL")) |>
+  select(-pass) |>
+  knitr::kable(col.names = c("Target", "Cases", "Max rel. diff.", "Limit", "Result"), align = "lrrrl")
+```
+
+**二項木の差の原因**：差は二つあり、どちらも QuantLib の側にあることを確かめました。Riemann は本来の計算のままです（`docs/spec_options.md` 5 章）。
+
+- 上の表の小さな差は、QuantLib のドリフトが 0.0001 年の数値的なフォワードレートから計算され、1e-12 程度の丸めを含むためです。同じ丸めを Rust で再現すると、差は 1.3e-14 になります。
+- 表から除いた次のケースでは、時間格子の終点 `dt * n` が丸めで満期より小さくなり、QuantLib のアメリカンでは満期のペイオフが 0 になります。
+
+```{r}
+#| label: options-grid-fault
+option_results$grid_fault |>
+  mutate(max_diff = sprintf("%.3f", max_diff)) |>
+  knitr::kable(col.names = c("American cases", "Grid short of maturity", "Riemann higher than QuantLib", "Max. diff."))
+```
+
+インプライド・ボラティリティ（`r option_results$implied$cases` ケース）の差は、QuantLib に対して最大 `r sprintf("%.1e", option_results$implied$max_diff_quantlib)`、入力の値に対して最大 `r sprintf("%.1e", option_results$implied$max_diff_true)` です。
+
+モンテカルロは 20 万パス（対称変数）で、解析値と比べます。標準誤差は `r sprintf("%.4f", option_results$standard_error)` で、1 スレッドと 4 スレッドの結果は`r if (option_results$threads_identical) "完全に一致しました" else "一致しませんでした"`。ガンマは、ペイオフを平滑化した場合の値です。平滑化による偏りを含みます。
+
+```{r}
+#| label: options-monte-carlo
+option_results$monte_carlo |>
+  mutate(across(c(analytic, monte_carlo), \(x) sprintf("%.6f", x)), rel_diff = sprintf("%.2e", rel_diff)) |>
+  knitr::kable(col.names = c("Measure", "Analytic", "Monte Carlo", "Rel. diff."), align = "lrrr")
 ```
 
 # 実行環境

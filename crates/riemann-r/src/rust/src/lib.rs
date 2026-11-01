@@ -16,6 +16,7 @@ use riemann::interest_rate::Compounding;
 use riemann::curves::CurveInput;
 use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
+use riemann::options::{self, Greeks, MonteCarloSettings, OptionInputs};
 use riemann::risk;
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
 use riemann::yen_bond;
@@ -785,6 +786,224 @@ fn quote_sensitivity(
     outcome(rows())
 }
 
+// ---- options --------------------------------------------------------------------------------
+
+fn option_inputs(values: [f64; 6]) -> OptionInputs {
+    let [spot, strike, rate, dividend_yield, volatility, time] = values;
+    OptionInputs { spot, strike, rate, dividend_yield, volatility, time }
+}
+
+/// Columns of `f(row)`, with NA and a message where a row fails.
+fn table<const N: usize>(n: usize, f: impl Fn(usize) -> Core<[f64; N]>) -> (Vec<Vec<f64>>, Vec<String>) {
+    let mut columns = vec![Vec::with_capacity(n); N];
+    let mut errors = Vec::with_capacity(n);
+    for i in 0..n {
+        match f(i) {
+            Ok(row) => {
+                columns.iter_mut().zip(row).for_each(|(c, v)| c.push(v));
+                errors.push(String::new());
+            }
+            Err(e) => {
+                columns.iter_mut().for_each(|c| c.push(na_real()));
+                errors.push(e.to_string());
+            }
+        }
+    }
+    (columns, errors)
+}
+
+fn greeks_row(g: Greeks) -> [f64; 8] {
+    [g.value, g.delta, g.gamma, g.vega, g.rho, g.dividend_rho, g.theta, g.strike_sensitivity]
+}
+
+fn greeks_list(n: usize, f: impl Fn(usize) -> Core<Greeks>) -> List {
+    let (columns, error) = table(n, |i| f(i).map(greeks_row));
+    list!(
+        value = columns[0].clone(),
+        delta = columns[1].clone(),
+        gamma = columns[2].clone(),
+        vega = columns[3].clone(),
+        rho = columns[4].clone(),
+        dividend_rho = columns[5].clone(),
+        theta = columns[6].clone(),
+        strike_sensitivity = columns[7].clone(),
+        error = error
+    )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn european_option(
+    option_type: Vec<String>,
+    spot: Vec<f64>,
+    strike: Vec<f64>,
+    rate: Vec<f64>,
+    dividend_yield: Vec<f64>,
+    volatility: Vec<f64>,
+    time: Vec<f64>,
+) -> List {
+    greeks_list(spot.len(), |i| {
+        options::european_greeks(
+            names::option_type(&option_type[i])?,
+            &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], volatility[i], time[i]]),
+        )
+    })
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn barrier_option(
+    option_type: Vec<String>,
+    barrier_type: Vec<String>,
+    spot: Vec<f64>,
+    strike: Vec<f64>,
+    barrier: Vec<f64>,
+    rebate: Vec<f64>,
+    rate: Vec<f64>,
+    dividend_yield: Vec<f64>,
+    volatility: Vec<f64>,
+    time: Vec<f64>,
+) -> List {
+    greeks_list(spot.len(), |i| {
+        options::barrier_greeks(
+            names::option_type(&option_type[i])?,
+            names::barrier_type(&barrier_type[i])?,
+            barrier[i],
+            rebate[i],
+            &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], volatility[i], time[i]]),
+        )
+    })
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn binomial_option(
+    option_type: Vec<String>,
+    exercise: Vec<String>,
+    spot: Vec<f64>,
+    strike: Vec<f64>,
+    rate: Vec<f64>,
+    dividend_yield: Vec<f64>,
+    volatility: Vec<f64>,
+    time: Vec<f64>,
+    steps: Vec<i32>,
+) -> List {
+    greeks_list(spot.len(), |i| {
+        options::binomial_greeks(
+            names::option_type(&option_type[i])?,
+            names::exercise(&exercise[i])?,
+            &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], volatility[i], time[i]]),
+            steps[i].max(0) as usize,
+        )
+    })
+}
+
+#[extendr]
+fn forward_option(
+    model: Vec<String>,
+    option_type: Vec<String>,
+    forward: Vec<f64>,
+    strike: Vec<f64>,
+    volatility: Vec<f64>,
+    time: Vec<f64>,
+    discount: Vec<f64>,
+) -> List {
+    let (columns, error) = table(forward.len(), |i| {
+        let g = options::forward_greeks(
+            names::forward_model(&model[i])?,
+            names::option_type(&option_type[i])?,
+            &options::ForwardInputs {
+                forward: forward[i],
+                strike: strike[i],
+                volatility: volatility[i],
+                time: time[i],
+                discount: discount[i],
+            },
+        )?;
+        Ok([g.value, g.delta_forward, g.gamma_forward, g.vega, g.d_time, g.d_discount, g.strike_sensitivity])
+    });
+    list!(
+        value = columns[0].clone(),
+        delta_forward = columns[1].clone(),
+        gamma_forward = columns[2].clone(),
+        vega = columns[3].clone(),
+        d_time = columns[4].clone(),
+        d_discount = columns[5].clone(),
+        strike_sensitivity = columns[6].clone(),
+        error = error
+    )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn implied_volatility(
+    option_type: Vec<String>,
+    price: Vec<f64>,
+    spot: Vec<f64>,
+    strike: Vec<f64>,
+    rate: Vec<f64>,
+    dividend_yield: Vec<f64>,
+    time: Vec<f64>,
+    accuracy: f64,
+    max_evaluations: i32,
+) -> List {
+    let rows = (0..spot.len())
+        .map(|i| {
+            options::implied_volatility(
+                names::option_type(&option_type[i])?,
+                price[i],
+                &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], 0.2, time[i]]),
+                accuracy,
+                max_evaluations.max(0) as usize,
+            )
+        })
+        .collect();
+    value_list(rows)
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn monte_carlo_european(
+    option_type: &str,
+    spot: f64,
+    strike: f64,
+    rate: f64,
+    dividend_yield: f64,
+    volatility: f64,
+    time: f64,
+    paths: f64,
+    seed: f64,
+    antithetic: bool,
+    smoothing: f64,
+    threads: i32,
+) -> List {
+    let run = || -> Core<List> {
+        let settings = MonteCarloSettings {
+            paths: paths as u64,
+            seed: seed as u64,
+            antithetic,
+            smoothing: if smoothing > 0.0 { Some(smoothing) } else { None },
+            threads: threads.max(0) as usize,
+        };
+        let r = options::monte_carlo_european(
+            names::option_type(option_type)?,
+            &option_inputs([spot, strike, rate, dividend_yield, volatility, time]),
+            &settings,
+        )?;
+        Ok(list!(
+            value = r.value,
+            standard_error = r.standard_error,
+            delta = r.delta,
+            gamma = r.gamma.unwrap_or_else(na_real),
+            vega = r.vega,
+            rho = r.rho,
+            dividend_rho = r.dividend_rho,
+            theta = r.theta
+        ))
+    };
+    outcome(run())
+}
+
 // ---- calendars -------------------------------------------------------------------------------
 
 /// 1 for a business day, 0 for a holiday, NA where the calendar fails.
@@ -1039,6 +1258,12 @@ extendr_module! {
     fn yield_sensitivity;
     fn curve_node_sensitivity;
     fn quote_sensitivity;
+    fn european_option;
+    fn barrier_option;
+    fn binomial_option;
+    fn forward_option;
+    fn implied_volatility;
+    fn monte_carlo_european;
     fn remaining_years;
     fn price_from_simple_rate;
     fn simple_rate_from_price;

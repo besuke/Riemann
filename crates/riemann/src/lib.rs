@@ -16,6 +16,7 @@ pub mod math;
 pub mod names;
 pub mod risk;
 pub mod ois;
+pub mod options;
 pub mod time;
 pub mod yen_bond;
 

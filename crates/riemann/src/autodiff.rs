@@ -19,7 +19,9 @@
 //! Second derivatives come from [`Recorder::gradient_vars`], which records the backward pass itself
 //! as new nodes, so that a derivative can be differentiated again.
 
+use crate::math::normal::{normal_cdf, normal_pdf};
 use crate::Error;
+use rayon::prelude::*;
 use std::cell::RefCell;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::sync::Arc;
@@ -48,25 +50,21 @@ impl Value {
         }
     }
 
-    fn map(&self, f: impl Fn(f64) -> f64) -> Value {
+    fn map(&self, f: impl Fn(f64) -> f64 + Send + Sync) -> Value {
         match self {
             Value::Scalar(x) => Value::Scalar(f(*x)),
-            Value::Paths(p) => Value::Paths(p.iter().map(|&x| f(x)).collect()),
+            Value::Paths(p) => paths_from(p.len(), |i| f(p[i])),
         }
     }
 
-    fn zip(&self, other: &Value, f: impl Fn(f64, f64) -> f64) -> Value {
+    fn zip(&self, other: &Value, f: impl Fn(f64, f64) -> f64 + Send + Sync) -> Value {
         match (self, other) {
             (Value::Scalar(a), Value::Scalar(b)) => Value::Scalar(f(*a, *b)),
-            (Value::Scalar(a), Value::Paths(b)) => {
-                Value::Paths(b.iter().map(|&b| f(*a, b)).collect())
-            }
-            (Value::Paths(a), Value::Scalar(b)) => {
-                Value::Paths(a.iter().map(|&a| f(a, *b)).collect())
-            }
+            (Value::Scalar(a), Value::Paths(b)) => paths_from(b.len(), |i| f(*a, b[i])),
+            (Value::Paths(a), Value::Scalar(b)) => paths_from(a.len(), |i| f(a[i], *b)),
             (Value::Paths(a), Value::Paths(b)) => {
                 assert_eq!(a.len(), b.len(), "path vectors of different lengths");
-                Value::Paths(a.iter().zip(b.iter()).map(|(&a, &b)| f(a, b)).collect())
+                paths_from(a.len(), |i| f(a[i], b[i]))
             }
         }
     }
@@ -76,13 +74,21 @@ impl Value {
     }
 }
 
-fn mean(paths: &[f64]) -> f64 {
-    paths.iter().sum::<f64>() / paths.len() as f64
+/// Below this length a vector operation stays on the calling thread. Each element is computed on its
+/// own, so the result does not depend on the split.
+const PARALLEL_LENGTH: usize = 4096;
+
+fn paths_from(n: usize, f: impl Fn(usize) -> f64 + Send + Sync) -> Value {
+    let values: Vec<f64> = if n < PARALLEL_LENGTH {
+        (0..n).map(f).collect()
+    } else {
+        (0..n).into_par_iter().map(f).collect()
+    };
+    Value::Paths(values.into())
 }
 
-/// The normal density.
-pub fn normal_pdf(x: f64) -> f64 {
-    (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt()
+fn mean(paths: &[f64]) -> f64 {
+    paths.iter().sum::<f64>() / paths.len() as f64
 }
 
 /// The calculations of the crate are generic over this trait. It is internal to the numerics
@@ -114,8 +120,7 @@ pub trait Operand:
     fn max(self, other: Self) -> Self;
     fn min(self, other: Self) -> Self;
     fn normal_pdf(self) -> Self;
-    /// `f` must be the normal distribution function; its derivative is the normal density.
-    fn normal_cdf_with(self, f: fn(f64) -> f64) -> Self;
+    fn normal_cdf(self) -> Self;
 }
 
 impl Operand for f64 {
@@ -152,8 +157,8 @@ impl Operand for f64 {
     fn normal_pdf(self) -> f64 {
         normal_pdf(self)
     }
-    fn normal_cdf_with(self, f: fn(f64) -> f64) -> f64 {
-        f(self)
+    fn normal_cdf(self) -> f64 {
+        normal_cdf(self)
     }
 }
 
@@ -467,12 +472,12 @@ fn pull_back_values(nodes: &[Node], i: usize, a: &Value, adjoints: &mut [Option<
 }
 
 impl<'t> Var<'t> {
-    fn unary(self, op: Op, f: impl Fn(f64) -> f64) -> Var<'t> {
+    fn unary(self, op: Op, f: impl Fn(f64) -> f64 + Send + Sync) -> Var<'t> {
         let value = self.recorder.nodes.borrow()[self.id as usize].value.map(f);
         self.recorder.push(op, self.id, 0, value)
     }
 
-    fn binary(self, other: Var<'t>, op: Op, f: impl Fn(f64, f64) -> f64) -> Var<'t> {
+    fn binary(self, other: Var<'t>, op: Op, f: impl Fn(f64, f64) -> f64 + Send + Sync) -> Var<'t> {
         assert!(
             std::ptr::eq(self.recorder, other.recorder),
             "variables of different recorders"
@@ -539,8 +544,8 @@ impl<'t> Operand for Var<'t> {
     fn normal_pdf(self) -> Var<'t> {
         self.unary(Op::NormalPdf, normal_pdf)
     }
-    fn normal_cdf_with(self, f: fn(f64) -> f64) -> Var<'t> {
-        self.unary(Op::NormalCdf, f)
+    fn normal_cdf(self) -> Var<'t> {
+        self.unary(Op::NormalCdf, normal_cdf)
     }
 }
 
@@ -653,7 +658,7 @@ mod tests {
 
     fn generic<T: Operand>(v: &[T]) -> T {
         let (a, b, c) = (v[0], v[1], v[2]);
-        let d = (a * b).exp() + (b / c).ln() * a - c.sqrt() / (a + 1.5);
+        let d = (a * b).exp() + (b / c).ln() * a - c.sqrt() / (a + 1.5) + a.normal_cdf();
         let e = a.powf(2.5) * Operand::max(b, c) - Operand::min(a, c) * (-b).abs();
         (d * e).normal_pdf() + e.recip() + (a - b) * 0.25 + (c + 2.0) / 3.0 - 1.0
     }

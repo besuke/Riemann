@@ -1,6 +1,6 @@
 Package: RiemannFinMath
 Type: Package
-Title: Bond and OIS Curve Calculations from a Rust Library
+Title: Bond, OIS Curve and Option Calculations from a Rust Library
 Version: 0.1.0
 Authors@R: c(
     person("Eiichi", "Horigome", role = c("aut", "cre", "cph"), email = "besuke.poripori@gmail.com"),
