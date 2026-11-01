@@ -29,7 +29,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 - **日本式債券計算の規則**：`docs/spec_bonds.md` 5.1 節の規則を採用し、GaussQuant の `R/bond_yen_GQL.R`（コミット `4ff081c`）と照合する。文書では計算規則を直接説明し、VBA を根拠にしない（「VBA 互換」などと書かない）。二次情報の「市場慣行」だけを根拠に別の規則へ変えない。2 月 29 日の応当日が平年になる場合は 2 月 28 日とし、その期間を 1 年とする（例：2024-02-29 から 2025-02-28 は残存 1 年）。この規則は日本式債券計算だけのもので、QuantLib 互換の日付・日数計算には適用しない。
 - **新興国カレンダーの用途**：当面は債券の受渡日と利払日の営業日判定に使う。スワップの規約や金利カーブには広げない。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限定する。
 - **カレンダーの照合の正**：QuantLib C++ v1.42 をビルドした値（`tools/golden/p1_all_calendars.sh`）。R パッケージは突き合わせに使う（`Germany::Euwax` と `Indonesia::IDX` は R から作れない）。
-- **開発の目的**：自分の研究と分析の基盤。LagrangeFinance の第 II 部と第 III 部に相当する計算を備える。**利用の主体は R**。LagrangeFinance は変更せず、ライブラリーの完成後に別のプロジェクトで QMD を作る（GaussQuant と LagrangeFinance の関係と同じ）。当面の QMD は動作確認用の `tools/verify/verify_riemann.qmd` だけ。自動微分は torch ではなく自前で行う。第 I 部に相当する計算は対象外。対象は、市場価格の再現、解析解、無裁定の関係で検証できる計算（仕様書 1.2 節）。
+- **開発の目的**：自分の研究と分析の基盤。LagrangeFinance の第 II 部と第 III 部に相当する計算を備える。**利用の主体は R**。既存の LagrangeFinance は保持して変更せず、英語教材の QMD を別ディレクトリーに作る（「次の作業」の節。GaussQuant と LagrangeFinance の関係と同じ）。このリポジトリーの QMD は動作確認用の `tools/verify/verify_riemann.qmd` だけ。自動微分は torch ではなく自前で行う。第 I 部に相当する計算は対象外。対象は、市場価格の再現、解析解、無裁定の関係で検証できる計算（仕様書 1.2 節）。
 - **正式名称**：RiemannFinMath（R パッケージ名も同じ）。リポジトリ名、crate 名（`riemann`、`riemann-r`）、API 名は変えない。CRAN への公開申請はしていない。
 - **著作権とライセンス**：著作権者は Eiichi Horigome、ライセンスは MIT と Apache-2.0 の併用。QuantLib 由来の部分は元の著作権者のまま。配布は社内のみの想定。リポジトリは現在公開で、非公開化は保留。
 - **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。`Operand` trait は P5 で入れた。2 階微分は逆伝播の記録、気配の微分は解いたカーブでの陰関数定理。
@@ -65,7 +65,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P2-3 | 割引カーブによる評価（フラット、ゼロ、割引係数、ゼロスプレッド） | 完了 |
 | P2-4 | 日本式の単利・複利利回りとリスク指標（`yen_bond.rs`） | 完了 |
 | P3 | OIS のブートストラップ | **完了。TONAR・€STR・SOFR・SONIA の `MonotonicLogCubic` を照合済み（`docs/spec_ois.md` 8〜10 章）。指標はこの 4 つに限定する。±8% で振れる入力の 3 カーブは、QuantLib と一致するが入力気配の再現基準は未達（10.3 節）。GaussQuant・LagrangeFinance との照合（仕様書 7 章）は未実施。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
-| P4 | R の入口（R パッケージ `RiemannFinMath`） | **直接呼び出し・並列評価・Positron での利用確認は完了**（`crates/riemann-r`、extendr。`docs/spec_r.md`）。**配布整備は作業中**：版 0.2.0（`c6218ae`）で Windows のソースパッケージ、`R CMD check`（NOTE 1）、バイナリ zip、別ライブラリーでの確認を実施（`dist/MANIFEST.txt`）。Windows 以外、配布先の公開は未了（同 8 章）。GaussQuant との比較は未実施 |
+| P4 | R の入口（R パッケージ `RiemannFinMath`） | **直接呼び出し・並列評価・Positron での利用確認は完了**（`crates/riemann-r`、extendr。`docs/spec_r.md`）。**配布整備は作業中**：版 0.2.0（`c6218ae`）で Windows のソースパッケージ、`R CMD check`（NOTE 1）、バイナリ zip、別ライブラリーでの確認を実施（`dist/MANIFEST.txt`）。**0.2.0 の quickstart は、利用者の Positron でも正常動作を確認済み（利用者の報告）**。Windows 以外、配布先の公開は未了（同 8 章）。GaussQuant との比較は未実施 |
 | P5 | 自動微分の基礎：確定値の計算グラフ、2 階微分、債券の利回り・カーブ・気配の感応度 | **完了**（`docs/spec_autodiff.md` 5 章）。R は `yield_sensitivity`、`curve_node_sensitivity`、`quote_sensitivity` |
 | P6 | 株のオプション：ヨーロピアン、アメリカン（二項木）、バリア、Black、Bachelier、MC。自動微分のグリークス | **完了**（`docs/spec_options.md`）。QuantLib の二項木の丸めの不具合を 5 章に記録 |
 | P7 | 債券：ASW、円ベーシス込み ASW、国債先物と CTD | **完了**（`docs/spec_asset_swaps.md`） |
@@ -75,6 +75,17 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | L1〜L3 | TypeScript の Node 版、ブラウザー版、Excel | 未着手。目標に必須ではない。P5 の後に WebAssembly で移植性を確認 |
 
 件数と結果は各仕様書の照合結果の節にある。段階の内容は `docs/specification.md` の 7 章。
+
+## 次の作業：英語教材（2026-11-01 のユーザーの指示）
+
+LagrangeFinance を基に、RiemannFinMath の実装済み機能の全範囲を扱う英語教材を、別ディレクトリーに作る。
+
+- **コード・入力条件・計算例**：LagrangeFinance に準じる。
+- **章立てと章番号**：LagrangeFinance のままにせず、再構成する。
+- **既存の LagrangeFinance**：保持する。変更しない。
+- **範囲**：上の進捗表で完了した機能。未対応のもの（LMM、HW 校正、Longstaff–Schwartz、MBS、確率的な金利の PRDC、PRDC のコール）を実装済みとして書かない。
+- **引き継ぐきまり**：日本式債券計算は規則を直接説明し、VBA を根拠にしない。OIS は 4 指標に限定する。市場の気配値（Bloomberg のデータ）は表や出力に出さない。
+- **未定**：ディレクトリー名とリポジトリー。教材の作成はまだ始めていない。
 
 ## 未解決の点
 
