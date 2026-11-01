@@ -1,4 +1,4 @@
-//! The string names of choices, shared by every language entry point (specification, chapter 11).
+//! The string names of choices, shared by every language entry point (specification, section 4.2).
 //!
 //! Names are snake_case. Calendar names are the keys of `tests/golden/calendar_markets.csv`.
 

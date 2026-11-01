@@ -364,8 +364,8 @@ fn log_linear_curves_match_quantlib_r_package() {
 }
 
 /// Discount factors: each bootstrap stops within the accuracy of 1e-12, and the number of passes
-/// can differ by one when the last change is on the threshold (specification 7.3), hence 2e-12.
-/// Rates: absolute 1e-10 (specification 7.3). The forward at a date divides by 0.0001 years, so the
+/// can differ by one when the last change is on the threshold (specification 5.1), hence 2e-12.
+/// Rates: absolute 1e-10 (specification 5.1). The forward at a date divides by 0.0001 years, so the
 /// relative 1e-12 of discount factors becomes 1e-8.
 fn monotonic_log_cubic_tolerances(reproduction_misses: &'static [&'static str]) -> Tolerances {
     Tolerances {

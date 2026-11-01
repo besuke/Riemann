@@ -9,7 +9,7 @@
 #   source("tools/verify/verify_common.R"); source("tools/verify/verify_bonds.R")
 #   results <- verify_bonds(); print(summarise_verification(results))
 
-# The tolerances of docs/specification.md 7.3, as applied in docs/spec_bonds.md 3.3.
+# The tolerances of docs/specification.md 5.1, as applied in docs/spec_bonds.md 3.3.
 bond_tolerances <- function() {
   tibble(
     measure = c("clean_price", "dirty_price", "accrued", "duration_modified", "convexity", "bpv", "yield"),

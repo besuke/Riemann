@@ -1,7 +1,7 @@
 //! Compares day count conventions with golden values from the QuantLib R binding
 //! (`tools/golden/p1_day_counts.R`). Day counts and errors must match exactly; year
 //! fractions must match exactly or, failing that, within a relative 1e-15
-//! (specification 7.3, arithmetic-only calculations). The number of inexact matches is reported.
+//! (specification 5.1, arithmetic-only calculations). The number of inexact matches is reported.
 
 use riemann::time::{
     Actual365Kind, ActualActualKind, Calendar, DayCount, HolidayCalendar, Thirty360Kind,

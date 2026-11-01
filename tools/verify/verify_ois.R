@@ -11,7 +11,7 @@
 
 ois_interpolations <- c("LogLinear", "MonotonicLogCubic")
 
-# Rates: absolute 1e-10 (specification 7.3). The forward at a date divides by 0.0001 years, so
+# Rates: absolute 1e-10 (specification 5.1). The forward at a date divides by 0.0001 years, so
 # the relative 1e-12 of discount factors becomes 1e-8.
 ois_tolerances <- function() {
   tribble(

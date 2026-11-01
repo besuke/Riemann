@@ -1,4 +1,4 @@
-//! Many evaluations at once, in parallel (specification, section 6.2).
+//! Many evaluations at once, in parallel (specification, section 3.2).
 //!
 //! Each unit is a value and each result depends on its own unit only, so the results do not
 //! depend on the number of threads, their timing or the order of the units. No language API is

@@ -1,6 +1,6 @@
 //! Compares fixed-rate bond cash flows and accrued interest with golden values from the
 //! QuantLib R binding (`tools/golden/p2_fixed_rate_bonds.R`). Dates must match exactly;
-//! amounts exactly or within a relative 1e-15 (specification 7.3), with inexact matches counted.
+//! amounts exactly or within a relative 1e-15 (specification 5.1), with inexact matches counted.
 
 use riemann::cashflows::CashFlow;
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};

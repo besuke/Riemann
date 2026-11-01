@@ -1,4 +1,4 @@
-//! Sequential and parallel evaluation agree exactly (specification, section 6.3): for any number
+//! Sequential and parallel evaluation agree exactly (specification, section 5.2): for any number
 //! of threads, when repeated, and for any order of the units. Results are compared through their
 //! debug text, which writes every floating-point number exactly and includes errors.
 
