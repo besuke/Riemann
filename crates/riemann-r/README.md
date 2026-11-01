@@ -12,7 +12,7 @@ R 4.6 用です。依存パッケージの `tibble` は、zip からの導入で
 
 ```r
 install.packages("tibble")
-install.packages("RiemannFinMath_0.1.0.zip", repos = NULL, type = "binary")
+install.packages("RiemannFinMath_0.2.0.zip", repos = NULL, type = "binary")
 ```
 
 ### ソースパッケージ（tar.gz）：リポジトリもネットワークも不要
@@ -21,7 +21,7 @@ install.packages("RiemannFinMath_0.1.0.zip", repos = NULL, type = "binary")
 
 ```
 rustup target add x86_64-pc-windows-gnu
-R CMD INSTALL RiemannFinMath_0.1.0.tar.gz
+R CMD INSTALL RiemannFinMath_0.2.0.tar.gz
 ```
 
 **パスが長いと失敗します。** ビルドのパスが Windows の 260 文字の制限を超えると、`LNK1104` で止まります。短いパスのフォルダーで実行してください。
@@ -38,8 +38,8 @@ Riemann のルートで実行します。Rtools の `tar` と `xz` が PATH に�
 
 ```
 Rscript tools/package/build_source_package.R dist
-R CMD check --as-cran dist/RiemannFinMath_0.1.0.tar.gz
-R CMD INSTALL --build dist/RiemannFinMath_0.1.0.tar.gz
+R CMD check --as-cran dist/RiemannFinMath_0.2.0.tar.gz
+R CMD INSTALL --build dist/RiemannFinMath_0.2.0.tar.gz
 ```
 
 ## Positron の R コンソールで試す

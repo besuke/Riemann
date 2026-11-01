@@ -133,14 +133,14 @@ dependencies = [
 
 [[package]]
 name = "riemann"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rayon",
 ]
 
 [[package]]
 name = "riemann-r"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "extendr-api",
  "riemann",
