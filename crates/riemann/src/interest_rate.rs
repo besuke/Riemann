@@ -6,6 +6,7 @@
 //! Only Simple, Compounded and Continuous compounding are implemented; QuantLib changed the
 //! mixed rules (SimpleThenCompounded, CompoundedThenSimple) after v1.42.
 
+use crate::autodiff::Operand;
 use crate::time::DayCount;
 use crate::Error;
 
@@ -22,15 +23,15 @@ pub enum Compounding {
 
 /// A rate with its day count, compounding and compounding frequency (periods per year).
 #[derive(Debug, Clone, PartialEq)]
-pub struct InterestRate {
-    pub rate: f64,
+pub struct InterestRate<T = f64> {
+    pub rate: T,
     pub day_count: DayCount,
     pub compounding: Compounding,
     pub frequency: u32,
 }
 
-impl InterestRate {
-    pub fn new(rate: f64, day_count: DayCount, compounding: Compounding, frequency: u32) -> Result<Self, Error> {
+impl<T: Operand> InterestRate<T> {
+    pub fn new(rate: T, day_count: DayCount, compounding: Compounding, frequency: u32) -> Result<Self, Error> {
         if compounding == Compounding::Compounded && frequency == 0 {
             return Err(Error::InvalidInput { reason: "compounded rate needs a frequency of at least 1".into() });
         }
@@ -38,45 +39,45 @@ impl InterestRate {
     }
 
     /// Growth of 1 over `t` years.
-    pub fn compound_factor(&self, t: f64) -> Result<f64, Error> {
+    pub fn compound_factor(&self, t: f64) -> Result<T, Error> {
         if t < 0.0 {
             return Err(Error::InvalidInput { reason: format!("negative time ({t}) not allowed") });
         }
         let r = self.rate;
         let f = self.frequency as f64;
         Ok(match self.compounding {
-            Compounding::Simple => 1.0 + r * t,
-            Compounding::Compounded => (1.0 + r / f).powf(f * t),
+            Compounding::Simple => r * t + 1.0,
+            Compounding::Compounded => (r / f + 1.0).powf(f * t),
             Compounding::Continuous => (r * t).exp(),
         })
     }
 
     /// Present value of 1 paid in `t` years.
-    pub fn discount_factor(&self, t: f64) -> Result<f64, Error> {
-        Ok(1.0 / self.compound_factor(t)?)
+    pub fn discount_factor(&self, t: f64) -> Result<T, Error> {
+        Ok(self.compound_factor(t)?.recip())
     }
 
     /// The rate that grows 1 to `compound` over `t` years (QuantLib `impliedRate`).
     /// The frequency is ignored unless the compounding is `Compounded`.
     pub fn implied_rate(
-        compound: f64,
+        compound: T,
         day_count: DayCount,
         compounding: Compounding,
         frequency: u32,
         t: f64,
-    ) -> Result<InterestRate, Error> {
-        if compound <= 0.0 {
+    ) -> Result<InterestRate<T>, Error> {
+        if compound.primal() <= 0.0 {
             return Err(Error::InvalidInput {
                 reason: "positive compound factor required".into(),
             });
         }
-        let rate = if compound == 1.0 {
+        let rate = if compound.primal() == 1.0 {
             if t < 0.0 {
                 return Err(Error::InvalidInput {
                     reason: format!("non negative time ({t}) required"),
                 });
             }
-            0.0
+            compound.like(0.0)
         } else {
             if t <= 0.0 {
                 return Err(Error::InvalidInput {
@@ -100,7 +101,7 @@ impl InterestRate {
         compounding: Compounding,
         frequency: u32,
         t: f64,
-    ) -> Result<InterestRate, Error> {
+    ) -> Result<InterestRate<T>, Error> {
         InterestRate::implied_rate(
             self.compound_factor(t)?,
             self.day_count.clone(),

@@ -126,6 +126,7 @@ fn check_curves(
         let OisCurve {
             curve,
             quote_repricing,
+            ..
         } = match (status, result) {
             ("ok", Ok(c)) => c,
             ("ok", Err(e)) => {

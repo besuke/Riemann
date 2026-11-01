@@ -11,6 +11,7 @@
 //! discount the accumulated time. QuantLib rewrote these functions after v1.42 (stepwise
 //! products everywhere); v1.42, the version used for verification, is reproduced here.
 
+use crate::autodiff::Operand;
 use crate::cashflows::CashFlow;
 use crate::curves::YieldCurve;
 use crate::interest_rate::{Compounding, InterestRate};
@@ -90,32 +91,32 @@ fn alive(leg: &[CashFlow], settlement: Date, include_settlement_date_flows: bool
 }
 
 /// Present value at `npv_date` of the cash flows after `settlement`, discounted at `y`.
-pub fn npv(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
-    let (mut npv, mut discount, mut last_date) = (0.0, 1.0, npv_date);
+pub fn npv<T: Operand>(leg: &[CashFlow], y: &InterestRate<T>, incl: bool, settlement: Date, npv_date: Date) -> Result<T, Error> {
+    let (mut npv, mut discount, mut last_date) = (y.rate.like(0.0), y.rate.like(1.0), npv_date);
     for (cf, amount) in alive(leg, settlement, incl)? {
         let b = y.discount_factor(stepwise_discount_time(cf, &y.day_count, npv_date, last_date)?)?;
-        discount *= b;
+        discount = discount * b;
         last_date = cf.date();
-        npv += amount * discount;
+        npv = npv + discount * amount;
     }
     Ok(npv)
 }
 
 /// Present value at `npv_date` of the cash flows after `settlement`, discounted on `curve`
 /// (QuantLib `CashFlows::npv` with a yield term structure).
-pub fn npv_on_curve(
+pub fn npv_on_curve<T: Operand>(
     leg: &[CashFlow],
-    curve: &YieldCurve,
+    curve: &YieldCurve<T>,
     incl: bool,
     settlement: Date,
     npv_date: Date,
-) -> Result<f64, Error> {
+) -> Result<T, Error> {
     if leg.is_empty() {
-        return Ok(0.0);
+        return Ok(curve.like(0.0));
     }
-    let mut total = 0.0;
+    let mut total = curve.like(0.0);
     for (cf, amount) in alive(leg, settlement, incl)? {
-        total += amount * curve.discount(cf.date())?;
+        total = total + curve.discount(cf.date())? * amount;
     }
     Ok(total / curve.discount(npv_date)?)
 }

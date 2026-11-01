@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod autodiff;
 pub mod batch;
 pub mod cashflow_analysis;
 pub mod cashflows;
@@ -13,6 +14,7 @@ pub mod instruments;
 pub mod interest_rate;
 pub mod math;
 pub mod names;
+pub mod risk;
 pub mod ois;
 pub mod time;
 pub mod yen_bond;

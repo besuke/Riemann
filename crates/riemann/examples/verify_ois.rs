@@ -38,6 +38,7 @@ fn value_rows(r: &[String]) -> Vec<(String, i64, String)> {
     let OisCurve {
         curve,
         quote_repricing,
+        ..
     } = match build_ois_curve(&ois_curve_spec(r, index, interpolation)) {
         Ok(built) => built,
         Err(_) => return vec![("build".to_string(), 0, "ERROR".to_string())],

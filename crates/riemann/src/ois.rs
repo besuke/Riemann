@@ -36,7 +36,9 @@
 //! after a failed search (QuantLib's default `maxAttempts` of 1).
 //! Conventions have no defaults, because QuantLib's defaults are not market conventions.
 
+use crate::autodiff::{Operand, Recorder, Var};
 use crate::curves::{LogDiscountInterpolation, LogDiscounts, YieldCurve};
+use crate::math::linear::inverse;
 use crate::math::solver1d::{brent, close_enough, finite_difference_newton_safe};
 use crate::time::{
     generate_schedule, Actual365Kind, BusinessDayConvention, Calendar, Date, DateGenerationRule,
@@ -171,6 +173,20 @@ pub struct QuoteRepricing {
 pub struct OisCurve {
     pub curve: YieldCurve,
     pub quote_repricing: Vec<QuoteRepricing>,
+    /// What the curve was built from; the derivatives with respect to the quotes need it.
+    pub spec: OisCurveSpec,
+}
+
+/// How the nodes of a bootstrapped curve move with the quotes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuoteJacobian {
+    /// The nodes after the reference date, in order.
+    pub node_dates: Vec<Date>,
+    /// For each node, the position in `OisCurveSpec::instruments` of the instrument it solves.
+    pub instruments: Vec<usize>,
+    /// `d_log_discount_d_quote[node][k]`: the derivative of the node's log discount factor with
+    /// respect to the quote of the instrument of node `k`.
+    pub d_log_discount_d_quote: Vec<Vec<f64>>,
 }
 
 /// One period of an overnight-compounded leg and the matching fixed-leg period.
@@ -312,32 +328,33 @@ impl Helper {
     /// QuantLib `impliedQuote`. `reference_date` is the curve's: flows paid on or before it
     /// have occurred. Overnight compounding is the discount ratio of `docs/spec_ois.md` 2.4,
     /// and the arithmetic follows QuantLib's order.
-    fn implied_quote(
+    fn implied_quote<T: Operand>(
         &self,
         reference_date: Date,
-        discount: &dyn Fn(Date) -> Result<f64, Error>,
-    ) -> Result<f64, Error> {
+        discount: &dyn Fn(Date) -> Result<T, Error>,
+    ) -> Result<T, Error> {
         match self {
             Helper::Deposit { start, maturity, t } => {
-                Ok((discount(*start)? / discount(*maturity)? - 1.0) / t)
+                Ok((discount(*start)? / discount(*maturity)? - 1.0) / *t)
             }
             Helper::Ois { periods } => {
-                let (mut overnight_npv, mut fixed_bps) = (0.0, 0.0);
+                let d = discount(reference_date)?;
+                let (mut overnight_npv, mut fixed_bps) = (d.like(0.0), d.like(0.0));
                 for p in periods {
                     if p.overnight_payment > reference_date {
                         let compound = discount(p.start)? / discount(p.end)?;
                         let rate = (compound - 1.0) / p.accrual;
-                        overnight_npv += rate * p.accrual * 1.0 * discount(p.overnight_payment)?;
+                        overnight_npv =
+                            overnight_npv + rate * p.accrual * 1.0 * discount(p.overnight_payment)?;
                     }
                 }
                 for p in periods {
                     if p.fixed_payment > reference_date {
-                        fixed_bps += 1.0 * p.accrual * discount(p.fixed_payment)?;
+                        fixed_bps = fixed_bps + discount(p.fixed_payment)? * (1.0 * p.accrual);
                     }
                 }
-                let d = discount(reference_date)?;
                 let basis_point = 1.0e-4;
-                Ok(-(-(overnight_npv / d) * -1.0) / (-(basis_point * fixed_bps / d) / basis_point))
+                Ok(-(-(overnight_npv / d) * -1.0) / (-(fixed_bps * basis_point / d) / basis_point))
             }
         }
     }
@@ -353,29 +370,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
             reason: "no bootstrap helpers given".into(),
         });
     }
-    let helpers = spec
-        .instruments
-        .iter()
-        .map(|i| match i {
-            OisCurveInstrument::OvernightDeposit { .. } => {
-                deposit_helper(&spec.index, spec.evaluation_date)
-            }
-            OisCurveInstrument::Ois {
-                tenor,
-                settlement_days,
-                payment_frequency,
-                payment_lag,
-                ..
-            } => ois_helper(
-                &spec.index,
-                spec.evaluation_date,
-                *tenor,
-                *settlement_days,
-                *payment_frequency,
-                *payment_lag,
-            ),
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+    let helpers = helpers_of(spec)?;
     let rate_of = |i: usize| match spec.instruments[i] {
         OisCurveInstrument::OvernightDeposit { rate } | OisCurveInstrument::Ois { rate, .. } => {
             rate
@@ -544,5 +539,86 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
     Ok(OisCurve {
         curve,
         quote_repricing,
+        spec: spec.clone(),
     })
+}
+
+fn helpers_of(spec: &OisCurveSpec) -> Result<Vec<Helper>, Error> {
+    spec.instruments
+        .iter()
+        .map(|i| match i {
+            OisCurveInstrument::OvernightDeposit { .. } => {
+                deposit_helper(&spec.index, spec.evaluation_date)
+            }
+            OisCurveInstrument::Ois {
+                tenor,
+                settlement_days,
+                payment_frequency,
+                payment_lag,
+                ..
+            } => ois_helper(
+                &spec.index,
+                spec.evaluation_date,
+                *tenor,
+                *settlement_days,
+                *payment_frequency,
+                *payment_lag,
+            ),
+        })
+        .collect()
+}
+
+impl OisCurve {
+    /// How the nodes move with the quotes, by the implicit function theorem at the solved curve:
+    /// each node solves `implied_quote(nodes) = quote`, so the derivative of the nodes with
+    /// respect to the quotes is the inverse of the matrix of derivatives of the implied quotes
+    /// with respect to the nodes. The iterations of the root finder are not differentiated.
+    pub fn quote_jacobian(&self) -> Result<QuoteJacobian, Error> {
+        let spec = &self.spec;
+        let helpers = helpers_of(spec)?;
+        let reference = spec.reference_date;
+        let mut order: Vec<usize> = (0..helpers.len())
+            .filter(|&i| helpers[i].latest_relevant_date() > reference)
+            .collect();
+        order.sort_by_key(|&i| helpers[i].latest_relevant_date());
+        let (dates, discounts) = self.curve.discount_nodes().ok_or_else(|| Error::InvalidInput {
+            reason: "an OIS curve has discount-factor nodes".into(),
+        })?;
+        if dates.len() != order.len() + 1 {
+            return Err(Error::InvalidInput {
+                reason: "the curve's nodes do not match its instruments".into(),
+            });
+        }
+        let day_count = &spec.curve_day_count;
+        let time = |d: Date| day_count.year_fraction(reference, d, None, None);
+        let times = dates.iter().map(|&d| time(d)).collect::<Result<Vec<_>, Error>>()?;
+        let max_time = times[times.len() - 1];
+
+        let recorder = Recorder::new();
+        let mut logs = vec![recorder.constant(0.0)];
+        let inputs: Vec<Var> = discounts[1..].iter().map(|d| recorder.input(d.ln())).collect();
+        logs.extend(&inputs);
+        let curve_logs =
+            LogDiscounts::new(spec.interpolation.log_discounts(), times, logs)?;
+        let discount = |d: Date| -> Result<Var, Error> {
+            let t = time(d)?;
+            if t < 0.0 || !(t <= max_time || close_enough(t, max_time)) {
+                return Err(Error::OutsideCurveRange {
+                    reason: format!("time ({t}) is outside the curve (0 to {max_time})"),
+                });
+            }
+            Ok(curve_logs.value(t).exp())
+        };
+        let mut rows = Vec::with_capacity(order.len());
+        for &i in &order {
+            let implied = helpers[i].implied_quote(reference, &discount)?;
+            let row = recorder.gradient(implied, &inputs)?;
+            rows.push(row.iter().map(|v| v.mean()).collect::<Vec<f64>>());
+        }
+        Ok(QuoteJacobian {
+            node_dates: dates[1..].to_vec(),
+            instruments: order,
+            d_log_discount_d_quote: inverse(&rows)?,
+        })
+    }
 }

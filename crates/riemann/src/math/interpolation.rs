@@ -12,21 +12,22 @@
 //! Ferdinando Ametrano; (C) 2000, 2001, 2002, 2003 RiskMap srl); modified BSD license. See
 //! THIRD_PARTY_NOTICES. Values are computed in the same order as QuantLib.
 
+use crate::autodiff::Operand;
 use crate::math::solver1d::close;
 use crate::Error;
 
 /// Linear interpolation through sorted points; a value, built once.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Linear {
+pub struct Linear<T = f64> {
     x: Vec<f64>,
-    y: Vec<f64>,
+    y: Vec<T>,
     /// slope of each segment
-    s: Vec<f64>,
+    s: Vec<T>,
 }
 
-impl Linear {
+impl<T: Operand> Linear<T> {
     /// At least two points with strictly increasing `x`.
-    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Linear, Error> {
+    pub fn new(x: Vec<f64>, y: Vec<T>) -> Result<Linear<T>, Error> {
         if x.len() < 2 || x.len() != y.len() {
             return Err(Error::InvalidInput {
                 reason: format!(
@@ -60,12 +61,12 @@ impl Linear {
         }
     }
 
-    pub fn value(&self, x: f64) -> f64 {
+    pub fn value(&self, x: f64) -> T {
         let i = self.locate(x);
-        self.y[i] + (x - self.x[i]) * self.s[i]
+        self.y[i] + self.s[i] * (x - self.x[i])
     }
 
-    pub fn derivative(&self, x: f64) -> f64 {
+    pub fn derivative(&self, x: f64) -> T {
         self.s[self.locate(x)]
     }
 
@@ -73,7 +74,7 @@ impl Linear {
         &self.x
     }
 
-    pub fn ys(&self) -> &[f64] {
+    pub fn ys(&self) -> &[T] {
         &self.y
     }
 }
@@ -82,23 +83,24 @@ impl Linear {
 /// (QuantLib `CubicInterpolation` with `Spline`, `monotonic = true` and `SecondDerivative` 0
 /// conditions); a value, built once. Outside the range the end segments are extended.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MonotonicCubicSpline {
+pub struct MonotonicCubicSpline<T = f64> {
     x: Vec<f64>,
-    y: Vec<f64>,
-    a: Vec<f64>,
-    b: Vec<f64>,
-    c: Vec<f64>,
+    y: Vec<T>,
+    a: Vec<T>,
+    b: Vec<T>,
+    c: Vec<T>,
 }
 
-/// Solves the system of the spline: QuantLib `TridiagonalOperator::solveFor`.
-fn solve_tridiagonal(
+/// Solves the system of the spline: QuantLib `TridiagonalOperator::solveFor`. The matrix depends
+/// only on the knots, so only the right-hand side carries derivatives.
+fn solve_tridiagonal<T: Operand>(
     lower: &[f64],
     diagonal: &[f64],
     upper: &[f64],
-    rhs: &[f64],
-) -> Result<Vec<f64>, Error> {
+    rhs: &[T],
+) -> Result<Vec<T>, Error> {
     let n = diagonal.len();
-    let mut result = vec![0.0; n];
+    let mut result = rhs.to_vec();
     let mut temp = vec![0.0; n];
     let mut bet = diagonal[0];
     if close(bet, 0.0) {
@@ -115,47 +117,49 @@ fn solve_tridiagonal(
                 reason: "division by zero".into(),
             });
         }
-        result[j] = (rhs[j] - lower[j - 1] * result[j - 1]) / bet;
+        result[j] = (rhs[j] - result[j - 1] * lower[j - 1]) / bet;
     }
     for j in (0..n - 1).rev() {
-        result[j] -= temp[j + 1] * result[j + 1];
+        result[j] = result[j] - result[j + 1] * temp[j + 1];
     }
     Ok(result)
 }
 
 /// The sign of `d` with its size limited to `limit`, or 0 when `d` does not have the sign
 /// of the reference slope.
-fn limited(d: f64, reference: f64, limit: f64) -> f64 {
-    if d * reference > 0.0 {
+fn limited<T: Operand>(d: T, reference: T, limit: T) -> T {
+    if d.primal() * reference.primal() > 0.0 {
         d / d.abs() * d.abs().min(limit)
     } else {
-        0.0
+        d.like(0.0)
     }
 }
 
-/// Hyman filter on the first derivatives (QuantLib `CubicInterpolationImpl::update`).
-fn hyman_filter(d: &mut [f64], dx: &[f64], s: &[f64]) {
+/// Hyman filter on the first derivatives (QuantLib `CubicInterpolationImpl::update`). The choice
+/// of branch reads the values; the derivatives follow the branch taken.
+fn hyman_filter<T: Operand>(d: &mut [T], dx: &[f64], s: &[T]) {
     let n = d.len();
+    let v = |x: T| x.primal();
     for i in 0..n {
         d[i] = if i == 0 {
-            limited(d[i], s[0], (3.0 * s[0]).abs())
+            limited(d[i], s[0], (s[0] * 3.0).abs())
         } else if i == n - 1 {
-            limited(d[i], s[n - 2], (3.0 * s[n - 2]).abs())
+            limited(d[i], s[n - 2], (s[n - 2] * 3.0).abs())
         } else {
             let pm = (s[i - 1] * dx[i] + s[i] * dx[i - 1]) / (dx[i - 1] + dx[i]);
-            let mut m = 3.0 * s[i - 1].abs().min(s[i].abs()).min(pm.abs());
-            if i > 1 && (s[i - 1] - s[i - 2]) * (s[i] - s[i - 1]) > 0.0 {
+            let mut m = s[i - 1].abs().min(s[i].abs()).min(pm.abs()) * 3.0;
+            if i > 1 && (v(s[i - 1]) - v(s[i - 2])) * (v(s[i]) - v(s[i - 1])) > 0.0 {
                 let pd = (s[i - 1] * (2.0 * dx[i - 1] + dx[i - 2]) - s[i - 2] * dx[i - 1])
                     / (dx[i - 2] + dx[i - 1]);
-                if pm * pd > 0.0 && pm * (s[i - 1] - s[i - 2]) > 0.0 {
-                    m = m.max(1.5 * pm.abs().min(pd.abs()));
+                if v(pm) * v(pd) > 0.0 && v(pm) * (v(s[i - 1]) - v(s[i - 2])) > 0.0 {
+                    m = m.max(pm.abs().min(pd.abs()) * 1.5);
                 }
             }
-            if i < n - 2 && (s[i] - s[i - 1]) * (s[i + 1] - s[i]) > 0.0 {
+            if i < n - 2 && (v(s[i]) - v(s[i - 1])) * (v(s[i + 1]) - v(s[i])) > 0.0 {
                 let pu =
                     (s[i] * (2.0 * dx[i] + dx[i + 1]) - s[i + 1] * dx[i]) / (dx[i] + dx[i + 1]);
-                if pm * pu > 0.0 && -pm * (s[i] - s[i - 1]) > 0.0 {
-                    m = m.max(1.5 * pm.abs().min(pu.abs()));
+                if v(pm) * v(pu) > 0.0 && -v(pm) * (v(s[i]) - v(s[i - 1])) > 0.0 {
+                    m = m.max(pm.abs().min(pu.abs()) * 1.5);
                 }
             }
             limited(d[i], pm, m)
@@ -163,9 +167,9 @@ fn hyman_filter(d: &mut [f64], dx: &[f64], s: &[f64]) {
     }
 }
 
-impl MonotonicCubicSpline {
+impl<T: Operand> MonotonicCubicSpline<T> {
     /// At least two points with strictly increasing `x`.
-    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Result<MonotonicCubicSpline, Error> {
+    pub fn new(x: Vec<f64>, y: Vec<T>) -> Result<MonotonicCubicSpline<T>, Error> {
         let n = x.len();
         if n < 2 || n != y.len() {
             return Err(Error::InvalidInput {
@@ -182,33 +186,33 @@ impl MonotonicCubicSpline {
             });
         }
         let dx: Vec<f64> = x.windows(2).map(|w| w[1] - w[0]).collect();
-        let s: Vec<f64> = (0..n - 1).map(|i| (y[i + 1] - y[i]) / dx[i]).collect();
+        let s: Vec<T> = (0..n - 1).map(|i| (y[i + 1] - y[i]) / dx[i]).collect();
 
         let (mut lower, mut diagonal, mut upper) =
             (vec![0.0; n - 1], vec![0.0; n], vec![0.0; n - 1]);
-        let mut rhs = vec![0.0; n];
+        let mut rhs = y.clone();
         for i in 1..n - 1 {
             lower[i - 1] = dx[i];
             diagonal[i] = 2.0 * (dx[i] + dx[i - 1]);
             upper[i] = dx[i - 1];
-            rhs[i] = 3.0 * (dx[i] * s[i - 1] + dx[i - 1] * s[i]);
+            rhs[i] = (s[i - 1] * dx[i] + s[i] * dx[i - 1]) * 3.0;
         }
         // a second derivative of 0 at both ends
         diagonal[0] = 2.0;
         upper[0] = 1.0;
-        rhs[0] = 3.0 * s[0];
+        rhs[0] = s[0] * 3.0;
         lower[n - 2] = 1.0;
         diagonal[n - 1] = 2.0;
-        rhs[n - 1] = 3.0 * s[n - 2];
+        rhs[n - 1] = s[n - 2] * 3.0;
         let mut d = solve_tridiagonal(&lower, &diagonal, &upper, &rhs)?;
         hyman_filter(&mut d, &dx, &s);
 
         let a = d[..n - 1].to_vec();
         let b = (0..n - 1)
-            .map(|i| (3.0 * s[i] - d[i + 1] - 2.0 * d[i]) / dx[i])
+            .map(|i| (s[i] * 3.0 - d[i + 1] - d[i] * 2.0) / dx[i])
             .collect();
         let c = (0..n - 1)
-            .map(|i| (d[i + 1] + d[i] - 2.0 * s[i]) / (dx[i] * dx[i]))
+            .map(|i| (d[i + 1] + d[i] - s[i] * 2.0) / (dx[i] * dx[i]))
             .collect();
         Ok(MonotonicCubicSpline { x, y, a, b, c })
     }
@@ -225,19 +229,23 @@ impl MonotonicCubicSpline {
         }
     }
 
-    pub fn value(&self, x: f64) -> f64 {
+    pub fn value(&self, x: f64) -> T {
         let j = self.locate(x);
         let dx = x - self.x[j];
-        self.y[j] + dx * (self.a[j] + dx * (self.b[j] + dx * self.c[j]))
+        self.y[j] + (self.a[j] + (self.b[j] + self.c[j] * dx) * dx) * dx
     }
 
-    pub fn derivative(&self, x: f64) -> f64 {
+    pub fn derivative(&self, x: f64) -> T {
         let j = self.locate(x);
         let dx = x - self.x[j];
-        self.a[j] + (2.0 * self.b[j] + 3.0 * self.c[j] * dx) * dx
+        self.a[j] + (self.b[j] * 2.0 + self.c[j] * 3.0 * dx) * dx
     }
 
     pub fn xs(&self) -> &[f64] {
         &self.x
+    }
+
+    pub fn ys(&self) -> &[T] {
+        &self.y
     }
 }

@@ -23,6 +23,7 @@
 //! Differences from QuantLib: no observers, handles, quotes or jumps; the spread is a number
 //! and the base curve is held by value. Extrapolation is a field of the curve.
 
+use crate::autodiff::{Operand, Recorder, Var};
 use crate::interest_rate::{Compounding, InterestRate};
 use crate::math::interpolation::{Linear, MonotonicCubicSpline};
 use crate::math::solver1d::close;
@@ -35,30 +36,30 @@ const DT: f64 = 0.0001;
 
 /// A yield curve on a reference date.
 #[derive(Debug, Clone, PartialEq)]
-pub struct YieldCurve {
+pub struct YieldCurve<T = f64> {
     reference_date: Date,
     day_count: DayCount,
     /// Whether discount factors beyond the last date are allowed.
     pub extrapolate: bool,
-    shape: Shape,
+    shape: Shape<T>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Shape {
+enum Shape<T> {
     /// QuantLib `FlatForward` with a fixed rate.
-    Flat { rate: InterestRate },
+    Flat { rate: InterestRate<T> },
     /// QuantLib `ZeroCurve` (`InterpolatedZeroCurve<Linear>`): continuous zero rates.
-    Zero { dates: Vec<Date>, zeros: Linear },
+    Zero { dates: Vec<Date>, zeros: Linear<T> },
     /// QuantLib `InterpolatedDiscountCurve`: an interpolation of the log discounts.
     Discount {
         dates: Vec<Date>,
-        discounts: Vec<f64>,
-        log_discounts: LogDiscounts,
+        discounts: Vec<T>,
+        log_discounts: LogDiscounts<T>,
     },
     /// QuantLib `ZeroSpreadedTermStructure`: a spread added to the base zero rate.
     ZeroSpreaded {
-        base: Box<YieldCurve>,
-        spread: f64,
+        base: Box<YieldCurve<T>>,
+        spread: T,
         compounding: Compounding,
         frequency: u32,
     },
@@ -75,17 +76,17 @@ pub enum LogDiscountInterpolation {
 
 /// An interpolation of log discount factors, fixed when it is built.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum LogDiscounts {
-    Linear(Linear),
-    MonotonicCubic(MonotonicCubicSpline),
+pub(crate) enum LogDiscounts<T = f64> {
+    Linear(Linear<T>),
+    MonotonicCubic(MonotonicCubicSpline<T>),
 }
 
-impl LogDiscounts {
+impl<T: Operand> LogDiscounts<T> {
     pub(crate) fn new(
         interpolation: LogDiscountInterpolation,
         times: Vec<f64>,
-        logs: Vec<f64>,
-    ) -> Result<LogDiscounts, Error> {
+        logs: Vec<T>,
+    ) -> Result<LogDiscounts<T>, Error> {
         Ok(match interpolation {
             LogDiscountInterpolation::LogLinear => {
                 LogDiscounts::Linear(Linear::new(times, logs)?)
@@ -96,26 +97,43 @@ impl LogDiscounts {
         })
     }
 
-    pub(crate) fn value(&self, t: f64) -> f64 {
+    pub(crate) fn value(&self, t: f64) -> T {
         match self {
             LogDiscounts::Linear(i) => i.value(t),
             LogDiscounts::MonotonicCubic(i) => i.value(t),
         }
     }
 
-    fn derivative(&self, t: f64) -> f64 {
+    fn derivative(&self, t: f64) -> T {
         match self {
             LogDiscounts::Linear(i) => i.derivative(t),
             LogDiscounts::MonotonicCubic(i) => i.derivative(t),
         }
     }
 
-    fn last_time(&self) -> f64 {
-        let times = match self {
+    fn xs(&self) -> &[f64] {
+        match self {
             LogDiscounts::Linear(i) => i.xs(),
             LogDiscounts::MonotonicCubic(i) => i.xs(),
-        };
-        *times.last().expect("at least 2 points")
+        }
+    }
+
+    fn ys(&self) -> &[T] {
+        match self {
+            LogDiscounts::Linear(i) => i.ys(),
+            LogDiscounts::MonotonicCubic(i) => i.ys(),
+        }
+    }
+
+    fn kind(&self) -> LogDiscountInterpolation {
+        match self {
+            LogDiscounts::Linear(_) => LogDiscountInterpolation::LogLinear,
+            LogDiscounts::MonotonicCubic(_) => LogDiscountInterpolation::MonotonicLogCubic,
+        }
+    }
+
+    fn last_time(&self) -> f64 {
+        *self.xs().last().expect("at least 2 points")
     }
 }
 
@@ -162,7 +180,7 @@ fn check_points(dates: &[Date], values: &[f64]) -> Result<(), Error> {
     Ok(())
 }
 
-impl YieldCurve {
+impl YieldCurve<f64> {
     /// A flat curve at `rate` from `reference_date` (QuantLib `FlatForward`); its day count is the rate's.
     pub fn flat(reference_date: Date, rate: InterestRate) -> YieldCurve {
         YieldCurve {
@@ -279,8 +297,109 @@ impl YieldCurve {
         })
     }
 
+    /// The same curve with its inputs as independent variables of `recorder`, and those inputs.
+    /// The dates, times and day count stay fixed. On a discount-factor curve the inputs are the
+    /// logarithms of the discount factors after the reference date; on a zero curve, the
+    /// continuous zero rates held by the curve.
+    pub fn lift<'t>(&self, recorder: &'t Recorder) -> Result<LiftedCurve<'t>, Error> {
+        let mut inputs = Vec::new();
+        let shape = match &self.shape {
+            Shape::Flat { rate } => {
+                let var = recorder.input(rate.rate);
+                inputs.push((CurveInput::FlatRate, var));
+                Shape::Flat {
+                    rate: InterestRate::new(
+                        var,
+                        rate.day_count.clone(),
+                        rate.compounding,
+                        rate.frequency,
+                    )?,
+                }
+            }
+            Shape::Zero { dates, zeros } => {
+                let vars: Vec<Var<'t>> = zeros.ys().iter().map(|&z| recorder.input(z)).collect();
+                for (&date, &var) in dates.iter().zip(&vars) {
+                    inputs.push((CurveInput::ZeroRate { date }, var));
+                }
+                Shape::Zero {
+                    dates: dates.clone(),
+                    zeros: Linear::new(zeros.xs().to_vec(), vars)?,
+                }
+            }
+            Shape::Discount { dates, log_discounts, .. } => {
+                let mut logs = vec![recorder.constant(log_discounts.ys()[0])];
+                for (i, &date) in dates.iter().enumerate().skip(1) {
+                    let var = recorder.input(log_discounts.ys()[i]);
+                    let time = log_discounts.xs()[i];
+                    inputs.push((CurveInput::LogDiscount { date, time }, var));
+                    logs.push(var);
+                }
+                let discounts = logs.iter().map(|l| l.exp()).collect();
+                Shape::Discount {
+                    dates: dates.clone(),
+                    discounts,
+                    log_discounts: LogDiscounts::new(
+                        log_discounts.kind(),
+                        log_discounts.xs().to_vec(),
+                        logs,
+                    )?,
+                }
+            }
+            Shape::ZeroSpreaded { base, spread, compounding, frequency } => {
+                let lifted = base.lift(recorder)?;
+                inputs.extend(lifted.inputs);
+                let var = recorder.input(*spread);
+                inputs.push((CurveInput::ZeroSpread, var));
+                Shape::ZeroSpreaded {
+                    base: Box::new(lifted.curve),
+                    spread: var,
+                    compounding: *compounding,
+                    frequency: *frequency,
+                }
+            }
+        };
+        Ok(LiftedCurve {
+            curve: YieldCurve {
+                reference_date: self.reference_date,
+                day_count: self.day_count.clone(),
+                extrapolate: self.extrapolate,
+                shape,
+            },
+            inputs,
+        })
+    }
+}
+
+/// An input of a curve that derivatives are taken with respect to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CurveInput {
+    FlatRate,
+    ZeroRate { date: Date },
+    /// The logarithm of the discount factor at `date`, `time` years from the reference date.
+    LogDiscount { date: Date, time: f64 },
+    ZeroSpread,
+}
+
+/// A curve whose inputs are recorded variables.
+#[derive(Debug, Clone)]
+pub struct LiftedCurve<'t> {
+    pub curve: YieldCurve<Var<'t>>,
+    pub inputs: Vec<(CurveInput, Var<'t>)>,
+}
+
+impl<T: Operand> YieldCurve<T> {
+    /// A constant in the same calculation as the curve.
+    pub(crate) fn like(&self, x: f64) -> T {
+        match &self.shape {
+            Shape::Flat { rate } => rate.rate.like(x),
+            Shape::Zero { zeros, .. } => zeros.ys()[0].like(x),
+            Shape::Discount { discounts, .. } => discounts[0].like(x),
+            Shape::ZeroSpreaded { spread, .. } => spread.like(x),
+        }
+    }
+
     /// The same curve with extrapolation allowed or not.
-    pub fn with_extrapolation(mut self, extrapolate: bool) -> YieldCurve {
+    pub fn with_extrapolation(mut self, extrapolate: bool) -> YieldCurve<T> {
         self.extrapolate = extrapolate;
         self
     }
@@ -294,7 +413,7 @@ impl YieldCurve {
     }
 
     /// Node dates and discount factors of a discount-factor curve.
-    pub fn discount_nodes(&self) -> Option<(&[Date], &[f64])> {
+    pub fn discount_nodes(&self) -> Option<(&[Date], &[T])> {
         match &self.shape {
             Shape::Discount { dates, discounts, .. } => Some((dates, discounts)),
             _ => None,
@@ -341,17 +460,17 @@ impl YieldCurve {
     }
 
     /// Discount factor for `d`.
-    pub fn discount(&self, d: Date) -> Result<f64, Error> {
+    pub fn discount(&self, d: Date) -> Result<T, Error> {
         self.discount_at(self.time_from_reference(d)?, false)
     }
 
     /// Discount factor at time `t`; `extrapolate` allows times beyond the curve for this call.
-    pub fn discount_at(&self, t: f64, extrapolate: bool) -> Result<f64, Error> {
+    pub fn discount_at(&self, t: f64, extrapolate: bool) -> Result<T, Error> {
         self.check_range(t, extrapolate)?;
         self.discount_impl(t)
     }
 
-    fn discount_impl(&self, t: f64) -> Result<f64, Error> {
+    fn discount_impl(&self, t: f64) -> Result<T, Error> {
         match &self.shape {
             Shape::Flat { rate } => rate.discount_factor(t),
             Shape::Discount {
@@ -372,7 +491,7 @@ impl YieldCurve {
             Shape::Zero { .. } | Shape::ZeroSpreaded { .. } => {
                 // this acts as a safe guard in cases where the zero yield at 0 would fail
                 if t == 0.0 {
-                    return Ok(1.0);
+                    return Ok(self.like(1.0));
                 }
                 Ok((-self.zero_yield(t)? * t).exp())
             }
@@ -380,7 +499,7 @@ impl YieldCurve {
     }
 
     /// Continuous zero yield at `t` > 0 of a curve defined by zero rates (QuantLib `zeroYieldImpl`).
-    fn zero_yield(&self, t: f64) -> Result<f64, Error> {
+    fn zero_yield(&self, t: f64) -> Result<T, Error> {
         match &self.shape {
             Shape::Zero { zeros, .. } => {
                 let t_max = *zeros.xs().last().expect("at least 2 points");
@@ -389,7 +508,7 @@ impl YieldCurve {
                 }
                 // flat forward extrapolation
                 let z_max = *zeros.ys().last().expect("at least 2 points");
-                let inst_fwd_max = z_max + t_max * zeros.derivative(t_max);
+                let inst_fwd_max = z_max + zeros.derivative(t_max) * t_max;
                 Ok((z_max * t_max + inst_fwd_max * (t - t_max)) / t)
             }
             Shape::ZeroSpreaded {
@@ -400,7 +519,7 @@ impl YieldCurve {
             } => {
                 let zero = base.zero_rate_at(t, *compounding, *frequency, true)?;
                 let spreaded = InterestRate::new(
-                    zero.rate + spread,
+                    zero.rate + *spread,
                     zero.day_count,
                     zero.compounding,
                     zero.frequency,
@@ -421,10 +540,10 @@ impl YieldCurve {
         day_count: &DayCount,
         compounding: Compounding,
         frequency: u32,
-    ) -> Result<InterestRate, Error> {
+    ) -> Result<InterestRate<T>, Error> {
         let t = self.time_from_reference(d)?;
         if t == 0.0 {
-            let compound = 1.0 / self.discount_at(DT, false)?;
+            let compound = self.discount_at(DT, false)?.recip();
             return InterestRate::implied_rate(
                 compound,
                 day_count.clone(),
@@ -433,7 +552,7 @@ impl YieldCurve {
                 DT,
             );
         }
-        let compound = 1.0 / self.discount_at(t, false)?;
+        let compound = self.discount_at(t, false)?.recip();
         let t = day_count.year_fraction(self.reference_date, d, None, None)?;
         InterestRate::implied_rate(compound, day_count.clone(), compounding, frequency, t)
     }
@@ -447,7 +566,7 @@ impl YieldCurve {
         day_count: &DayCount,
         compounding: Compounding,
         frequency: u32,
-    ) -> Result<InterestRate, Error> {
+    ) -> Result<InterestRate<T>, Error> {
         if d1 == d2 {
             let t = self.time_from_reference(d1)?;
             self.check_range(t, false)?;
@@ -480,9 +599,9 @@ impl YieldCurve {
         compounding: Compounding,
         frequency: u32,
         extrapolate: bool,
-    ) -> Result<InterestRate, Error> {
+    ) -> Result<InterestRate<T>, Error> {
         let t = if t == 0.0 { DT } else { t };
-        let compound = 1.0 / self.discount_at(t, extrapolate)?;
+        let compound = self.discount_at(t, extrapolate)?.recip();
         InterestRate::implied_rate(compound, self.day_count.clone(), compounding, frequency, t)
     }
 }

@@ -13,8 +13,10 @@ use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::cashflow_analysis::{YieldConvention, YieldSolver};
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
 use riemann::interest_rate::Compounding;
+use riemann::curves::CurveInput;
 use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
+use riemann::risk;
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
 use riemann::yen_bond;
 
@@ -686,6 +688,103 @@ fn discount_nodes(curve: ExternalPtr<OisCurve>) -> List {
     )
 }
 
+// ---- sensitivities ---------------------------------------------------------------------------
+
+#[extendr]
+fn yield_sensitivity(
+    bond: ExternalPtr<FixedRateBond>,
+    rate: Vec<f64>,
+    day_count: &str,
+    compounding: &str,
+    frequency: i32,
+    settlement_date: Vec<i32>,
+) -> List {
+    let rows = || -> Core<List> {
+        let convention = yield_convention(day_count, compounding, frequency)?;
+        let n = rate.len();
+        let (mut price, mut first, mut second) =
+            (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
+        let mut errors = Vec::with_capacity(n);
+        for (&r, &s) in rate.iter().zip(&settlement_date) {
+            let row = convention
+                .rate(r)
+                .and_then(|y| risk::yield_sensitivity(&bond, &y, date(s)?));
+            match row {
+                Ok(v) => {
+                    price.push(v.dirty_price);
+                    first.push(v.d_price_d_yield);
+                    second.push(v.d2_price_d_yield2);
+                    errors.push(String::new());
+                }
+                Err(e) => {
+                    price.push(na_real());
+                    first.push(na_real());
+                    second.push(na_real());
+                    errors.push(e.to_string());
+                }
+            }
+        }
+        Ok(list!(
+            dirty_price = price,
+            d_price_d_yield = first,
+            d2_price_d_yield2 = second,
+            error = errors
+        ))
+    };
+    outcome(rows())
+}
+
+#[extendr]
+fn curve_node_sensitivity(
+    bond: ExternalPtr<FixedRateBond>,
+    curve: ExternalPtr<OisCurve>,
+    evaluation_date: i32,
+) -> List {
+    let rows = || -> Core<List> {
+        let (value, rows) = risk::curve_sensitivity(&bond, &curve.curve, date(evaluation_date)?)?;
+        let (mut dates, mut times) = (Vec::new(), Vec::new());
+        let (mut d_npv, mut d_price) = (Vec::new(), Vec::new());
+        for row in rows {
+            if let CurveInput::LogDiscount { date, time } = row.input {
+                dates.push(date.serial() as f64);
+                times.push(time);
+                d_npv.push(row.d_npv);
+                d_price.push(row.d_dirty_price);
+            }
+        }
+        Ok(list!(
+            npv = value.npv,
+            dirty_price = value.dirty_price,
+            date = dates,
+            time = times,
+            d_npv = d_npv,
+            d_dirty_price = d_price
+        ))
+    };
+    outcome(rows())
+}
+
+#[extendr]
+fn quote_sensitivity(
+    bond: ExternalPtr<FixedRateBond>,
+    curve: ExternalPtr<OisCurve>,
+    evaluation_date: i32,
+) -> List {
+    let rows = || -> Core<List> {
+        let (value, rows) = risk::quote_sensitivity(&bond, &curve, date(evaluation_date)?)?;
+        Ok(list!(
+            npv = value.npv,
+            dirty_price = value.dirty_price,
+            instrument = rows.iter().map(|r| r.instrument as i32 + 1).collect::<Vec<i32>>(),
+            pillar_date = rows.iter().map(|r| r.pillar_date.serial() as f64).collect::<Vec<f64>>(),
+            rate = rows.iter().map(|r| r.quote).collect::<Vec<f64>>(),
+            d_npv = rows.iter().map(|r| r.d_npv).collect::<Vec<f64>>(),
+            d_dirty_price = rows.iter().map(|r| r.d_dirty_price).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(rows())
+}
+
 // ---- calendars -------------------------------------------------------------------------------
 
 /// 1 for a business day, 0 for a holiday, NA where the calendar fails.
@@ -937,6 +1036,9 @@ extendr_module! {
     fn duration;
     fn yield_from_price;
     fn value_on_curve;
+    fn yield_sensitivity;
+    fn curve_node_sensitivity;
+    fn quote_sensitivity;
     fn remaining_years;
     fn price_from_simple_rate;
     fn simple_rate_from_price;

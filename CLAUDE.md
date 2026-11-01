@@ -11,7 +11,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_bonds.md` | P2 の仕様と照合結果（2 章 P2-1、3 章 P2-2、4 章 P2-3、5 章 P2-4） |
 | `docs/spec_ois.md` | P3 の OIS カーブの仕様（QuantLib のソース調査、差、未確認事項） |
 | `docs/spec_r.md` | P4 の R の入口（構成、公開関数、エラーと panic、並列バッチ、照合結果、未対応） |
-| `docs/spec_autodiff.md` | 自動微分の設計（finmath-lib の方式） |
+| `docs/spec_autodiff.md` | 自動微分の設計（finmath-lib の方式）と P5 の結果（5 章） |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
 
 ## 決定事項
@@ -27,7 +27,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 - **開発の目的**：自分の研究と分析の基盤。LagrangeFinance の第 II 部と第 III 部に相当する計算を備える。**利用の主体は R**。LagrangeFinance は変更せず、ライブラリーの完成後に別のプロジェクトで QMD を作る（GaussQuant と LagrangeFinance の関係と同じ）。当面の QMD は動作確認用の `tools/verify/verify_riemann.qmd` だけ。自動微分は torch ではなく自前で行う。第 I 部に相当する計算は対象外。対象は、市場価格の再現、解析解、無裁定の関係で検証できる計算（仕様書 1.2 節）。
 - **正式名称**：RiemannFinMath（R パッケージ名も同じ）。リポジトリ名、crate 名（`riemann`、`riemann-r`）、API 名は変えない。CRAN への公開申請はしていない。
 - **著作権とライセンス**：著作権者は Eiichi Horigome、ライセンスは MIT と Apache-2.0 の併用。QuantLib 由来の部分は元の著作権者のまま。配布は社内のみの想定。リポジトリは現在公開で、非公開化は保留。
-- **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。`Operand` trait は P5 の最初に入れる。
+- **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。`Operand` trait は P5 で入れた。2 階微分は逆伝播の記録、気配の微分は解いたカーブでの陰関数定理。
 - **ライセンス**：MIT と Apache-2.0 の併用。QuantLib から移したコードは、著作権表示をソースから写し（記憶で書かない）、ファイルの先頭と `THIRD_PARTY_NOTICES` に載せる。
 
 ## 命名の方針
@@ -47,7 +47,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 - エラーの一致は、件数だけでなく原因も確かめる。
 - GaussQuant・LagrangeFinance・Curie は、Riemann の作業では変更しない。
 - 市場の気配値（Bloomberg のデータ）は表や出力に出さない。
-- コミットと push は、ユーザーに頼まれたときだけ行う。
+- コミットと push は、ユーザーに頼まれたときだけ行う。P6 以降の拡充は、段階ごとにテストと clippy が通ったら確認なしで commit と push をしてよい（2026-11-01 のユーザーの指示）。
 - 段階ごとの手順：照合用 R スクリプト → Rust の実装 → 照合テスト → 仕様書と `THIRD_PARTY_NOTICES` の更新 → 全テストと clippy → 報告。
 
 ## 進捗（2026-11-01 時点）
@@ -61,11 +61,11 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P2-4 | 日本式の単利・複利利回りとリスク指標（`yen_bond.rs`） | 完了 |
 | P3 | OIS のブートストラップ | **完了。TONAR・€STR・SOFR・SONIA の `MonotonicLogCubic` を照合済み（`docs/spec_ois.md` 8〜10 章）。指標はこの 4 つに限定する。±8% で振れる入力の 3 カーブは、QuantLib と一致するが入力気配の再現基準は未達（10.3 節）。GaussQuant・LagrangeFinance との照合（仕様書 7 章）は未実施。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
 | P4 | R の入口（R パッケージ `RiemannFinMath`） | **直接呼び出し・並列評価・Positron での利用確認は完了**（`crates/riemann-r`、extendr。`docs/spec_r.md`）。**配布整備は作業中**：Windows のソースパッケージ、`R CMD check`、バイナリ zip は確認済み。Windows 以外、配布先の公開は未了（同 8 章）。GaussQuant との比較は未実施 |
-| P5 | 自動微分の基礎：確定値の計算グラフ、2 階微分の設計の確認、債券とカーブのバケット感応度 | **次の段階**（`docs/spec_autodiff.md` 4 章） |
-| P6 | 自動微分：MC のベクトル、Black・Bachelier、グリークス | 未着手 |
-| P7 | ASW、国債先物と CTD | 未着手 |
-| P8 | CDS | 未着手 |
-| P9 | SABR、Hull-White、コール債、Bermudan、MBS | 未着手 |
+| P5 | 自動微分の基礎：確定値の計算グラフ、2 階微分、債券の利回り・カーブ・気配の感応度 | **完了**（`docs/spec_autodiff.md` 5 章）。R は `yield_sensitivity`、`curve_node_sensitivity`、`quote_sensitivity` |
+| P6 | 株のオプション：ヨーロピアン（Black–Scholes、Bachelier、MC）、次にアメリカンとバリア。自動微分のグリークス | **次の段階**（ユーザーの指定した順序：P6 → P7 → P9 → P8） |
+| P7 | 債券：ASW、国債先物と CTD | 未着手 |
+| P9 | Hull-White、コール債、SABR、Bermudan、MBS | 未着手 |
+| P8 | CDS（基準は GaussQuant の `make_cds_GQL` と LagrangeFinance II-5） | 未着手 |
 | P10 | PRDC の多因子 MC と自動微分 | 未着手 |
 | L1〜L3 | TypeScript の Node 版、ブラウザー版、Excel | 未着手。目標に必須ではない。P5 の後に WebAssembly で移植性を確認 |
 

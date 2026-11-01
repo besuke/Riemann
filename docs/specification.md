@@ -45,7 +45,7 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 | R の入口 | 実装済み（配布整備は作業中。[spec_r.md](spec_r.md)） |
 | TypeScript（Node.js）、WebAssembly（ブラウザー） | 未実装。開発目標（7.2 節の L1・L2） |
 | Excel の Office アドイン | 未実装。開発目標（7 章） |
-| 自動微分 | 未実装。次の開発目標（7 章の P5、[spec_autodiff.md](spec_autodiff.md)） |
+| 自動微分 | 確定値の計算グラフ、2 階微分、債券の利回り・カーブ・気配の感応度を実装済み（[spec_autodiff.md](spec_autodiff.md) 5 章）。MC は未実装 |
 | モンテカルロ評価 | 未実装。開発目標（7 章） |
 
 ### 1.4 記述の区分
@@ -58,7 +58,7 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 | 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
 | 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、3.5、4.3、5.3、6.3 節）、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）、P3 の OIS カーブ（[spec_ois.md](spec_ois.md) の 8〜10 章）、P4 の R の入口と並列バッチ（[spec_r.md](spec_r.md) の 5 章・6 章）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、3.5、4.3、5.3、6.3 節）、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）、P3 の OIS カーブ（[spec_ois.md](spec_ois.md) の 8〜10 章）、P4 の R の入口と並列バッチ（[spec_r.md](spec_r.md) の 5 章・6 章）、P5 の自動微分（[spec_autodiff.md](spec_autodiff.md) の 5 章）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
 
 ## 2. 設計の考え方
 
@@ -87,7 +87,7 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 | R4 | 分岐は `match` | 種類による違いは `enum` と `match` で書く。新しい種類を足したとき、対応していない箇所をコンパイラーが見つける |
 | R5 | 継承しない | クラス階層、trait オブジェクトの階層、仮想関数による振る舞いの差し替えを使わない |
 | R6 | 選択肢を型にしない | 利用者が選ぶ金融上の選択肢（補間方式、日数計算、カレンダー、評価手法など）を、型の引数や trait の実装の差し替えで表さない。公開 API は値で受け取り、利用者がジェネリクスを意識せずに使えるようにする。一方、内部の数値計算では、自動微分のためのスカラー型の抽象化など、必要な型の抽象化を使ってよい。その場合は、使う理由と範囲をコードの説明に書き、公開 API の型には出さない（入口では `f64` などの具体的な型にする）。マクロで DSL は作らない |
-| R7 | 更新は新しい値 | 市場データの変更は「古い値から新しい値を作る関数」で表す。変わっていない部分は `Arc` で共有する。中核では `RefCell`・`Mutex` などの内部可変性を使わない |
+| R7 | 更新は新しい値 | 市場データの変更は「古い値から新しい値を作る関数」で表す。変わっていない部分は `Arc` で共有する。中核では `RefCell`・`Mutex` などの内部可変性を使わない。例外は一つの計算の中だけで使う局所の作業領域（自動微分の `Recorder`、ブートストラップの最後の試行値）で、結果の値には残らず、スレッド間で共有できない |
 | R8 | 状態は引数で渡す | 評価日、Fixing、設定は `ValuationContext` として明示的に渡す |
 | R9 | エラーも値 | panic せず `Result` を返す。エラーには、原因になった入力（気配の ID、日付など）を持たせる |
 | R10 | 型は意味のために使う | 型は、単位と意味の取り違えを防ぐためだけに使う（`Rate`、`Bp`、`Price`、`Money`、`Date`）。振る舞いの組み替えには使わない |
@@ -286,7 +286,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 - 確率変数（`Rv`）は、パス方向のベクトルと時刻を持つ値。演算は新しい値を返す。
 - 計算グラフは、計算ごとの配列（アリーナ）に記録した順に積み、逆伝播は配列を後ろから1回たどる。finmath-lib の全体共有の ID カウンターは使わない。
 - 期待値・条件付き期待値・指示関数は、finmath-lib と同じ考え方で逆伝播する。条件付き期待値の回帰は、書き換えない値として演算に持たせる。
-- 数値計算のコードは、内部の小さな trait（`Operand`）について総称的に書き、`f64`・`Rv`・記録用の値で共有する（R6 が許す内部の型の抽象化）。P5 の最初に入れる。
+- 数値計算のコードは、内部の小さな trait（`Operand`）について総称的に書き、`f64` と記録用の値で共有する（R6 が許す内部の型の抽象化）。P5 で入れた。
 
 ### 6.3 債券、OIS カーブ、R の入口
 
@@ -300,7 +300,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 
 各段階で、GaussQuant・LagrangeFinance の既存の計算を基準値として照合し、あわせて性能を測る。基準値は R のスクリプト（`tools/golden/`）で CSV に書き出し、Rust のテストで読む。現在動いている GaussQuant・LagrangeFinance・Curie は変更しない。
 
-P1〜P4 は完了した（P4 の配布整備を除く）。次は P5 である。自動微分を先に進めるのは、これが設計の柱であり、後から入れると数値計算のコードの書き直しが大きくなるためである。
+P1〜P5 は完了した（P4 の配布整備を除く）。次は P6 である。自動微分を先に進めたのは、これが設計の柱であり、後から入れると数値計算のコードの書き直しが大きくなるためである。
 
 | 段階 | 作るもの | 照合する既存の計算 |
 |---|---|---|
@@ -308,7 +308,7 @@ P1〜P4 は完了した（P4 の配布整備を除く）。次は P5 である�
 | P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1。**完了**（【実行照合済み】）：P2-1（キャッシュフローと経過利子）、P2-2（利回りと価格、デュレーション、コンベクシティ、BPV）、P2-3（割引カーブによる評価）は 2026-10-31 に QuantLib と、P2-4（日本式の単利・複利利回り）は同日に GaussQuant と照合済み（[spec_bonds.md](spec_bonds.md)） |
 | P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | QuantLib R バインディング 1.42（合成の気配。仕様は [spec_ois.md](spec_ois.md)）、GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値、LagrangeFinance II-3.2・II-3.4、EONIA ベンチマーク |
 | P4 | R からの入口（`riemann-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、5.2 の逐次と並列の一致テストを置く。仕様と結果は [spec_r.md](spec_r.md) | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる（GaussQuant との比較は未実施） |
-| P5 | 自動微分の基礎：`Operand` trait、確定値の計算グラフと逆伝播、2 階微分の設計の確認。債券とカーブのバケット感応度 | 数値差分、解析解。LagrangeFinance III-6 に相当 |
+| P5 | 自動微分の基礎：`Operand` trait、確定値の計算グラフと逆伝播、2 階微分の設計の確認。債券とカーブのバケット感応度 | 数値差分、解析解。LagrangeFinance III-6 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_autodiff.md](spec_autodiff.md) 5 章） |
 | P6 | パス方向のベクトルの計算グラフ。Black・Bachelier、MC のグリークス | Black–Scholes の解析解、数値差分。LagrangeFinance II-4、III-4、III-5 に相当 |
 | P7 | OIS の ASW と円ベーシス込み ASW、国債先物と CTD | GaussQuant の `ois_asset_swap_GQL` と回帰テストの基準値。LagrangeFinance II-2.6、II-2.7、II-3.7 に相当 |
 | P8 | CDS | GaussQuant。LagrangeFinance II-5 に相当 |

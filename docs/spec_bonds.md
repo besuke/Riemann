@@ -78,7 +78,7 @@ P2 では、固定利付債のキャッシュフロー、経過利子、価格�
 - `math/solver1d.rs`：QuantLib と同じ手順の解の区間探しと NewtonSafe。目的関数と微分を引数で受け取る、状態を持たない関数。
 - `cashflow_analysis.rs`：利回りによる現在価値、デュレーション（Simple・Modified・Macaulay）、コンベクシティ、BPV、YVBP、内部収益率。
 - `FixedRateBond`：`dirty_price`、`clean_price`、`yield_from_price`（クリーン・ダーティ）、`duration`、`convexity`、`basis_point_value`、`yield_value_basis_point`。
-- 自動微分のための `Operand` trait はまだ入れていない。ここまでの計算は QuantLib の式（解析的な微分を含む）をそのまま再現するもので、自動微分の段階（P5）で入れる。
+- 自動微分のための `Operand` trait は、この時点では入れていなかった（P5 で入れた）。ここまでの計算は QuantLib の式（解析的な微分を含む）をそのまま再現するもので、自動微分の段階（P5）で入れる。
 
 ### 3.3 照合結果【実行照合済み】
 
