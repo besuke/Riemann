@@ -65,7 +65,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P2-3 | 割引カーブによる評価（フラット、ゼロ、割引係数、ゼロスプレッド） | 完了 |
 | P2-4 | 日本式の単利・複利利回りとリスク指標（`yen_bond.rs`） | 完了 |
 | P3 | OIS のブートストラップ | **完了。TONAR・€STR・SOFR・SONIA の `MonotonicLogCubic` を照合済み（`docs/spec_ois.md` 8〜10 章）。指標はこの 4 つに限定する。±8% で振れる入力の 3 カーブは、QuantLib と一致するが入力気配の再現基準は未達（10.3 節）。GaussQuant・LagrangeFinance との照合（仕様書 7 章）は未実施。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
-| P4 | R の入口（R パッケージ `RiemannFinMath`） | **直接呼び出し・並列評価・Positron での利用確認は完了**（`crates/riemann-r`、extendr。`docs/spec_r.md`）。**配布整備は作業中**：Windows のソースパッケージ、`R CMD check`、バイナリ zip は確認済み。Windows 以外、配布先の公開は未了（同 8 章）。GaussQuant との比較は未実施 |
+| P4 | R の入口（R パッケージ `RiemannFinMath`） | **直接呼び出し・並列評価・Positron での利用確認は完了**（`crates/riemann-r`、extendr。`docs/spec_r.md`）。**配布整備は作業中**：版 0.2.0（`c6218ae`）で Windows のソースパッケージ、`R CMD check`（NOTE 1）、バイナリ zip、別ライブラリーでの確認を実施（`dist/MANIFEST.txt`）。Windows 以外、配布先の公開は未了（同 8 章）。GaussQuant との比較は未実施 |
 | P5 | 自動微分の基礎：確定値の計算グラフ、2 階微分、債券の利回り・カーブ・気配の感応度 | **完了**（`docs/spec_autodiff.md` 5 章）。R は `yield_sensitivity`、`curve_node_sensitivity`、`quote_sensitivity` |
 | P6 | 株のオプション：ヨーロピアン、アメリカン（二項木）、バリア、Black、Bachelier、MC。自動微分のグリークス | **完了**（`docs/spec_options.md`）。QuantLib の二項木の丸めの不具合を 5 章に記録 |
 | P7 | 債券：ASW、円ベーシス込み ASW、国債先物と CTD | **完了**（`docs/spec_asset_swaps.md`） |

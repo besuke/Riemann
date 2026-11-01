@@ -136,9 +136,9 @@ CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名�
 
 ### 8.3 R CMD check【実行確認】
 
-2026-11-01、リポジトリの外の短いパスで、`CARGO_NET_OFFLINE=true`、`R CMD check --as-cran`、R 4.6.0、Windows 11、TinyTeX で PDF マニュアルも検査した。
+2026-11-01、版 0.2.0 について、リポジトリの外の短いパスで、`CARGO_NET_OFFLINE=true`、`R CMD check --as-cran`、R 4.6.0、Windows 11、TinyTeX で PDF マニュアルも検査した。
 
-**結果：エラー 0、警告 0、NOTE 1。** ログは `dist/check.log`。
+**結果：エラー 0、警告 0、NOTE 1。** ログは `dist/check_0.2.0.log`。
 
 | 残るもの | 理由 |
 |---|---|
@@ -150,18 +150,20 @@ CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名�
 
 ### 8.4 Windows バイナリ【実行確認】
 
-`R CMD INSTALL --build` で `RiemannFinMath_0.1.0.zip` を作り、別のライブラリーへ導入して、新しい R セッションで quickstart を実行した（`dist/quickstart_from_zip.log`）。
+版は 0.2.0 で、コミット `c6218ae` から作った。`R CMD INSTALL --build` で、検査したものと同じソースパッケージから `RiemannFinMath_0.2.0.zip` を作った。ファイルと検査結果の対応は `dist/MANIFEST.txt` にある（SHA-256 を含む）。0.1.0 のファイルは `dist/archive-0.1.0` に移した。
+
+別のライブラリーへ導入し、`tools/package/smoke_test.R` を新しい R セッションで実行した（2026-11-01）。ログは `dist/smoke_from_zip.log` である。
 
 | 確認 | 結果 |
 |---|---|
 | 終了コード | 0 |
-| `cargo`、`rustc`、`gcc`、`make` | R の PATH に見つからない（R が起動時に足す Rtools も、R の中で PATH から除いた） |
-| 読み込んだ場所 | 導入先の別ライブラリーだけ。他に見えるのは `tibble` とその依存 10 個をコピーしたライブラリーだけ |
-| リポジトリへの依存 | リポジトリの外で実行。パッケージの 14 個のテキストファイルにリポジトリのフォルダー名なし |
+| 確認の項目 | quickstart と P5〜P10 の代表例の 30 項目がすべて成功 |
+| `cargo`、`rustc` | R の PATH に見つからない |
+| 読み込んだ場所 | 導入先の別ライブラリーと R の標準ライブラリーだけ。別ライブラリーには `tibble` とその依存 10 個をコピーした |
 | DLL の依存（`objdump`） | Windows の DLL と `R.dll` だけ |
-| ヘルプ | `bond_values` のページを見つけた |
+| ヘルプ | `prdc_value` のページを見つけた |
 
-ソースパッケージからの導入も、リポジトリの外、`CARGO_NET_OFFLINE=true` で成功した。
+この確認は導入の確認であり、数値の照合は Rust のテストと検証 QMD にある。
 
 **環境変数をすべて消すと終了時に落ちる**：`env -i` で環境変数を消した R では、終了時に Segmentation fault（139）になった。`RiemannFinMath` を使わず `tibble` だけを読み込むスクリプトでも同じなので、このパッケージの問題ではない。通常の環境変数では、パッケージの読み込み、バッチ、quickstart のすべてで終了コード 0 である。`tibble` の依存のどれが原因かは確かめていない。
 

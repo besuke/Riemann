@@ -64,6 +64,8 @@ RiemannFinMath::bond_values(bond, rate = 0.02, day_count = "act_act_isma", compo
                             frequency = 2L, settlement_date = "2026-11-04")
 ```
 
+導入の確認は `Rscript --vanilla tools/package/smoke_test.R 0.2.0 <ライブラリー>` で行う（リポジトリから）。
+
 サンプルの値はすべて合成で、規約も例であり、市場の規約ではありません。
 
 ## 注意
