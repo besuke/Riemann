@@ -191,12 +191,12 @@ pub struct QuoteJacobian {
 
 /// One period of an overnight-compounded leg and the matching fixed-leg period.
 #[derive(Debug, Clone, Copy)]
-struct OisPeriod {
-    start: Date,
-    end: Date,
-    accrual: f64,
+pub(crate) struct OisPeriod {
+    pub(crate) start: Date,
+    pub(crate) end: Date,
+    pub(crate) accrual: f64,
     fixed_payment: Date,
-    overnight_payment: Date,
+    pub(crate) overnight_payment: Date,
 }
 
 #[derive(Debug, Clone)]
@@ -258,6 +258,32 @@ fn ois_helper(
     if end_of_month && allows_end_of_month(tenor) {
         end = calendar.end_of_month(end)?;
     }
+    let periods = periods_between(index, start, end, end_of_month, payment_frequency, payment_lag)?;
+    Ok(Helper::Ois { periods })
+}
+
+/// The periods of an overnight leg from `start` to `end` (QuantLib `MakeOIS`, as in `ois_helper`).
+pub(crate) fn overnight_leg(
+    index: &OvernightIndex,
+    start: Date,
+    end: Date,
+    payment_frequency: u32,
+    payment_lag: u32,
+) -> Result<Vec<OisPeriod>, Error> {
+    let end_of_month = index.calendar.is_end_of_month(start)?;
+    periods_between(index, start, end, end_of_month, payment_frequency, payment_lag)
+}
+
+fn periods_between(
+    index: &OvernightIndex,
+    start: Date,
+    end: Date,
+    end_of_month: bool,
+    payment_frequency: u32,
+    payment_lag: u32,
+) -> Result<Vec<OisPeriod>, Error> {
+    let calendar = &index.calendar;
+    let days = |n: i32| Period::new(n, TimeUnit::Days);
     let schedule = generate_schedule(&ScheduleSpec {
         effective_date: start,
         termination_date: end,
@@ -270,7 +296,7 @@ fn ois_helper(
         first_date: None,
         next_to_last_date: None,
     })?;
-    let periods = schedule
+    schedule
         .dates
         .windows(2)
         .map(|w| {
@@ -293,8 +319,7 @@ fn ois_helper(
                 )?,
             })
         })
-        .collect::<Result<Vec<_>, Error>>()?;
-    Ok(Helper::Ois { periods })
+        .collect()
 }
 
 impl Helper {

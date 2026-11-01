@@ -13,6 +13,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_r.md` | P4 の R の入口（構成、公開関数、エラーと panic、並列バッチ、照合結果、未対応） |
 | `docs/spec_autodiff.md` | 自動微分の設計（finmath-lib の方式）と P5 の結果（5 章） |
 | `docs/spec_options.md` | P6 のオプション（QuantLib との差の原因は 5 章） |
+| `docs/spec_asset_swaps.md` | P7 のアセットスワップと国債先物 |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
 
 ## 決定事項
@@ -64,8 +65,8 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P4 | R の入口（R パッケージ `RiemannFinMath`） | **直接呼び出し・並列評価・Positron での利用確認は完了**（`crates/riemann-r`、extendr。`docs/spec_r.md`）。**配布整備は作業中**：Windows のソースパッケージ、`R CMD check`、バイナリ zip は確認済み。Windows 以外、配布先の公開は未了（同 8 章）。GaussQuant との比較は未実施 |
 | P5 | 自動微分の基礎：確定値の計算グラフ、2 階微分、債券の利回り・カーブ・気配の感応度 | **完了**（`docs/spec_autodiff.md` 5 章）。R は `yield_sensitivity`、`curve_node_sensitivity`、`quote_sensitivity` |
 | P6 | 株のオプション：ヨーロピアン、アメリカン（二項木）、バリア、Black、Bachelier、MC。自動微分のグリークス | **完了**（`docs/spec_options.md`）。QuantLib の二項木の丸めの不具合を 5 章に記録 |
-| P7 | 債券：ASW、国債先物と CTD | **次の段階**（ユーザーの指定した順序：P7 → P9 → P8） |
-| P9 | Hull-White、コール債、SABR、Bermudan、MBS | 未着手 |
+| P7 | 債券：ASW、円ベーシス込み ASW、国債先物と CTD | **完了**（`docs/spec_asset_swaps.md`） |
+| P9 | Hull-White、コール債、SABR、Bermudan、MBS | **次の段階**（ユーザーの指定した順序：P9 → P8） |
 | P8 | CDS（基準は GaussQuant の `make_cds_GQL` と LagrangeFinance II-5） | 未着手 |
 | P10 | PRDC の多因子 MC と自動微分 | 未着手 |
 | L1〜L3 | TypeScript の Node 版、ブラウザー版、Excel | 未着手。目標に必須ではない。P5 の後に WebAssembly で移植性を確認 |

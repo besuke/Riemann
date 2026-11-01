@@ -9,6 +9,7 @@
 //! the core; the process's panic hook is left alone, so it stays visible and can be diagnosed.
 
 use extendr_api::prelude::*;
+use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::cashflow_analysis::{YieldConvention, YieldSolver};
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
@@ -786,6 +787,191 @@ fn quote_sensitivity(
     outcome(rows())
 }
 
+// ---- asset swaps and futures basis ----------------------------------------------------------
+
+#[extendr]
+fn ois_asset_swap(
+    bond: ExternalPtr<FixedRateBond>,
+    curve: ExternalPtr<OisCurve>,
+    clean_price: Vec<f64>,
+    spread: Vec<f64>,
+    payment_frequency: i32,
+    payment_lag: i32,
+    evaluation_date: i32,
+) -> List {
+    let (columns, error) = table(clean_price.len(), |i| {
+        let v = asset_swap::ois_asset_swap(
+            &bond,
+            &curve.curve,
+            &curve.spec.index,
+            &OisAssetSwapTerms {
+                clean_price: clean_price[i],
+                payment_frequency: payment_frequency as u32,
+                payment_lag: payment_lag.max(0) as u32,
+                spread: spread[i],
+            },
+            date(evaluation_date)?,
+        )?;
+        Ok([
+            v.accrued,
+            v.dirty_price,
+            v.fair_spread,
+            v.spread_annuity,
+            v.npv,
+            v.bond_leg_pv,
+            v.overnight_leg_pv,
+            v.principal_pv,
+            v.upfront_pv,
+            v.fair_clean_price,
+            v.effective_date.serial() as f64,
+            v.maturity_date.serial() as f64,
+        ])
+    });
+    list!(
+        accrued = columns[0].clone(),
+        dirty_price = columns[1].clone(),
+        fair_spread = columns[2].clone(),
+        spread_annuity = columns[3].clone(),
+        npv = columns[4].clone(),
+        bond_leg_pv = columns[5].clone(),
+        overnight_leg_pv = columns[6].clone(),
+        principal_pv = columns[7].clone(),
+        upfront_pv = columns[8].clone(),
+        fair_clean_price = columns[9].clone(),
+        effective_date = columns[10].clone(),
+        maturity_date = columns[11].clone(),
+        error = error
+    )
+}
+
+#[extendr]
+fn asset_swap_quote_sensitivity(
+    bond: ExternalPtr<FixedRateBond>,
+    curve: ExternalPtr<OisCurve>,
+    clean_price: f64,
+    payment_frequency: i32,
+    payment_lag: i32,
+    evaluation_date: i32,
+) -> List {
+    let run = || -> Core<List> {
+        let rows = asset_swap::asset_swap_quote_sensitivity(
+            &bond,
+            &curve,
+            &OisAssetSwapTerms {
+                clean_price,
+                payment_frequency: payment_frequency as u32,
+                payment_lag: payment_lag.max(0) as u32,
+                spread: 0.0,
+            },
+            date(evaluation_date)?,
+        )?;
+        Ok(list!(
+            instrument = rows.iter().map(|r| r.instrument as i32 + 1).collect::<Vec<i32>>(),
+            pillar_date = rows.iter().map(|r| r.pillar_date.serial() as f64).collect::<Vec<f64>>(),
+            rate = rows.iter().map(|r| r.quote).collect::<Vec<f64>>(),
+            d_fair_spread = rows.iter().map(|r| r.d_fair_spread).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn yen_asset_swap(
+    bond: ExternalPtr<FixedRateBond>,
+    foreign_curve: ExternalPtr<OisCurve>,
+    yen_curve: ExternalPtr<OisCurve>,
+    clean_price: Vec<f64>,
+    fx_spot: Vec<f64>,
+    basis: Vec<f64>,
+    spread: Vec<f64>,
+    foreign_payment_frequency: i32,
+    yen_payment_frequency: i32,
+    foreign_payment_lag: i32,
+    yen_payment_lag: i32,
+    evaluation_date: i32,
+) -> List {
+    let (columns, error) = table(clean_price.len(), |i| {
+        let terms = |frequency: i32, lag: i32| OisAssetSwapTerms {
+            clean_price: clean_price[i],
+            payment_frequency: frequency as u32,
+            payment_lag: lag.max(0) as u32,
+            spread: 0.0,
+        };
+        let v = asset_swap::yen_asset_swap(
+            &bond,
+            &foreign_curve.curve,
+            &foreign_curve.spec.index,
+            &terms(foreign_payment_frequency, foreign_payment_lag),
+            &yen_curve.curve,
+            &yen_curve.spec.index,
+            &terms(yen_payment_frequency, yen_payment_lag),
+            &YenBasisTerms { fx_spot: fx_spot[i], basis: basis[i], spread: spread[i] },
+            date(evaluation_date)?,
+        )?;
+        Ok([
+            v.native_fair_spread,
+            v.yen_fair_spread,
+            v.simple_sum,
+            v.npv,
+            v.hedged_bond_pv,
+            v.yen_base_leg_pv,
+            v.upfront_pv,
+            v.spread_annuity,
+            v.calibrated_discount_spread,
+        ])
+    });
+    list!(
+        native_fair_spread = columns[0].clone(),
+        yen_fair_spread = columns[1].clone(),
+        simple_sum = columns[2].clone(),
+        npv = columns[3].clone(),
+        hedged_bond_pv = columns[4].clone(),
+        yen_base_leg_pv = columns[5].clone(),
+        upfront_pv = columns[6].clone(),
+        spread_annuity = columns[7].clone(),
+        calibrated_discount_spread = columns[8].clone(),
+        error = error
+    )
+}
+
+#[extendr]
+fn future_basis(
+    bond: ExternalPtr<FixedRateBond>,
+    clean_price: f64,
+    futures_price: f64,
+    conversion_factor: f64,
+    funding_rate: f64,
+    valuation_date: i32,
+    delivery_date: i32,
+) -> List {
+    let run = || -> Core<List> {
+        let v = asset_swap::future_basis(
+            &bond,
+            &FutureBasisTerms {
+                clean_price,
+                futures_price,
+                conversion_factor,
+                funding_rate,
+                valuation_date: date(valuation_date)?,
+                delivery_date: date(delivery_date)?,
+            },
+        )?;
+        Ok(list!(
+            accrued_start = v.accrued_start,
+            accrued_end = v.accrued_end,
+            coupon_income = v.coupon_income,
+            futures_invoice = v.futures_invoice,
+            gross_basis = v.gross_basis,
+            funding_cost = v.funding_cost,
+            carry = v.carry,
+            net_basis = v.net_basis,
+            implied_repo = v.implied_repo
+        ))
+    };
+    outcome(run())
+}
+
 // ---- options --------------------------------------------------------------------------------
 
 fn option_inputs(values: [f64; 6]) -> OptionInputs {
@@ -1258,6 +1444,10 @@ extendr_module! {
     fn yield_sensitivity;
     fn curve_node_sensitivity;
     fn quote_sensitivity;
+    fn ois_asset_swap;
+    fn asset_swap_quote_sensitivity;
+    fn yen_asset_swap;
+    fn future_basis;
     fn european_option;
     fn barrier_option;
     fn binomial_option;

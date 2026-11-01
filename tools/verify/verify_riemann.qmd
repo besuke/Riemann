@@ -22,6 +22,7 @@ source("verify_ois.R")
 source("verify_calendars.R")
 source("verify_autodiff.R")
 source("verify_options.R")
+source("verify_asset_swaps.R")
 results <- verify_bonds()
 summary_table <- summarise_verification(results)
 ois_results <- verify_ois()
@@ -31,6 +32,7 @@ ois_golden <- verify_ois_golden()
 parallel_results <- verify_parallel_batch()
 ad_results <- verify_autodiff()
 option_results <- verify_options()
+asw_results <- verify_asset_swaps()
 ois_curve_values <- ois_curves(ois_results)
 calendar_results <- verify_calendars()
 
@@ -57,7 +59,7 @@ Riemann の実装済みの計算を、合成データで QuantLib と比べる�
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
 - **Riemann の呼び方**：R パッケージ `RiemannFinMath`（`crates/riemann-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/riemann/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
 - **データ**：すべて合成の値で、市場データは使っていません。
-- **対象**：オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
+- **対象**：OIS アセットスワップ（P7）、オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 
 ## 総合判定
 
@@ -73,6 +75,7 @@ ois_golden_quotes_ok <- ois_miss_quotes == 0
 parallel_ok <- all(parallel_results$by_threads$identical_to_one_thread) && all(parallel_results$by_threads$input_order_kept)
 ad_ok <- all(ad_results$yield$pass) && all(ad_results$quotes$pass)
 option_ok <- all(option_results$values$pass) && option_results$value_within && option_results$threads_identical && max(option_results$monte_carlo$rel_diff) < 0.03
+asw_ok <- all(asw_results$pass)
 calendar_ok <- all(calendar_results$by_market$result == "PASS") && sum(calendar_results$by_market$r_diff, na.rm = TRUE) == 0
 cat(sprintf(paste0("- 債券：**%s**\n",
                   "- OIS カーブ、QuantLib との照合：**%s**\n",
@@ -81,11 +84,12 @@ cat(sprintf(paste0("- 債券：**%s**\n",
                   "- カレンダー（QuantLib との一致）：**%s**\n",
                   "- 並列バッチ（スレッド数を変えた結果と入力順の一致）：**%s**\n",
                   "- 自動微分（解析式と数値差分との一致）：**%s**\n",
-                  "- オプション（QuantLib との照合と MC）：**%s**\n"),
+                  "- オプション（QuantLib との照合と MC）：**%s**\n",
+                  "- OIS アセットスワップ（GaussQuant との照合）：**%s**\n"),
             pass_label(bond_ok), pass_label(ois_comparison_ok),
             if (ois_report_quotes_ok) "基準達成" else "基準未達",
             if (ois_golden_quotes_ok) "基準達成" else sprintf("基準未達（%d カーブ、%d 商品。QuantLib も同じカーブで未達）", ois_miss_curves, ois_miss_quotes),
-            pass_label(calendar_ok), pass_label(parallel_ok), pass_label(ad_ok), pass_label(option_ok)))
+            pass_label(calendar_ok), pass_label(parallel_ok), pass_label(ad_ok), pass_label(option_ok), pass_label(asw_ok)))
 ```
 
 # 債券
@@ -654,6 +658,18 @@ option_results$grid_fault |>
 option_results$monte_carlo |>
   mutate(across(c(analytic, monte_carlo), \(x) sprintf("%.6f", x)), rel_diff = sprintf("%.2e", rel_diff)) |>
   knitr::kable(col.names = c("Measure", "Analytic", "Monte Carlo", "Rel. diff."), align = "lrrr")
+```
+
+# OIS アセットスワップ
+
+P7 の結果です。同じ合成の気配から、Riemann と GaussQuant がそれぞれカーブを作り、公正スプレッドを比べます。カーブの差も含んだ、入口から出口までの比較です。GaussQuant の節点を使った比較は `tests/golden/asw_*.csv` にあり、Rust のテストで確かめています。
+
+```{r}
+#| label: asset-swaps
+asw_results |>
+  mutate(max_diff_bp = sprintf("%.2e", max_diff_bp), max_diff_annuity = sprintf("%.2e", max_diff_annuity), result = if_else(pass, "PASS", "FAIL")) |>
+  select(-pass) |>
+  knitr::kable(col.names = c("Currency", "Cases", "Max diff., fair spread (bp)", "Max diff., annuity", "Result"), align = "lrrrl")
 ```
 
 # 実行環境

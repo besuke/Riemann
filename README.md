@@ -8,7 +8,7 @@ Rust の Send・Sync トレイトと、副作用を抑制した設計を基盤�
 
 ## 現在の状態
 
-- **実装済み**：日付、全カレンダー、固定利付債の価格・利回り・リスク、OIS カーブ（TONAR・€STR・SOFR・SONIA）、R パッケージ `RiemannFinMath`、債券と OIS カーブの並列バッチ、自動微分による債券の感応度、オプション（ヨーロピアン、アメリカン、バリア、Black、Bachelier、1 ステップの MC）
+- **実装済み**：日付、全カレンダー、固定利付債の価格・利回り・リスク、OIS カーブ（TONAR・€STR・SOFR・SONIA）、R パッケージ `RiemannFinMath`、債券と OIS カーブの並列バッチ、自動微分による債券の感応度、オプション（ヨーロピアン、アメリカン、バリア、Black、Bachelier、1 ステップの MC）、OIS アセットスワップ、国債先物のベーシス
 - **作業中**：R パッケージの配布整備
 - **開発目標（未実装）**：TypeScript、WebAssembly、Excel の Office アドイン、多期間のモンテカルロ、金利モデル、CDS
 
