@@ -7,6 +7,7 @@ use crate::instruments::PriceType;
 use crate::interest_rate::Compounding;
 use crate::ois::{estr, sofr, sonia, tonar, OisInterpolation, OvernightIndex};
 use crate::options::{BarrierType, Exercise, ForwardModel, OptionType};
+use crate::sabr::SabrVolatilityType;
 use crate::time::{
     Actual365Kind, ActualActualKind, AustraliaMarket, AustriaMarket, BrazilMarket,
     BusinessDayConvention, Calendar, CanadaMarket, ChinaMarket, DateGenerationRule, DayCount,
@@ -178,6 +179,14 @@ pub fn forward_model(name: &str) -> Result<ForwardModel, Error> {
         "black" => ForwardModel::Black,
         "bachelier" => ForwardModel::Bachelier,
         other => return unknown("forward model", other),
+    })
+}
+
+pub fn sabr_volatility_type(name: &str) -> Result<SabrVolatilityType, Error> {
+    Ok(match name {
+        "lognormal" => SabrVolatilityType::Lognormal,
+        "normal" => SabrVolatilityType::Normal,
+        other => return unknown("SABR volatility type", other),
     })
 }
 

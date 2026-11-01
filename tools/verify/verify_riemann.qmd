@@ -23,6 +23,7 @@ source("verify_calendars.R")
 source("verify_autodiff.R")
 source("verify_options.R")
 source("verify_asset_swaps.R")
+source("verify_hull_white.R")
 results <- verify_bonds()
 summary_table <- summarise_verification(results)
 ois_results <- verify_ois()
@@ -33,6 +34,7 @@ parallel_results <- verify_parallel_batch()
 ad_results <- verify_autodiff()
 option_results <- verify_options()
 asw_results <- verify_asset_swaps()
+hw_quadrature <- verify_hull_white()
 ois_curve_values <- ois_curves(ois_results)
 calendar_results <- verify_calendars()
 
@@ -59,7 +61,7 @@ Riemann の実装済みの計算を、合成データで QuantLib と比べる�
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
 - **Riemann の呼び方**：R パッケージ `RiemannFinMath`（`crates/riemann-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/riemann/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
 - **データ**：すべて合成の値で、市場データは使っていません。
-- **対象**：OIS アセットスワップ（P7）、オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
+- **対象**：Hull-White と SABR（P9）、OIS アセットスワップ（P7）、オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 
 ## 総合判定
 
@@ -670,6 +672,17 @@ asw_results |>
   mutate(max_diff_bp = sprintf("%.2e", max_diff_bp), max_diff_annuity = sprintf("%.2e", max_diff_annuity), result = if_else(pass, "PASS", "FAIL")) |>
   select(-pass) |>
   knitr::kable(col.names = c("Currency", "Cases", "Max diff., fair spread (bp)", "Max diff., annuity", "Result"), align = "lrrrl")
+```
+
+# Hull-White と SABR
+
+P9 の結果です。QuantLib と LagrangeFinance との比較は Rust のテストにあり、結果は `docs/spec_hull_white.md` にあります。ここでは、コール債の価値が求積の方法で変わることを示します。比べる相手は、最も細かい設定（状態 1601 点、台形則の幅 0.01）です。これは実装の収束の確認であり、モデルの妥当性の確認ではありません。
+
+```{r}
+#| label: hull-white-quadrature
+hw_quadrature |>
+  mutate(callable = sprintf("%.6f", callable), diff_from_finest = sprintf("%.2e", diff_from_finest)) |>
+  knitr::kable(col.names = c("Rule", "Callable bond", "Diff. from the finest"), align = "lrr")
 ```
 
 # 実行環境

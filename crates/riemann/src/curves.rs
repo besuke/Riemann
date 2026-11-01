@@ -591,6 +591,19 @@ impl<T: Operand> YieldCurve<T> {
         InterestRate::implied_rate(compound, day_count.clone(), compounding, frequency, t)
     }
 
+    /// The instantaneous forward at time `t`, from a rate over 0.0001 years (QuantLib
+    /// `forwardRate(t, t, comp)`).
+    pub fn forward_rate_at_time(
+        &self,
+        t: f64,
+        compounding: Compounding,
+    ) -> Result<InterestRate<T>, Error> {
+        let t1 = (t - DT / 2.0).max(0.0);
+        let t2 = t1 + DT;
+        let compound = self.discount_at(t1, true)? / self.discount_at(t2, true)?;
+        InterestRate::implied_rate(compound, self.day_count.clone(), compounding, 1, DT)
+    }
+
     /// Zero rate at time `t` in the given compounding (QuantLib `zeroRate(t, comp, freq,
     /// extrapolate)`); at `t` = 0 the rate over 0.0001 years is returned.
     pub fn zero_rate_at(

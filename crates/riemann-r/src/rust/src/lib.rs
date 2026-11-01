@@ -12,6 +12,7 @@ use extendr_api::prelude::*;
 use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::cashflow_analysis::{YieldConvention, YieldSolver};
+use riemann::hull_white::{self, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
 use riemann::interest_rate::Compounding;
 use riemann::curves::CurveInput;
@@ -19,6 +20,7 @@ use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
 use riemann::options::{self, Greeks, MonteCarloSettings, OptionInputs};
 use riemann::risk;
+use riemann::sabr::{self, SabrParameters};
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
 use riemann::yen_bond;
 
@@ -972,6 +974,170 @@ fn future_basis(
     outcome(run())
 }
 
+// ---- Hull-White and SABR ---------------------------------------------------------------------
+
+/// `spacing` above 0 selects the trapezoid rule; otherwise `nodes` of Gauss-Hermite.
+fn grid_settings(points: i32, limit: f64, nodes: i32, spacing: f64) -> GridSettings {
+    GridSettings {
+        points: points.max(0) as usize,
+        limit,
+        quadrature: if spacing > 0.0 {
+            Quadrature::Trapezoid(spacing)
+        } else {
+            Quadrature::GaussHermite(nodes.max(0) as usize)
+        },
+    }
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn hull_white_bond_option(
+    option_type: Vec<String>,
+    strike: Vec<f64>,
+    maturity: Vec<f64>,
+    bond_maturity: Vec<f64>,
+    mean_reversion: f64,
+    volatility: f64,
+    curve: ExternalPtr<OisCurve>,
+) -> List {
+    let model = HullWhite { mean_reversion, volatility, curve: &curve.curve };
+    let rows = (0..strike.len())
+        .map(|i| {
+            model.discount_bond_option(
+                names::option_type(&option_type[i])?,
+                strike[i],
+                maturity[i],
+                maturity[i],
+                bond_maturity[i],
+            )
+        })
+        .collect();
+    value_list(rows)
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn hull_white_swaption(
+    payer: bool,
+    maturity: f64,
+    payment_times: Vec<f64>,
+    coupons: Vec<f64>,
+    nominal: f64,
+    mean_reversion: f64,
+    volatility: f64,
+    curve: ExternalPtr<OisCurve>,
+) -> List {
+    let flows = SwaptionFlows { payer, maturity, value_time: maturity, payment_times, coupons, nominal };
+    outcome(
+        hull_white::jamshidian_swaption_sensitivity(mean_reversion, volatility, &curve.curve, &flows).map(|s| {
+            list!(value = s.value, d_mean_reversion = s.d_mean_reversion, d_volatility = s.d_volatility)
+        }),
+    )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn hull_white_bermudan_swaption(
+    payer: bool,
+    maturity: f64,
+    payment_times: Vec<f64>,
+    coupons: Vec<f64>,
+    nominal: f64,
+    exercise_times: Vec<f64>,
+    mean_reversion: f64,
+    volatility: f64,
+    curve: ExternalPtr<OisCurve>,
+    points: i32,
+    limit: f64,
+    nodes: i32,
+    spacing: f64,
+) -> List {
+    let flows = SwaptionFlows { payer, maturity, value_time: maturity, payment_times, coupons, nominal };
+    let settings = grid_settings(points, limit, nodes, spacing);
+    outcome(
+        hull_white::bermudan_swaption(&flows, &exercise_times, mean_reversion, volatility, &curve.curve, &settings)
+            .map(|value| list!(value = value)),
+    )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn hull_white_callable_bond(
+    time: Vec<f64>,
+    coupon: Vec<f64>,
+    principal: Vec<f64>,
+    call_price: Vec<f64>,
+    mean_reversion: f64,
+    volatility: f64,
+    curve: ExternalPtr<OisCurve>,
+    points: i32,
+    limit: f64,
+    nodes: i32,
+    spacing: f64,
+) -> List {
+    let flows: Vec<CallableFlow> = (0..time.len())
+        .map(|i| CallableFlow {
+            time: time[i],
+            coupon: coupon[i],
+            principal: principal[i],
+            // R has turned NA into a value of NaN here, which means no call on this date
+            call_price: if call_price[i].is_nan() { None } else { Some(call_price[i]) },
+        })
+        .collect();
+    let settings = grid_settings(points, limit, nodes, spacing);
+    outcome(
+        hull_white::callable_bond(&flows, mean_reversion, volatility, &curve.curve, &settings).map(|v| {
+            list!(bullet = v.bullet, callable = v.callable, issuer_call_value = v.issuer_call_value)
+        }),
+    )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn sabr_volatility(
+    kind: &str,
+    strike: Vec<f64>,
+    forward: Vec<f64>,
+    expiry: Vec<f64>,
+    alpha: Vec<f64>,
+    beta: Vec<f64>,
+    nu: Vec<f64>,
+    rho: Vec<f64>,
+) -> List {
+    let rows = || -> Core<List> {
+        let kind = names::sabr_volatility_type(kind)?;
+        let rows = (0..strike.len())
+            .map(|i| {
+                sabr::sabr_volatility(
+                    kind,
+                    strike[i],
+                    forward[i],
+                    expiry[i],
+                    &SabrParameters { alpha: alpha[i], beta: beta[i], nu: nu[i], rho: rho[i] },
+                )
+            })
+            .collect();
+        Ok(value_list(rows))
+    };
+    outcome(rows())
+}
+
+#[extendr]
+fn calibrate_sabr(kind: &str, strike: Vec<f64>, volatility: Vec<f64>, forward: f64, expiry: f64, beta: f64) -> List {
+    let run = || -> Core<List> {
+        let c = sabr::calibrate_sabr(names::sabr_volatility_type(kind)?, &strike, &volatility, forward, expiry, beta)?;
+        Ok(list!(
+            alpha = c.parameters.alpha,
+            beta = c.parameters.beta,
+            nu = c.parameters.nu,
+            rho = c.parameters.rho,
+            root_mean_square_error = c.root_mean_square_error,
+            iterations = c.iterations as i32
+        ))
+    };
+    outcome(run())
+}
+
 // ---- options --------------------------------------------------------------------------------
 
 fn option_inputs(values: [f64; 6]) -> OptionInputs {
@@ -1448,6 +1614,12 @@ extendr_module! {
     fn asset_swap_quote_sensitivity;
     fn yen_asset_swap;
     fn future_basis;
+    fn hull_white_bond_option;
+    fn hull_white_swaption;
+    fn hull_white_bermudan_swaption;
+    fn hull_white_callable_bond;
+    fn sabr_volatility;
+    fn calibrate_sabr;
     fn european_option;
     fn barrier_option;
     fn binomial_option;
