@@ -3,7 +3,7 @@
 # cross-checks the QuantLib R package Version 1.42, whose exact C++ commit is unknown.
 # Agreement with QuantLib is not a check against actual market holidays.
 #
-# Riemann is called directly through its R package (crates/riemann-r). The joint and bespoke
+# Riemann is called directly through its R package RiemannFinMath (crates/riemann-r). The joint and bespoke
 # calendars are not in that entry point yet, so they and the comparison use
 # crates/riemann/examples/verify_calendars.rs.
 #
@@ -48,7 +48,7 @@ riemann_calendar_direct <- function(markets) {
     filter(region != "common") |>
     pmap(\(key, weekend, ...) {
       weekend_days <- as.integer(strsplit(weekend, " ", fixed = TRUE)[[1]])
-      business <- suppressWarnings(riemann::is_business_day(key, dates, on_error = "na"))
+      business <- suppressWarnings(RiemannFinMath::is_business_day(key, dates, on_error = "na"))
       on_weekend <- weekday %in% weekend_days
       kind <- case_when(is.na(business) ~ "E", !business & !on_weekend ~ "H", business & on_weekend ~ "W", .default = NA_character_)
       tibble(key = key, serial = serials[!is.na(kind)], kind = kind[!is.na(kind)])

@@ -3,23 +3,33 @@ TARGET_DIR = ./rust/target
 LIBDIR = $(TARGET_DIR)/$(TARGET)/release
 STATLIB = $(LIBDIR)/libriemann_r.a
 PKG_LIBS = -L$(LIBDIR) -lriemann_r -lws2_32 -ladvapi32 -luserenv -lbcrypt -lntdll
+# A source package holds its Rust dependencies in rust/vendor.tar.xz and builds offline. An install
+# from the repository has no such file and uses the normal cargo setup.
+CARGOTMP = $(CURDIR)/.cargo
+VENDORING = $(CURDIR)/vendor
 
 all: $(SHLIB) cleanup
 
 $(SHLIB): $(STATLIB)
 
+# cargo decides what to rebuild; without this, changed Rust sources would keep the old library.
 # The Rust standard library for this target asks for libgcc_eh and libgcc_s, which Rtools does
 # not provide under those names; empty libraries are enough, as in the extendr template.
-# cargo decides what to rebuild; without this, changed Rust sources would keep the old library.
 $(STATLIB): FORCE
 	mkdir -p $(TARGET_DIR)/libgcc_mock
 	cd $(TARGET_DIR)/libgcc_mock && touch gcc_mock.c && gcc -c gcc_mock.c -o gcc_mock.o && ar -r libgcc_eh.a gcc_mock.o && cp libgcc_eh.a libgcc_s.a
+	if [ -f ./rust/vendor.tar.xz ]; then \
+	  tar xf ./rust/vendor.tar.xz && mkdir -p $(CARGOTMP) && cp ./rust/vendor-config.toml $(CARGOTMP)/config.toml; \
+	fi
 	export PATH="$(USERPROFILE)/.cargo/bin:$(PATH)"; \
 	export LIBRARY_PATH="$${LIBRARY_PATH};$(CURDIR)/$(TARGET_DIR)/libgcc_mock"; \
-	cargo build --target=$(TARGET) --lib --release --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR)
+	if [ -f ./rust/vendor.tar.xz ]; then export CARGO_HOME="$(CARGOTMP)"; fi; \
+	rustc -vV; cargo -V; \
+	cargo build -j 2 --target=$(TARGET) --lib --release --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR)
 
+# Only a source package removes the build, so that it does not end up in the installed package.
 cleanup: $(SHLIB)
-	rm -f gcc_mock.c
+	if [ -f ./rust/vendor.tar.xz ]; then rm -Rf $(CARGOTMP) $(VENDORING) $(TARGET_DIR); fi
 
 FORCE:
 

@@ -2,7 +2,7 @@
 # on synthetic inputs. The exact C++ commit of the package is unknown, so this is not a
 # comparison with running QuantLib C++ v1.42 itself.
 #
-# Riemann is called directly through its R package (crates/riemann-r). The example program
+# Riemann is called directly through its R package RiemannFinMath (crates/riemann-r). The example program
 # crates/riemann/examples/verify_bonds.rs stays as a second path, to compare the two.
 #
 # Usage from an R session started anywhere in the repository:
@@ -145,7 +145,7 @@ riemann_bond_row <- function(input) {
   failed <- tibble(row = input$row, settlement_date = NA_integer_, clean_price = NA_real_, dirty_price = NA_real_, accrued = NA_real_,
                    duration_modified = NA_real_, convexity = NA_real_, bpv = NA_real_, yield = NA_real_)
   bond <- tryCatch(
-    riemann::fixed_rate_bond(
+    RiemannFinMath::fixed_rate_bond(
       settlement_days = input$settlement_days, face_amount = input$face_amount,
       effective_date = serial_to_date(input$effective), termination_date = serial_to_date(input$termination),
       tenor = paste0(input$tenor_n, "M"), calendar = input$calendar, convention = snake_name(input$convention),
@@ -157,15 +157,15 @@ riemann_bond_row <- function(input) {
     error = function(e) NULL
   )
   if (is.null(bond)) return(failed)
-  settlement <- tryCatch(riemann::settlement_date(bond, serial_to_date(input$evaluation_date)), error = function(e) NULL)
+  settlement <- tryCatch(RiemannFinMath::settlement_date(bond, serial_to_date(input$evaluation_date)), error = function(e) NULL)
   if (is.null(settlement)) return(failed)
   compounding <- tolower(input$compounding)
-  values <- riemann::bond_values(bond, input$rate, input$yield_day_counter, compounding, input$frequency, settlement, on_error = "na")
+  values <- RiemannFinMath::bond_values(bond, input$rate, input$yield_day_counter, compounding, input$frequency, settlement, on_error = "na")
   tibble(
     row = input$row, settlement_date = date_to_serial(settlement), clean_price = values$clean_price, dirty_price = values$dirty_price,
     accrued = values$accrued_amount, duration_modified = values$duration_modified, convexity = values$convexity,
     bpv = values$basis_point_value,
-    yield = suppressWarnings(riemann::yield_from_price(bond, input$price, tolower(input$price_type), input$yield_day_counter,
+    yield = suppressWarnings(RiemannFinMath::yield_from_price(bond, input$price, tolower(input$price_type), input$yield_day_counter,
                                                        compounding, input$frequency, settlement, on_error = "na"))
   )
 }

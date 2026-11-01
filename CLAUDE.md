@@ -24,6 +24,7 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 - **日本式債券計算の規則**：`docs/spec_bonds.md` 5.1 節の規則を採用し、GaussQuant の `R/bond_yen_GQL.R`（コミット `4ff081c`）と照合する。文書では計算規則を直接説明し、VBA を根拠にしない（「VBA 互換」などと書かない）。二次情報の「市場慣行」だけを根拠に別の規則へ変えない。2 月 29 日の応当日が平年になる場合は 2 月 28 日とし、その期間を 1 年とする（例：2024-02-29 から 2025-02-28 は残存 1 年）。この規則は日本式債券計算だけのもので、QuantLib 互換の日付・日数計算には適用しない。
 - **新興国カレンダーの用途**：当面は債券の受渡日と利払日の営業日判定に使う。スワップの規約や金利カーブには広げない。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限定する。
 - **カレンダーの照合の正**：QuantLib C++ v1.42 をビルドした値（`tools/golden/p1_all_calendars.sh`）。R パッケージは突き合わせに使う（`Germany::Euwax` と `Indonesia::IDX` は R から作れない）。
+- **R パッケージ名**：`RiemannFinMath`（CRAN の `Riemann` と衝突するため）。プロジェクト名と Rust の crate 名は Riemann（`riemann`、`riemann-r`）のまま。CRAN への公開申請はしていない。
 - **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。`Operand` trait は AD-1 の段階で入れる。
 - **ライセンス**：MIT と Apache-2.0 の併用。QuantLib から移したコードは、著作権表示をソースから写し（記憶で書かない）、ファイルの先頭と `THIRD_PARTY_NOTICES` に載せる。
 
@@ -57,7 +58,7 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 | P2-3 | 割引カーブによる評価（フラット、ゼロ、割引係数、ゼロスプレッド） | 完了 |
 | P2-4 | 日本式の単利・複利利回りとリスク指標（`yen_bond.rs`） | 完了 |
 | P3 | OIS のブートストラップ | **完了。TONAR・€STR・SOFR・SONIA の `MonotonicLogCubic` を照合済み（`docs/spec_ois.md` 8〜10 章）。指標はこの 4 つに限定する。±8% で振れる入力の 3 カーブは、QuantLib と一致するが入力気配の再現基準は未達（10.3 節）。GaussQuant・LagrangeFinance との照合（仕様書 10 章）は未実施。計算方式は QuantLib C++ で定め、R バインディングは照合だけに使う。QuantLib の既定を市場の規約として扱わない** |
-| P4 | R の入口 | 実装済み（`crates/riemann-r`、extendr。`docs/spec_r.md`）。債券・OIS 4 指標・カレンダーの直接呼び出しと並列バッチ。GaussQuant との比較は未実施 |
+| P4 | R の入口（R パッケージ `RiemannFinMath`） | **直接呼び出し・並列評価・Positron での利用確認は完了**（`crates/riemann-r`、extendr。`docs/spec_r.md`）。**配布整備は作業中**：Windows のソースパッケージ、`R CMD check`、バイナリ zip は確認済み。Windows 以外、配布先の公開は未了（同 8 章）。GaussQuant との比較は未実施 |
 | P5 | OIS の ASW と円ベーシス込み ASW | 未着手 |
 | P6・P7 | TypeScript の Node 版、ブラウザー版 | 未着手 |
 
@@ -80,5 +81,5 @@ Rust の金融計算ライブラリー。R（extendr）→ TypeScript の Node �
 - `rustfmt` にファイルを渡すと `mod` 先まで整形する。テストのファイルでは `tests/common/mod.rs` まで変わるので、`--config skip_children=true` を付けて確かめる。
 - CRLF のファイルは MSYS の sed で CR が消える。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。
 - カレンダーの規則は `tools/golden/port_calendars.R` が生成する（`rules/` の `special.rs` 以外）。生成後に rustfmt をかける。C++ のビルドは Rtools の g++ を PATH に入れて、bash から実行する。
-- R パッケージ：`R CMD INSTALL crates/riemann-r`（`x86_64-pc-windows-gnu` と Rtools が必要）。テストは `crates/riemann-r/tests/testthat`。このビルドは MSVC の `cargo test` と数学ライブラリーが違い、最下位ビットの差が出る（`docs/spec_ois.md` 10.6 節）。
+- R パッケージ：`R CMD INSTALL crates/riemann-r`（`x86_64-pc-windows-gnu` と Rtools が必要）。配布ファイルは `tools/package/build_source_package.R` で作り、`dist/`（git に入れない）に置く。ソースからのビルドはパスが長いと `LNK1104` で失敗するので、短いパスで行う。テストは `crates/riemann-r/tests/testthat`。このビルドは MSVC の `cargo test` と数学ライブラリーが違い、最下位ビットの差が出る（`docs/spec_ois.md` 10.6 節）。
 - QuantLib のソース（v1.42 の確認用）は以前の会話の一時フォルダーにあり、新しい会話では使えない。必要なら一時フォルダーに clone し直す。

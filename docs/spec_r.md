@@ -1,6 +1,13 @@
 # R の入口の仕様（P4）
 
-R から Riemann を直接呼ぶ入口である。パッケージ名は `riemann`、場所は `crates/riemann-r`。金融の計算はすべて Rust の `riemann` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
+R から Riemann を直接呼ぶ入口である。R パッケージ名は `RiemannFinMath`、場所は `crates/riemann-r`。プロジェクト名と Rust の crate 名は Riemann（`riemann`、`riemann-r`）のままである。金融の計算はすべて Rust の `riemann` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
+
+| 区分 | 状態 |
+|---|---|
+| 直接呼び出し | 完了 |
+| 並列評価 | 完了 |
+| Positron での利用確認 | 完了（3.1 節） |
+| 配布整備 | **作業中**（8 章。Windows のソースパッケージとバイナリは確認済みで、Windows 以外などが残る） |
 
 記述の区分（【実行確認】【実行照合済み】【設計案】）は仕様書と同じ考え方である。
 
@@ -14,8 +21,10 @@ R から Riemann を直接呼ぶ入口である。パッケージ名は `riemann
 | `crates/riemann-r/R/` | 薄い R の関数（`common.R`、`bonds.R`、`ois.R`、`calendars.R`、`batch.R`） |
 | `crates/riemann-r/inst/examples/quickstart.R` | Positron の R コンソールから実行するサンプル |
 | `crates/riemann-r/tests/testthat/` | R の入口のテスト |
+| `crates/riemann-r/man/` | ヘルプ（`R/` のコメントから roxygen2 で生成） |
+| `tools/package/build_source_package.R` | 自己完結したソースパッケージを作る |
 
-既存の R 連携コードはなかったので新しく作った。`rextendr` は入っていないので、R の関数は手で書き、`.Call(wrap__関数名, ...)` で呼ぶ。Rust の crate は、ルートのワークスペースから外している（`R CMD INSTALL` が `windows-gnu` 向けに単独でビルドするため）。
+既存の R 連携コードはなかったので新しく作った。`rextendr` は入っていないので、R の関数は手で書き、`.Call(wrap__関数名, ...)` で呼ぶ。extendr のモジュール名、DLL の名前、R の登録名は R パッケージ名にそろえる（R がその名前で初期化の関数を探すため）。Rust の crate は、ルートのワークスペースから外している（`R CMD INSTALL` が `windows-gnu` 向けに単独でビルドするため）。
 
 ## 2. 導入
 
@@ -25,8 +34,10 @@ Windows では次が必要である：Rtools 4.5、`rustup target add x86_64-pc-
 R CMD INSTALL crates/riemann-r
 ```
 
+配布ファイルからの導入は `crates/riemann-r/README.md` と 8 章にある。
+
 - `Makevars` は毎回 `cargo` を呼び、再ビルドの判断を `cargo` に任せる。依存を書かないと、一度ビルドした後は Rust のソースを変えても古いライブラリーのままになる。実際にこの不具合が起きたので直した。
-- ディレクトリーから導入する。Rust の crate は相対パスで中核に依存するので、tar.gz にして他の場所で導入することは、まだできない。
+- `crates/riemann-r` からの導入（開発用）では、Rust の crate は相対パスで中核に依存する。配布用のソースパッケージは、8 章のとおり中核と依存 crate を同梱し、相対パスに依存しない。
 
 ## 3. 公開関数
 
@@ -44,6 +55,16 @@ R CMD INSTALL crates/riemann-r
 - **結果**：複数の項目を返す関数は tibble で返す。
 - **真偽値**：公開 API では logical だけを受け取り、logical で返す。NA と logical 以外の入力はエラーにし、FALSE に読み替えない。結果の NA は「失敗」の意味である（`is_business_day(..., on_error = "na")`）。バッチの列を整数にするのは R と Rust の境界の中だけで、extendr に `bool` のベクトルの変換がないためである。Rust 側でも 0 と 1 以外は失敗として返す。
 - **値**：債券とカーブは Rust の値を外部ポインターで持つ。中身は書き換えない。`with_extrapolation` は新しい値を返す。
+
+### 3.1 Positron での利用確認【利用者の確認】
+
+2026-11-01、利用者が Positron の R 4.6.0 で次の動作を確認した。パッケージ名を変える前の版（`1163327` の内容）である。
+
+1. 債券の価格・利回り・リスク計算
+2. TONAR のスプラインによる OIS カーブ構築
+3. カーブを使った債券評価
+4. 休日・営業日の判定
+5. 複数カーブのバッチ計算
 
 ## 4. エラーと panic
 
@@ -93,6 +114,61 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 
 - R の入口に `JointCalendar` と `BespokeCalendar` がない。検証レポートのこれらは CSV 経由のままである。
 - 例外日（`with_holiday`）、`first_date`・`next_to_last_date` のバッチでの指定、`HolidayCalendar` の単独の値は、R の入口にない。
-- ヘルプページ（`man/`）がない。関数の説明は `R/` のコメントだけである。
+- 配布整備の残り（8.5 節）。
 - 仕様書 10 章の「testthat で GaussQuant と直接比べる」は未実施である。
-- `R CMD check` は実行していない。Windows 以外では、ビルドも確かめていない（`Makevars` は未実行）。
+- Windows 以外では、ビルドも確かめていない（`Makevars` は未実行）。
+
+## 8. 配布整備（作業中）
+
+### 8.1 パッケージ名
+
+CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名前の衝突を判定する（`R CMD check --as-cran` の ERROR）。そこで R パッケージ名を `RiemannFinMath` とした。
+
+【実行確認】2026-11-01、大文字小文字を区別せずに調べ、次のどれにも `RiemannFinMath` はなかった：CRAN の現行（25,581 件）とアーカイブ（28,384 件）、Bioconductor の 4 区分（bioc、data/annotation、data/experiment、workflows）、R-universe の検索、GitHub のリポジトリ名の検索。CRAN への公開申請はしていない。これは調査の時点の結果で、名前を確保したものではない。
+
+### 8.2 ソースパッケージ
+
+`tools/package/build_source_package.R` が一時的な複製を作り、中核の crate を `src/rust/riemann-core` に入れ、依存の 18 crate を `src/rust/vendor.tar.xz` にまとめて、`R CMD build` を実行する。リポジトリのファイルは変えない。`Makevars` は `vendor.tar.xz` があればネットワークを使わずにビルドし、終わったらビルドの生成物を消す。
+
+ライセンスの表示を同梱する：`inst/THIRD_PARTY_NOTICES`（QuantLib）、`inst/LICENSE-MIT`、`inst/LICENSE-APACHE`、`inst/RUST_DEPENDENCIES`（依存 crate の名前、版、ライセンス）。
+
+### 8.3 R CMD check【実行確認】
+
+2026-11-01、リポジトリの外の短いパスで、`CARGO_NET_OFFLINE=true`、`R CMD check --as-cran`、R 4.6.0、Windows 11、TinyTeX で PDF マニュアルも検査した。
+
+**結果：エラー 0、警告 0、NOTE 1。** ログは `dist/check.log`。
+
+| 残るもの | 理由 |
+|---|---|
+| NOTE：`New submission` | CRAN に登録されていない新しいパッケージには必ず出る。CRAN に公開申請しないので対応しない |
+
+テストは 85 件成功（`FAIL 0`、`WARN 0`、`SKIP 0`）、全使用例を実行した。途中で次を直した：`rustc` の版の表示がない（WARNING）、使用例の行が 100 文字を超える（NOTE）。
+
+テストの確認用に、意図的な panic を 1 回起こす。そのため、テストのログに `panicked` が 1 回出るのは正常である。
+
+### 8.4 Windows バイナリ【実行確認】
+
+`R CMD INSTALL --build` で `RiemannFinMath_0.1.0.zip` を作り、別のライブラリーへ導入して、新しい R セッションで quickstart を実行した（`dist/quickstart_from_zip.log`）。
+
+| 確認 | 結果 |
+|---|---|
+| 終了コード | 0 |
+| `cargo`、`rustc`、`gcc`、`make` | R の PATH に見つからない（R が起動時に足す Rtools も、R の中で PATH から除いた） |
+| 読み込んだ場所 | 導入先の別ライブラリーだけ。他に見えるのは `tibble` とその依存 10 個をコピーしたライブラリーだけ |
+| リポジトリへの依存 | リポジトリの外で実行。パッケージの 14 個のテキストファイルにリポジトリのフォルダー名なし |
+| DLL の依存（`objdump`） | Windows の DLL と `R.dll` だけ |
+| ヘルプ | `bond_values` のページを見つけた |
+
+ソースパッケージからの導入も、リポジトリの外、`CARGO_NET_OFFLINE=true` で成功した。
+
+**環境変数をすべて消すと終了時に落ちる**：`env -i` で環境変数を消した R では、終了時に Segmentation fault（139）になった。`RiemannFinMath` を使わず `tibble` だけを読み込むスクリプトでも同じなので、このパッケージの問題ではない。通常の環境変数では、パッケージの読み込み、バッチ、quickstart のすべてで終了コード 0 である。`tibble` の依存のどれが原因かは確かめていない。
+
+### 8.5 制限と残り
+
+- **パスの長さ**：ソースからのビルドは、パスが Windows の 260 文字の制限を超えると `LNK1104` で失敗する（実測で 263 文字の例）。短いパスで実行する。
+- **依存の導入**：zip からの導入では `tibble` は自動で入らない。先に入れる。
+- **Windows 以外は未確認**：`Makevars` は実行していない。
+- **R のバージョン**：R 4.6 の Windows 用の zip である。他のバージョンでは確かめていない。
+- **配布ファイル**：`dist/` にあり、git には入れない。GitHub Releases などへの公開はしていない。
+- **CRAN**：公開申請はしていない。18 crate の同梱など、CRAN の Rust パッケージの方針との照合もしていない。
+- **既定のライブラリーの古い `riemann`**：名前を変える前の版が残る。Positron の R セッションが読み込んでいたので、消していない。

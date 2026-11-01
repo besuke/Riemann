@@ -87,14 +87,14 @@ test_that("calendars keep the failures of QuantLib", {
 })
 
 test_that("the printed quickstart runs", {
-  path <- system.file("examples", "quickstart.R", package = "riemann")
+  path <- system.file("examples", "quickstart.R", package = "RiemannFinMath")
   expect_true(nzchar(path))
   expect_output(source(path, local = TRUE), "Settlement date")
 })
 
 test_that("a defect in Rust stays visible and leaves R running", {
   # the panic itself is printed on stderr by the default hook, which the package does not change
-  expect_error(.Call(riemann:::wrap__panic_for_test), "deliberate panic")
+  expect_error(.Call(RiemannFinMath:::wrap__panic_for_test), "deliberate panic")
   expect_identical(is_business_day("japan", "2026-11-02"), TRUE)
 })
 

@@ -10,10 +10,31 @@ bond_batch_columns <- c(
   "issue_date", "rate", "yield_day_count", "compounding", "frequency", "evaluation_date"
 )
 
-#' Values many bonds, one row each. `bonds` has the arguments of `fixed_rate_bond()` as columns
-#' (`end_of_month` is logical, without NA),
-#' and `rate`, `yield_day_count`, `compounding`, `frequency` and `evaluation_date`. `threads = 0`
-#' uses one thread per logical processor. A row that fails has NA and its message in `error`.
+#' Value many bonds in parallel
+#'
+#' The threads compute with Rust values only and never call R. Results and their order do not
+#' depend on the number of threads. Every count runs on worker threads, also 1, so results can
+#' differ in the last bits from [bond_values()], which runs on R's main thread.
+#'
+#' @param bonds A data frame with one row for each evaluation: the arguments of
+#'   [fixed_rate_bond()] as columns (`end_of_month` is logical without `NA`, and `issue_date` is
+#'   required), and `rate`, `yield_day_count`, `compounding`, `frequency` and `evaluation_date`.
+#' @param threads Number of threads. 0 uses one for each logical processor.
+#' @return A tibble in the order of `bonds`, with the columns `settlement_date`, `clean_price`,
+#'   `dirty_price`, `accrued_amount`, `duration_modified`, `convexity`, `basis_point_value`,
+#'   `yield_value_basis_point` and `error`. A row that fails has `NA` and its message.
+#' @examples
+#' bonds <- data.frame(
+#'   settlement_days = 1L, face_amount = 100, effective_date = as.Date("2020-03-20"),
+#'   termination_date = as.Date("2030-03-20"), tenor = "6M", calendar = "japan",
+#'   convention = "following", termination_convention = "following", rule = "backward",
+#'   end_of_month = FALSE, coupon_rate = 0.015, day_count = "act_act_isma",
+#'   payment_convention = "following", redemption = 100, issue_date = as.Date("2020-03-20"),
+#'   rate = c(0.01, 0.02), yield_day_count = "act_act_isma", compounding = "compounded",
+#'   frequency = 2L, evaluation_date = as.Date("2026-11-02")
+#' )
+#' bond_values_batch(bonds, threads = 2L)
+#' @export
 bond_values_batch <- function(bonds, threads = 0L) {
   missing_columns <- setdiff(bond_batch_columns, names(bonds))
   if (length(missing_columns)) stop("`bonds` lacks the columns: ", paste(missing_columns, collapse = ", "), call. = FALSE)
@@ -32,11 +53,31 @@ bond_values_batch <- function(bonds, threads = 0L) {
   values
 }
 
-#' Builds many OIS curves and reads each on its dates, one row per curve and date. `curves` has
-#' the columns `evaluation_date`, `reference_date`, `index`, `curve_day_count`, a list column
-#' `instruments` of `ois_instruments()` tables and a list column `dates`, and optionally
-#' `interpolation` and `accuracy`. A curve that fails has one row with its message in `error`.
-#' `max_reproduction_error` shows how far the curve misses its quotes.
+#' Build and read many OIS curves in parallel
+#'
+#' The threads compute with Rust values only and never call R. Results and their order do not
+#' depend on the number of threads. Every count runs on worker threads, also 1, so results can
+#' differ in the last bits from [discount()] and the other direct functions, which run on R's main
+#' thread.
+#'
+#' @param curves A data frame with one row for each curve: `evaluation_date`, `reference_date`,
+#'   `index`, `curve_day_count`, a list column `instruments` of [ois_instruments()] tables, a list
+#'   column `dates` of dates to read, and optionally `interpolation` and `accuracy`.
+#' @param threads Number of threads. 0 uses one for each logical processor.
+#' @return A tibble in the order of the curves and of their dates, with the columns `curve` (the
+#'   row of `curves`), `date`, `discount`, `zero_continuous`, `forward_1d_simple`,
+#'   `max_reproduction_error` and `error`. A curve that fails has one row, without a date, with its
+#'   message. `max_reproduction_error` shows how far the curve misses its quotes.
+#' @examples
+#' instruments <- ois_instruments(c("ON", "1Y", "5Y"), c(0.002, 0.004, 0.009), 2L, 1L, 0L)
+#' dates <- as.Date("2026-11-02") + c(365L, 1000L)
+#' curves <- tibble::tibble(
+#'   evaluation_date = as.Date("2026-11-02"), reference_date = as.Date("2026-11-02"),
+#'   index = c("tonar", "sofr"), curve_day_count = "actual_365_fixed",
+#'   instruments = list(instruments, instruments), dates = list(dates, dates)
+#' )
+#' curve_values_batch(curves, threads = 2L)
+#' @export
 curve_values_batch <- function(curves, threads = 0L) {
   n <- nrow(curves)
   interpolation <- if ("interpolation" %in% names(curves)) as.character(curves$interpolation) else rep("monotonic_log_cubic", n)

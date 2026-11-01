@@ -38,10 +38,10 @@ run_riemann_example <- function(example, input_path, output_path, root, attempts
   invisible(log)
 }
 
-# The R package of Riemann, called directly. Install it with: R CMD INSTALL crates/riemann-r
+# The R package of Riemann, RiemannFinMath, called directly. Install it with: R CMD INSTALL crates/riemann-r
 require_riemann_package <- function() {
-  if (!requireNamespace("riemann", quietly = TRUE)) {
-    stop("The riemann package is not installed. Run: R CMD INSTALL crates/riemann-r", call. = FALSE)
+  if (!requireNamespace("RiemannFinMath", quietly = TRUE)) {
+    stop("The RiemannFinMath package is not installed. Run: R CMD INSTALL crates/riemann-r", call. = FALSE)
   }
   invisible(TRUE)
 }

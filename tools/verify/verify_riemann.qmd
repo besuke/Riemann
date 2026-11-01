@@ -51,7 +51,7 @@ pass_label <- function(pass) if_else(pass, "PASS", "FAIL")
 Riemann の実装済みの計算を、合成データで QuantLib と比べる検証です。計算と照合はすべて `verify_common.R`、`verify_bonds.R`、`verify_ois.R`、`verify_calendars.R` の関数で行い、この文書はその結果を表と図で示します。
 
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
-- **Riemann の呼び方**：R パッケージ `riemann`（`crates/riemann-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/riemann/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
+- **Riemann の呼び方**：R パッケージ `RiemannFinMath`（`crates/riemann-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/riemann/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
 - **データ**：すべて合成の値で、市場データは使っていません。
 - **対象**：債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 
@@ -594,8 +594,8 @@ parallel_results$against_direct |>
 ```{r}
 #| label: session
 tibble(
-  item = c("R", "QuantLib R package", "riemann R package", "tidyverse", "Run at"),
-  value = c(as.character(getRversion()), as.character(packageVersion("QuantLib")), as.character(packageVersion("riemann")),
+  item = c("R", "QuantLib R package", "RiemannFinMath R package", "tidyverse", "Run at"),
+  value = c(as.character(getRversion()), as.character(packageVersion("QuantLib")), as.character(packageVersion("RiemannFinMath")),
             as.character(packageVersion("tidyverse")), format(Sys.time(), "%Y-%m-%d %H:%M %Z"))
 ) |>
   knitr::kable(col.names = c("Item", "Value"))

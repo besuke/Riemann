@@ -928,8 +928,9 @@ fn panic_for_test() {
     panic!("riemann deliberate panic for the test");
 }
 
+// The module has the name of the R package, because R looks for its routines by that name.
 extendr_module! {
-    mod riemann;
+    mod RiemannFinMath;
     fn fixed_rate_bond;
     fn settlement_date;
     fn bond_values;

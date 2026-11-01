@@ -1,4 +1,4 @@
 library(testthat)
-library(riemann)
+library(RiemannFinMath)
 
-test_check("riemann")
+test_check("RiemannFinMath")

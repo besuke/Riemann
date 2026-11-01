@@ -1,2 +1,4 @@
 ^src/rust/target$
 ^tests/results$
+^\.gitignore$
+^README\.md$

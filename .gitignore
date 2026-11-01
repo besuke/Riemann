@@ -8,3 +8,4 @@ Cargo.lock.bak
 /tools/verify/*_files/
 /tools/verify/.quarto/
 /tools/verify/*.knit.md
+/dist/
