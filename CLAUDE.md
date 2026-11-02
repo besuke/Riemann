@@ -82,14 +82,14 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 | 段階 | 内容 | 状態 |
 |---|---|---|
-| P11-1 | Z スプレッド、債券キャッシュフロー表 | **完了**（`docs/spec_bonds.md` 4.4 節）。`zSpread` の QuantLib ソースは未読で、結果だけ照合 |
+| P11-1 | Z スプレッド、債券キャッシュフロー表 | **完了**（`docs/spec_bonds.md` 4.4 節）。QuantLib v1.42 のソースを読み、探索を同じ手順に直した。境界ケース 25 件も一致 |
 | P11-2 | OIS スワップ本体（レグ、NPV、日次複利、Fixing。LagrangeFinance II-3.2〜II-3.4） | 次にやる |
 | P11-3 | Hull-White の校正（II-6.4） | 未着手 |
 | P11-4 | Longstaff–Schwartz、Sobol 列（II-4.6） | 未着手 |
 | P11-5 | MBS のプリペイメントと OAS（II-8.8） | 未着手 |
-| P11-6 | LMM（II-6.5、II-7.4）。旧版にあるのは Caplet と相関の例だけなので、範囲を確認して決める | 未着手 |
+| P11-6 | LMM。**当面は LagrangeFinance の Caplet と相関の例（II-7.4）を再現する範囲**（ユーザーの指示）。本格的なモデルへの拡張は別途判断 | 未着手 |
 
-配布ファイル（`dist/`、版 0.2.0）には P11 の関数が入っていない。版を上げて作り直すのは、ユーザーの指示があってから。
+**配布ファイルの更新が未了（次の作業）**：`dist/` は 0.2.0 のままで、P11-1 と CDS の新しい引数が入っていない。ユーザーの指示で、Z スプレッドと CDS の対応が済んだところで更新する。今回は未着手で、版の番号も未決（新しい関数があるので 0.3.0 を想定）。変える場所は `Cargo.toml`、`crates/riemann-r/src/rust/Cargo.toml`、`DESCRIPTION`、`README.md`、`docs/spec_r.md` 8 章、`tools/package/smoke_test.R`。手順は `crates/riemann-r/README.md`。
 
 ## QuantLib との比較資料（`comparison/`、2026-11-01 完了）
 
@@ -101,11 +101,10 @@ LagrangeFinance の入力と計算例で、RiemannFinMath（Rust）を基準と�
 - **出力**：`quarto render --to html`（`comparison/` で実行）で `comparison/_book/index.html`。`_book` は git に入れない。丸める前の結果は `comparison/results/*.csv` で git に入れる。
 - **基準**：絶対誤差 1e-4、表示は小数 4 桁、判定は丸める前、単位を明記。この資料だけの基準で、ライブラリーの回帰テストの許容誤差は変えない。
 - **きまり**：文書に日本語を入れない。各項目に入力、両者の呼び出し、結果、差、許容誤差、判定を載せ、ラッパーの差と中核の差を分ける。同じ計算でないものは N/C にして判定しない。QuantLib に相当がないものは基準（GaussQuant など）を明記する。
-- **結果**：全 60 関数を呼んだ。件数は `comparison/results/`、未比較は `appendix_c_gaps.qmd`。FAIL は CDS の coupon leg の 2 行。Bermudan は基準値がなく参考行（木との差は 1000 段で 0.0011、2000 段で 0.0002）。
-- **次の作業（ユーザーが明日以降に指示する）**：
-  1. CDS の FAIL の原因確認。差 267.70 は最終期間に 1 日多い利息（約 267.69）と数値が合うが、QuantLib の `MakeCreditDefaultSwap` のソースは未確認。確かめたら、`credit_default_swap` に取引日・決済日数・最終期間の日数計算を足すかを決める。
-  2. 判定できない項目を減らすか決める。PRDC は旧版がモンテカルロの値だけで判定なし、第 5 章と第 13 章は旧版に対応する値がない。
-  3. `docs/library_comparison.md` の先頭の空行 1 行は未コミットのまま（由来不明）。扱いをユーザーに確認する。
+- **結果**（2026-11-02、`6a5d9d7` のコード）：全 63 関数を呼んだ。PASS 386、FAIL 0、N/C 40、REF 402。LagrangeFinance 基準は PASS 173、N/C 17。カレンダー（QuantLib C++ 基準）は PASS 213。未比較は `appendix_c_gaps.qmd`。Bermudan は基準値がなく参考行（木との差は 1000 段で 0.0011、2000 段で 0.0002）。CDS の FAIL 2 行の原因は `docs/spec_cds.md` 3.1 節で確定し、LagrangeFinance の入力と基準値を変えずに、Rust 側の引数の追加で解消した（比較資料の CDS の呼び出しはこの引数を指定する）。
+- **比較資料の残り**：
+  1. 判定できない項目を減らすか決める。PRDC は旧版がモンテカルロの値だけで判定なし、第 5 章と第 13 章は旧版に対応する値がない。
+  2. `docs/library_comparison.md` の先頭の空行 1 行は未コミットのまま（由来不明）。扱いをユーザーに確認する。
 - **市場データ**：2026-10-06 の OIS 気配と受渡適格銘柄の価格は、描画時に `../../LagrangeFinance` から読むだけで、保存も表示もしない。
 - **注意**：bash のヒアドキュメントでは `\\` が `\` になる。バックスラッシュを含む R は Write で書く。
 
