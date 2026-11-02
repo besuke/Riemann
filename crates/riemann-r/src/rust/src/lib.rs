@@ -12,6 +12,7 @@ use extendr_api::prelude::*;
 use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::cashflow_analysis::{YieldConvention, YieldSolver};
+use riemann::cashflows::CashFlow;
 use riemann::cds::{self, Cds, CdsCurve, CdsCurveSpec, CdsSpec, CdsValue, HazardCurve, SpreadQuote};
 use riemann::hull_white::{self, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
@@ -301,6 +302,128 @@ fn yield_from_price(
             .iter()
             .zip(&settlement_date)
             .map(|(&p, &s)| bond.yield_from_price(p, kind, &convention, date(s)?, solver))
+            .collect();
+        Ok(value_list(rows))
+    };
+    outcome(rows())
+}
+
+/// The cash flows of a bond in date order, coupons before a redemption on the same date.
+#[extendr]
+fn bond_cashflows(bond: ExternalPtr<FixedRateBond>) -> List {
+    let rows = || -> Core<List> {
+        let n = bond.cashflows.len();
+        let mut payment_date = Vec::with_capacity(n);
+        let mut amount = Vec::with_capacity(n);
+        let mut kind = Vec::with_capacity(n);
+        let mut accrual_start = Vec::with_capacity(n);
+        let mut accrual_end = Vec::with_capacity(n);
+        for flow in &bond.cashflows {
+            payment_date.push(flow.date().serial() as i32);
+            amount.push(flow.amount()?);
+            match flow {
+                CashFlow::FixedRateCoupon(c) => {
+                    kind.push("coupon".to_string());
+                    accrual_start.push(c.accrual_start.serial() as i32);
+                    accrual_end.push(c.accrual_end.serial() as i32);
+                }
+                CashFlow::Redemption { .. } => {
+                    kind.push("redemption".to_string());
+                    accrual_start.push(0);
+                    accrual_end.push(0);
+                }
+            }
+        }
+        Ok(list!(
+            payment_date = payment_date,
+            amount = amount,
+            kind = kind,
+            accrual_start = accrual_start,
+            accrual_end = accrual_end
+        ))
+    };
+    outcome(rows())
+}
+
+#[extendr]
+fn value_with_zero_spread(
+    bond: ExternalPtr<FixedRateBond>,
+    curve: ExternalPtr<OisCurve>,
+    spread: Vec<f64>,
+    compounding: &str,
+    frequency: i32,
+    evaluation_date: Vec<i32>,
+) -> List {
+    let rows = || -> Core<List> {
+        let compounding = names::compounding(compounding)?;
+        let n = spread.len();
+        let (mut npv, mut settlement_value) = (Vec::with_capacity(n), Vec::with_capacity(n));
+        let (mut dirty_price, mut clean_price) = (Vec::with_capacity(n), Vec::with_capacity(n));
+        let mut errors = Vec::with_capacity(n);
+        for (&s, &d) in spread.iter().zip(&evaluation_date) {
+            let value = date(d).and_then(|d| {
+                bond.value_with_zero_spread(&curve.curve, s, compounding, frequency as u32, d)
+            });
+            match value {
+                Ok(v) => {
+                    npv.push(v.npv);
+                    settlement_value.push(v.settlement_value);
+                    dirty_price.push(v.dirty_price);
+                    clean_price.push(v.clean_price);
+                    errors.push(String::new());
+                }
+                Err(e) => {
+                    npv.push(na_real());
+                    settlement_value.push(na_real());
+                    dirty_price.push(na_real());
+                    clean_price.push(na_real());
+                    errors.push(e.to_string());
+                }
+            }
+        }
+        Ok(list!(
+            npv = npv,
+            settlement_value = settlement_value,
+            dirty_price = dirty_price,
+            clean_price = clean_price,
+            error = errors
+        ))
+    };
+    outcome(rows())
+}
+
+#[extendr]
+fn z_spread_from_price(
+    bond: ExternalPtr<FixedRateBond>,
+    curve: ExternalPtr<OisCurve>,
+    price: Vec<f64>,
+    price_type: &str,
+    compounding: &str,
+    frequency: i32,
+    settlement_date: Vec<i32>,
+    accuracy: f64,
+    max_evaluations: i32,
+    guess: f64,
+) -> List {
+    let rows = || -> Core<List> {
+        let kind = names::price_type(price_type)?;
+        let compounding = names::compounding(compounding)?;
+        let rows = price
+            .iter()
+            .zip(&settlement_date)
+            .map(|(&p, &s)| {
+                bond.z_spread_from_price(
+                    &curve.curve,
+                    p,
+                    kind,
+                    compounding,
+                    frequency as u32,
+                    date(s)?,
+                    accuracy,
+                    max_evaluations as usize,
+                    guess,
+                )
+            })
             .collect();
         Ok(value_list(rows))
     };
@@ -1858,6 +1981,9 @@ extendr_module! {
     fn bond_values;
     fn duration;
     fn yield_from_price;
+    fn bond_cashflows;
+    fn value_with_zero_spread;
+    fn z_spread_from_price;
     fn value_on_curve;
     fn yield_sensitivity;
     fn curve_node_sensitivity;

@@ -153,19 +153,82 @@ compare_values("Dirty price, flat curve against yield formula", "per 100", quant
   show_results()
 ```
 
-## Not available
+## Cash flows
 
-Two functions of the legacy text have no public counterpart. They are not approximated here: cash flow tables, and valuation with a zero spread on a curve. See @sec-gaps.
+QuantLib holds them as a `Leg` of objects on the bond. RiemannFinMath returns a table:
+
+```{r}
+#| label: cashflows-riemann
+flows <- RiemannFinMath::bond_cashflows(bond)
+flows |>
+  slice(1:2, (n() - 1):n()) |>
+  knitr::kable(digits = 4, caption = "First and last cash flows")
+```
+
+## Zero spread
+
+The base is the flat curve at the yield above, from the settlement date, as in the legacy text. RiemannFinMath's curves come from quotes, so `flat_curve` fits quotes to the equivalent continuous rate (@sec-helpers). The spread is 50 bp with semiannual compounding.
+
+QuantLib:
+
+```{r}
+#| label: spread-quantlib
+z_spread_value <- 50 / 1e4
+ql_set_evaluation_date(trade_date)
+ql_flat_curve <- QuantLib::FlatForward(ql_settlement, compound_yield, ql_day_count, "Compounded", "Semiannual")
+ql_spreaded <- QuantLib::ZeroSpreadedTermStructure(
+  QuantLib::YieldTermStructureHandle(ql_flat_curve), QuantLib::QuoteHandle(QuantLib::SimpleQuote(z_spread_value)),
+  "Compounded", "Semiannual", ql_day_count
+)
+QuantLib::Instrument_setPricingEngine(ql_bond, QuantLib::DiscountingBondEngine(QuantLib::YieldTermStructureHandle(ql_spreaded)))
+quantlib_spread_npv <- QuantLib::Instrument_NPV(ql_bond)
+quantlib_z <- QuantLib::BondFunctions_zSpread(
+  ql_bond, QuantLib::BondPrice(quantlib_spread_npv, "Dirty"), ql_flat_curve, ql_day_count, "Compounded", "Semiannual",
+  ql_settlement, 1e-10, 100L, 0
+)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: spread-riemann
+flat_on_bond <- flat_curve(settlement, 2 * log1p(compound_yield / 2), "thirty_360_bond_basis")
+riemann_spread <- RiemannFinMath::value_with_zero_spread(bond, flat_on_bond, z_spread_value, "compounded", 2L, trade_date)
+riemann_z <- RiemannFinMath::z_spread_from_price(bond, flat_on_bond, quantlib_spread_npv, "dirty", "compounded", 2L, settlement)
+```
+
+```{r}
+#| label: spread-results
+bind_rows(
+  compare_values("NPV with the spread", "per 100", quantlib_spread_npv, riemann_spread$npv),
+  compare_values("Zero spread of that price", "bp", 1e4 * quantlib_z, 1e4 * riemann_z)
+) |>
+  show_results()
+```
 
 ## Against LagrangeFinance
 
-The yield and the price are the unrounded values of the legacy text.
+The yield and the price are the unrounded values of the legacy text. The zero spread is the inverse of the legacy calculation: the legacy text gives the spread and the value, and `z_spread_from_price` recovers the spread from that value.
 
 ```{r}
 #| label: lagrange
 lagrange_yield <- lagrange_value("bond.compound_yield_pct") / 100
 lagrange_price <- lagrange_value("bond.market_price")
+flow_keys <- lagrange_values$key[str_starts(lagrange_values$key, "bond.cashflow.amount.")]
+lagrange_flat <- flat_curve(settlement, 2 * log1p(lagrange_yield / 2), "thirty_360_bond_basis")
+lagrange_spread <- lagrange_value("bond.z_spread_bp") / 1e4
 bind_rows(
+  judge_values("Number of cash flows", "cash flows", length(flow_keys), nrow(flows), lagrange_label(flow_keys[1])),
+  against_lagrange_max("Cash flow amounts", "per 100, largest", flow_keys, flows$amount),
+  against_lagrange_max("Cash flow dates", "days, largest", str_replace(flow_keys, "amount", "date"), as.numeric(flows$payment_date)),
+  against_lagrange(
+    "NPV with a zero spread of 50 bp", "per 100", "bond.z_spread_npv",
+    RiemannFinMath::value_with_zero_spread(bond, lagrange_flat, lagrange_spread, "compounded", 2L, trade_date)$npv
+  ),
+  against_lagrange(
+    "Zero spread of that value", "bp", "bond.z_spread_bp",
+    1e4 * RiemannFinMath::z_spread_from_price(bond, lagrange_flat, lagrange_value("bond.z_spread_npv"), "dirty", "compounded", 2L, settlement)
+  ),
   against_lagrange("Settlement date", "days", "bond.settlement", as.numeric(settlement)),
   against_lagrange(
     "Dirty price at the compound yield", "per 100", "bond.flat_dirty_price",
@@ -189,6 +252,9 @@ tribble(
   "Wrapper", "Conventions",      "Positional strings with defaults from the binding",     "Required named arguments; no defaults",
   "Wrapper", "Many yields",      "One call per measure and per yield",                    "One call returns a table, one row per yield",
   "Wrapper", "Evaluation date",  "`Settings` singleton, set before the call",             "Passed to `settlement_date`; no global state",
+  "Wrapper", "Flat base curve",  "`FlatForward`",                                         "No constructor; quotes must be fitted",
+  "Wrapper", "Cash flows",       "A `Leg` of objects, read one by one",                   "`bond_cashflows` returns one table",
+  "Core",    "Zero spread",      "An observer of a quote and of the base curve",          "A new curve value, with the spread as a number; the spread's day count is the base curve's",
   "Core",    "Bond",             "`Instrument` object that holds an engine and caches",   "Immutable value; functions take the bond and the inputs",
   "Core",    "Price and yield",  "`BondFunctions` over a cash flow `Leg`",                "Pure functions over the same cash flows",
   "Core",    "Yield solver",     "Newton-safe with the same accuracy and guess",          "The same defaults, as explicit arguments"

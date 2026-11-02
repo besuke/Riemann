@@ -51,6 +51,15 @@ print(RiemannFinMath::curve_values(curve, dates, day_count = "actual_365_fixed")
 # The same bond on the curve.
 print(RiemannFinMath::value_on_curve(bond, curve, "2026-11-02"))
 
+# Its cash flows.
+print(RiemannFinMath::bond_cashflows(bond))
+
+# With 50 bp on the curve's zero rates, and the spread that reprices a clean price.
+print(RiemannFinMath::value_with_zero_spread(bond, curve, 0.005, "compounded", 2L, "2026-11-02"))
+z <- RiemannFinMath::z_spread_from_price(bond, curve, price = 98.5, price_type = "clean", compounding = "compounded",
+                                         frequency = 2L, settlement_date = settlement)
+cat("Zero spread of a clean price of 98.5:", z, "\n")
+
 # ---- calendars, for bond settlement and payment dates ------------------------------------------
 
 print(RiemannFinMath::holidays("brazil_settlement", "2026-01-01", "2026-12-31"))

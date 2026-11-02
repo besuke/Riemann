@@ -404,6 +404,11 @@ impl<T: Operand> YieldCurve<T> {
         self
     }
 
+    /// Whether the curve reads past its last date.
+    pub fn allows_extrapolation(&self) -> bool {
+        self.extrapolate
+    }
+
     pub fn reference_date(&self) -> Date {
         self.reference_date
     }

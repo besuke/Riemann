@@ -193,6 +193,74 @@ value_on_curve <- function(bond, curve, evaluation_date, on_error = "stop") {
   tibble(evaluation_date = as_date(serials), as_tibble(rows))
 }
 
+#' Cash flows of a bond
+#'
+#' @param bond A bond from [fixed_rate_bond()].
+#' @return A tibble in date order, with a coupon before a redemption on the same date, and the
+#'   columns `payment_date`, `amount`, `kind` (`"coupon"` or `"redemption"`), `accrual_start` and
+#'   `accrual_end`. The accrual dates are `NA` for a redemption.
+#' @examples
+#' bond <- fixed_rate_bond(1L, 100, "2020-03-20", "2022-03-20", "6M", "japan", "following",
+#'                         "following", "backward", FALSE, 0.015, "act_act_isma", "following", 100)
+#' bond_cashflows(bond)
+#' @export
+bond_cashflows <- function(bond) {
+  rows <- checked(.Call(wrap__bond_cashflows, bond$pointer))
+  serial_or_na <- function(x) as_date(ifelse(x == 0L, NA_integer_, x))
+  tibble(payment_date = as_date(rows$payment_date), amount = rows$amount, kind = rows$kind,
+         accrual_start = serial_or_na(rows$accrual_start), accrual_end = serial_or_na(rows$accrual_end))
+}
+
+#' Value of a bond with a zero spread on a curve
+#'
+#' `value_with_zero_spread()` adds a spread to the zero rates of the curve, in the given
+#' compounding, and values the bond on the result. `z_spread_from_price()` finds the spread that
+#' reprices a clean or dirty price at settlement. The spread's rate uses the curve's day count.
+#'
+#' The curve's own setting decides whether the bond may be valued past its last date; see
+#' [with_extrapolation()].
+#'
+#' @inheritParams value_on_curve
+#' @param spread Zero spreads as decimals: `0.005` is 50 bp.
+#' @param compounding `"simple"`, `"compounded"` or `"continuous"`.
+#' @param frequency Compounding periods per year.
+#' @param price Prices per 100 of notional.
+#' @param price_type `"clean"` or `"dirty"`.
+#' @param settlement_date Settlement dates: `Date` or ISO strings.
+#' @param accuracy,max_evaluations,guess Solver settings; the defaults are QuantLib's.
+#' @return `value_with_zero_spread()` returns a tibble with the columns `spread`,
+#'   `evaluation_date`, `npv`, `settlement_value`, `dirty_price`, `clean_price` and `error`.
+#'   `z_spread_from_price()` returns a numeric vector of spreads as decimals.
+#' @examples
+#' bond <- fixed_rate_bond(1L, 100, "2020-03-20", "2030-03-20", "6M", "japan", "following",
+#'                         "following", "backward", FALSE, 0.015, "act_act_isma", "following", 100)
+#' instruments <- ois_instruments(
+#'   c("ON", "1Y", "5Y", "10Y"), c(0.002, 0.004, 0.009, 0.014), 2L, 1L, 0L
+#' )
+#' curve <- build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", instruments)
+#' value_with_zero_spread(bond, curve, c(0, 0.005), "compounded", 2L, "2026-11-02")
+#' z_spread_from_price(bond, curve, 101, "clean", "compounded", 2L, "2026-11-04")
+#' @export
+value_with_zero_spread <- function(bond, curve, spread, compounding, frequency, evaluation_date, on_error = "stop") {
+  inputs <- tibble(spread = as.numeric(spread), evaluation_date = as_serial(evaluation_date))
+  rows <- finish_rows(checked(.Call(
+    wrap__value_with_zero_spread, bond$pointer, curve$pointer, inputs$spread, compounding, as.integer(frequency), inputs$evaluation_date
+  )), on_error)
+  tibble(spread = inputs$spread, evaluation_date = as_date(inputs$evaluation_date), as_tibble(rows))
+}
+
+#' @rdname value_with_zero_spread
+#' @export
+z_spread_from_price <- function(bond, curve, price, price_type, compounding, frequency, settlement_date,
+                                accuracy = 1e-10, max_evaluations = 100L, guess = 0, on_error = "stop") {
+  inputs <- tibble(price = as.numeric(price), settlement_date = as_serial(settlement_date))
+  rows <- checked(.Call(
+    wrap__z_spread_from_price, bond$pointer, curve$pointer, inputs$price, price_type, compounding, as.integer(frequency),
+    inputs$settlement_date, as.numeric(accuracy), as.integer(max_evaluations), as.numeric(guess)
+  ))
+  finish_values(rows, on_error)
+}
+
 # ---- Japanese bond calculations ---------------------------------------------------------------
 
 yen_inputs <- function(...) {

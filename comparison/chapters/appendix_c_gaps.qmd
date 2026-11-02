@@ -6,8 +6,6 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 
 | Legacy section | Calculation | State |
 |---|---|---|
-| II-1.3.2 | Bond cash flow table | In the Rust core; not exported to R |
-| II-1.6.2 | Bond value with a zero spread | Not exported to R |
 | II-2.2, II-2.3, II-2.5 | Curves from zero rates or discount factors, flat curves, implied and spreaded curves | Curves come from OIS quotes only. `flat_curve` in this document fits quotes for flat curves |
 | II-2.1 | JGB yield splines | R's `spline`, and no library calculation; the data comes from the network |
 | II-2.4 | Curves from deposits with bonds or swaps | Not implemented; OIS is the focus |
