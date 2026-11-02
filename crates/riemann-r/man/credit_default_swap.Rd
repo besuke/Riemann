@@ -18,7 +18,11 @@ credit_default_swap(
   payment_convention = "following",
   day_count = "actual_360",
   upfront = 0,
-  rebates_accrual = TRUE
+  rebates_accrual = TRUE,
+  trade_date = NULL,
+  protection_start = NULL,
+  cash_settlement_days = 3L,
+  last_period_day_count = NULL
 )
 }
 \arguments{
@@ -36,6 +40,13 @@ see \link{RiemannFinMath-package}. The defaults are examples, not market convent
 \item{upfront}{Paid at the cash settlement date, per unit of notional.}
 
 \item{rebates_accrual}{\code{TRUE} or \code{FALSE}. \code{NA} is an error.}
+
+\item{trade_date, protection_start}{Dates, or \code{NULL}. Without them protection starts on the first
+date of the schedule, and the trade date is that date for the CDS rules and the day before otherwise.}
+
+\item{cash_settlement_days}{Business days from the trade date to the cash settlement date.}
+
+\item{last_period_day_count}{Day count of the last coupon, or \code{NULL} for \code{day_count}.}
 }
 \value{
 A \code{riemann_cds} value. It does not change.
@@ -45,10 +56,19 @@ A swap with face value claims, paying accrual and the claim at default. The side
 protection (\code{"buyer"}) or sells it (\code{"seller"}). When the rule is \code{"cds"} or \code{"cds2015"}, the
 first date is the twentieth of a main IMM month before the effective date, as in QuantLib.
 }
+\details{
+QuantLib's \code{MakeCreditDefaultSwap} is \code{trade_date} and \code{protection_start} both on the trade
+date, with \code{rule = "cds2015"} and \code{last_period_day_count = "actual_360_include_last_day"}, as in the
+last example. Its last coupon therefore has one more day than a plain \code{day_count}.
+}
 \examples{
 cds <- credit_default_swap("buyer", 1e7, 0.01, "2026-11-03", "2031-12-20")
 rates <- build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed",
                          ois_instruments(c("1Y", "5Y", "10Y"), c(0.01, 0.015, 0.02), 2L, 1L, 0L))
 hazard <- hazard_curve("2026-11-02", "2040-01-01", 0.02)
 cds_value(cds, hazard, 0.4, rates, "2026-11-02", "midpoint")
+standard <- credit_default_swap("buyer", 1e7, 0.01, "2026-11-02", "2031-12-20", rule = "cds2015",
+                                trade_date = "2026-11-02", protection_start = "2026-11-02",
+                                last_period_day_count = "actual_360_include_last_day")
+cds_value(standard, hazard, 0.4, rates, "2026-11-02", "isda")
 }

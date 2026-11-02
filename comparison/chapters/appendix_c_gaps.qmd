@@ -17,7 +17,6 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | II-4.5 | Barone-Adesi-Whaley and Bjerksund-Stensland approximations | Not implemented; the tree is compared |
 | II-4.6 | Sobol sequences and Longstaff-Schwartz | Not implemented |
 | II-5.2.5, II-5.6.4 | CDS cash flow and probability tables | Not returned |
-| II-5.6 | The settings of QuantLib's CDS builder: trade date, cash settlement days and, by estimate, the last period's day count | No argument. The legacy NPV, rebate, fair spread and fair upfront are not judged, and the coupon legs fail |
 | II-6.4 | Hull-White calibration | Not implemented |
 | II-6.5, II-7.3 to II-7.5 | BGM/LMM, HJM, FMM | Not implemented |
 | II-7.2 | Simulated Hull-White paths | Not returned |
@@ -62,4 +61,3 @@ These appear as reference rows, without a verdict.
 | Monte Carlo values | Different random numbers. The distance is given in standard errors |
 | SABR fitted parameters | Different optimizers |
 | Five-year PRDC against `torch` | Different random numbers, node times and risk factors |
-| CDS from the legacy text's builder | The builder sets a trade date and cash settlement days |

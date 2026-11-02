@@ -1,8 +1,8 @@
 # Golden values for Riemann P11-1 (bond value with a zero spread, and the spread of a price) from the
 # QuantLib R package Version 1.42. All inputs are synthetic; no market data is used.
 # Usage (from the Riemann root): Rscript tools/golden/p11_z_spread.R
-# Writes tests/golden/z_spreads.csv. The curve's day count is also the spread's, the only case
-# Riemann has: its `ZeroSpreaded` curve reads times with the base curve's day count.
+# Writes tests/golden/z_spreads.csv. At v1.42 the spread always uses the curve's day count: the
+# day counter passed to ZeroSpreadedTermStructure and BondFunctions_zSpread is ignored.
 
 suppressMessages(library(QuantLib))
 

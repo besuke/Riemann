@@ -17,7 +17,7 @@ use crate::cashflow_analysis::{self as analysis, DurationType, YieldConvention, 
 use crate::cashflows::{self, CashFlow, FixedRateLegSpec};
 use crate::curves::YieldCurve;
 use crate::interest_rate::{Compounding, InterestRate};
-use crate::math::solver1d::brent;
+use crate::math::solver1d::brent_with_step;
 use crate::time::{
     generate_schedule, BusinessDayConvention, Date, DayCount, HolidayCalendar, Period, Schedule,
     ScheduleSpec, TimeUnit,
@@ -239,14 +239,15 @@ impl FixedRateBond {
         frequency: u32,
         evaluation_date: Date,
     ) -> Result<BondCurveValue, Error> {
-        let spreaded = YieldCurve::zero_spreaded(curve.clone(), spread, compounding, frequency)?
-            .with_extrapolation(curve.allows_extrapolation());
+        let spreaded = YieldCurve::zero_spreaded(curve.clone(), spread, compounding, frequency)?;
         self.value_on_curve(&spreaded, evaluation_date)
     }
 
-    /// The zero spread that reprices `price` at `settlement`. The search widens from `guess`
-    /// until it brackets a root, and then runs Brent's method. Written without QuantLib's source
-    /// and checked by results against `BondFunctions_zSpread` of its R package.
+    /// The zero spread that reprices `price` at `settlement` (QuantLib v1.42
+    /// `BondFunctions::zSpread` and `CashFlows::zSpread`): Brent's method from `guess`, widening
+    /// a bracket from a step of 0.01, with the objective target - NPV. QuantLib's defaults are an
+    /// accuracy of 1e-10, 100 evaluations and a guess of 0. Its overload with a day counter
+    /// ignores that argument: the spread always uses the curve's day count.
     #[allow(clippy::too_many_arguments)]
     pub fn z_spread_from_price(
         &self,
@@ -262,38 +263,20 @@ impl FixedRateBond {
     ) -> Result<f64, Error> {
         let notional = self.notional(settlement);
         if notional == 0.0 {
-            return Err(Error::InvalidInput { reason: "the bond has no notional at settlement".into() });
+            return Err(Error::InvalidInput {
+                reason: format!("non tradable at {settlement}: the bond has no notional on that date"),
+            });
         }
         let dirty = match price_type {
             PriceType::Clean => price + self.accrued_amount(settlement)?,
             PriceType::Dirty => price,
         };
-        let target = dirty * notional / 100.0;
+        let target = dirty / (100.0 / notional);
         let objective = |spread: f64| -> Result<f64, Error> {
-            let spreaded = YieldCurve::zero_spreaded(curve.clone(), spread, compounding, frequency)?
-            .with_extrapolation(curve.allows_extrapolation());
-            Ok(analysis::npv_on_curve(&self.cashflows, &spreaded, false, settlement, settlement)? - target)
+            let spreaded = YieldCurve::zero_spreaded(curve.clone(), spread, compounding, frequency)?;
+            Ok(target - analysis::npv_on_curve(&self.cashflows, &spreaded, false, settlement, settlement)?)
         };
-        let step = 0.01;
-        let (mut low, mut high) = (guess - step, guess + step);
-        let (mut f_low, mut f_high) = (objective(low)?, objective(high)?);
-        let mut evaluations = 2;
-        while f_low * f_high > 0.0 {
-            if evaluations >= max_evaluations {
-                return Err(Error::NoConvergence {
-                    reason: format!("no zero spread brackets the price {price} in {max_evaluations} evaluations"),
-                });
-            }
-            if f_low.abs() < f_high.abs() {
-                low -= 1.6 * (high - low);
-                f_low = objective(low)?;
-            } else {
-                high += 1.6 * (high - low);
-                f_high = objective(high)?;
-            }
-            evaluations += 1;
-        }
-        brent(objective, accuracy, guess.clamp(low, high), low, high, max_evaluations)
+        brent_with_step(objective, accuracy, guess, 0.01, max_evaluations)
     }
 }
 

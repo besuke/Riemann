@@ -1294,6 +1294,10 @@ fn credit_default_swap(
     day_count: &str,
     upfront: f64,
     rebates_accrual: bool,
+    trade_date: i32,
+    protection_start: i32,
+    cash_settlement_days: i32,
+    last_period_day_count: &str,
 ) -> List {
     let build = || -> Core<Cds> {
         Cds::new(CdsSpec {
@@ -1314,11 +1318,15 @@ fn credit_default_swap(
             },
             payment_convention: names::business_day_convention(payment_convention)?,
             day_count: names::day_count(day_count)?,
-            last_period_day_count: None,
+            last_period_day_count: if last_period_day_count.is_empty() {
+                None
+            } else {
+                Some(names::day_count(last_period_day_count)?)
+            },
             upfront: Some(upfront),
-            protection_start: None,
-            trade_date: None,
-            cash_settlement_days: 3,
+            protection_start: optional_date(protection_start)?,
+            trade_date: optional_date(trade_date)?,
+            cash_settlement_days,
             rebates_accrual,
         })
     };

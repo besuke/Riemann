@@ -140,17 +140,39 @@ P2-1 の 1,500 本の債券それぞれに、乱数（種を固定）で評価�
 
 ### 4.4 ゼロスプレッドとキャッシュフロー表（P11-1）
 
-- `FixedRateBond::value_with_zero_spread`：既存の `YieldCurve::zero_spreaded` に載せて `value_on_curve` で評価する。元のカーブが外挿を許すときは、スプレッド付きのカーブも外挿を許す。
-- `FixedRateBond::z_spread_from_price`：価格を再現するスプレッドを求める。`guess` から幅 0.01 で始めて、根を挟むまで広げ、Brent 法で解く。**QuantLib のソースは読まずに書いた。** 照合したのは結果だけである。
-- スプレッドの金利の日数計算は、元のカーブのものを使う。QuantLib は別の日数計算を指定できるが、ここにはその引数がない。
-- R：`bond_cashflows`、`value_with_zero_spread`、`z_spread_from_price`。解法の既定は精度 1e-10、評価 100 回、初期値 0 である。
+**QuantLib v1.42 の仕様【ソース確認】**（`bondfunctions.cpp`、`cashflows.cpp`、`solver1d.hpp`、`brent.hpp`、`zerospreadedtermstructure.hpp`）
 
-**照合結果【実行照合済み】**（2026-11-02、QuantLib R パッケージ 1.42、合成の入力 200 件、`tools/golden/p11_z_spread.R`、`crates/riemann/tests/golden_z_spread.rs`）
+| 項目 | 仕様 |
+|---|---|
+| 取引可能性 | `notional(settlement) == 0` なら `non tradable` のエラー。価格の処理より先に確かめる |
+| 目標値 | ダーティ価格（クリーンなら経過利子を足す）を `100 / notional` で割る |
+| 目的関数 | `目標値 - NPV`。NPV は受渡日のキャッシュフローを含めず、受渡日を基準にする |
+| 根の探索 | `Brent` の `solve(f, accuracy, guess, step)`。`step = 0.01`。`guess` の値の符号で片側を選び、倍率 1.6 で広げる。`guess` で値が 0 ならそのまま返す |
+| 収束条件 | 精度は `max(accuracy, epsilon)`。`accuracy <= 0` はエラー。評価回数は探索と Brent で通算し、探索で尽きれば `unable to bracket root`、Brent で尽きれば `maximum number of function evaluations` |
+| 既定 | 精度 1e-10、評価 100 回、初期値 0 |
+| 日数計算 | **スプレッドの金利は元のカーブの日数計算を使う。** `DayCounter` を取る多重定義はその引数を読まずに捨てる。`ZeroSpreadedTermStructure` の 5 引数のコンストラクターも同じ |
+| 外挿 | スプレッド付きカーブは、元のカーブの外挿の設定を引き継ぐ。元のカーブのゼロレートは常に外挿ありで読む |
+
+**以前の記述の訂正**：この節の前の版は「QuantLib は別の日数計算を指定できる」と書いたが、誤りである。v1.42 では指定しても使われない。
+
+**実装**
+
+- `math::solver1d::brent_with_step`：`solve(f, accuracy, guess, step)` を手順どおりに移した。前の版は `guess` の両側から探索を始めていて、経路が違っていた。Brent の本体は `brent` と共有する。
+- `YieldCurve::zero_spreaded`：外挿の設定を元のカーブから引き継ぐ（前の版は常に外挿なし）。
+- `FixedRateBond::value_with_zero_spread`、`z_spread_from_price`。R は `bond_cashflows`、`value_with_zero_spread`、`z_spread_from_price`。
+
+**QuantLib との差**：エラーの文面の日付の書式（QuantLib は `March 20th, 2031`、Riemann は ISO の形式）。スプレッドは Quote ではなく数値で、観測の仕組みはない。計算の手順に差はない。
+
+**照合結果【実行照合済み】**（2026-11-02、QuantLib R パッケージ 1.42、合成の入力、`tools/golden/p11_z_spread.R`、`p11_z_spread_edges.R`、`crates/riemann/tests/golden_z_spread.rs`）
 
 | 対象 | 件数 | 結果 | 許容誤差 |
 |---|---|---|---|
 | NPV、受渡日の価値、ダーティ、クリーン | 800 個 | 778 個が完全一致、残りも相対 1.6e-15 以内 | 相対 1e-11 |
-| スプレッド（精度 1e-12） | 200 個 | 差は最大 2.5e-13 | 絶対 1e-9 |
+| スプレッド（精度 1e-12） | 200 個 | 差は最大 7.4e-16 | 絶対 1e-9 |
+| 境界ケース：解けるもの | 15 件 | 差は最大 2.3e-17。精度 1e-3 と 1e-2 でも一致するので、経路が同じである | 絶対 1e-11 |
+| 境界ケース：失敗するもの | 10 件 | 同じ件が同じ原因で失敗する | 文面の種類の一致 |
+
+境界ケースは、初期値が根、遠い初期値、極端に高い価格と低い価格、価格 0（スプレッドは約 2481）、負の価格（`positive compound factor required`）、評価回数 1・2・3・5 回、受渡日が利払日・満期・満期後・発行前、精度 0、単利、四半期複利、外挿あり・なしのカーブの短い側である。
 
 キャッシュフローの中核は 2 章の照合（`bond_cashflows.csv`）で確かめてある。R の関数は LagrangeFinance II-1.3.2 の 81 件と比較資料で照合した。
 

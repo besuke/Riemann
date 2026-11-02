@@ -14,6 +14,13 @@
 #'   see [RiemannFinMath-package]. The defaults are examples, not market conventions.
 #' @param upfront Paid at the cash settlement date, per unit of notional.
 #' @param rebates_accrual `TRUE` or `FALSE`. `NA` is an error.
+#' @param trade_date,protection_start Dates, or `NULL`. Without them protection starts on the first
+#'   date of the schedule, and the trade date is that date for the CDS rules and the day before otherwise.
+#' @param cash_settlement_days Business days from the trade date to the cash settlement date.
+#' @param last_period_day_count Day count of the last coupon, or `NULL` for `day_count`.
+#' @details QuantLib's `MakeCreditDefaultSwap` is `trade_date` and `protection_start` both on the trade
+#'   date, with `rule = "cds2015"` and `last_period_day_count = "actual_360_include_last_day"`, as in the
+#'   last example. Its last coupon therefore has one more day than a plain `day_count`.
 #' @return A `riemann_cds` value. It does not change.
 #' @examples
 #' cds <- credit_default_swap("buyer", 1e7, 0.01, "2026-11-03", "2031-12-20")
@@ -21,12 +28,19 @@
 #'                          ois_instruments(c("1Y", "5Y", "10Y"), c(0.01, 0.015, 0.02), 2L, 1L, 0L))
 #' hazard <- hazard_curve("2026-11-02", "2040-01-01", 0.02)
 #' cds_value(cds, hazard, 0.4, rates, "2026-11-02", "midpoint")
+#' standard <- credit_default_swap("buyer", 1e7, 0.01, "2026-11-02", "2031-12-20", rule = "cds2015",
+#'                                 trade_date = "2026-11-02", protection_start = "2026-11-02",
+#'                                 last_period_day_count = "actual_360_include_last_day")
+#' cds_value(standard, hazard, 0.4, rates, "2026-11-02", "isda")
 #' @export
 credit_default_swap <- function(side, notional, running_spread, effective_date, termination_date, tenor = "3M", calendar = "weekends_only",
                                 convention = "following", termination_convention = "unadjusted", rule = "forward", payment_convention = "following",
-                                day_count = "actual_360", upfront = 0, rebates_accrual = TRUE) {
+                                day_count = "actual_360", upfront = 0, rebates_accrual = TRUE, trade_date = NULL, protection_start = NULL,
+                                cash_settlement_days = 3L, last_period_day_count = NULL) {
   pointer <- checked(.Call(wrap__credit_default_swap, side, as.numeric(notional), as.numeric(running_spread), as_serial(effective_date), as_serial(termination_date), tenor, calendar,
-                           convention, termination_convention, rule, payment_convention, day_count, as.numeric(upfront), as_flag(rebates_accrual)))$value
+                           convention, termination_convention, rule, payment_convention, day_count, as.numeric(upfront), as_flag(rebates_accrual),
+                           as_optional_serial(trade_date), as_optional_serial(protection_start), as.integer(cash_settlement_days),
+                           if (is.null(last_period_day_count)) "" else last_period_day_count))$value
   structure(list(pointer = pointer), class = "riemann_cds")
 }
 

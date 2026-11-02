@@ -66,12 +66,11 @@ where
     if x_min >= x_max {
         return Err(Error::InvalidInput { reason: format!("invalid range: xMin ({x_min}) >= xMax ({x_max})") });
     }
-    let (mut x_min, mut x_max) = (x_min, x_max);
-    let mut fx_min = f(x_min)?;
+    let fx_min = f(x_min)?;
     if close(fx_min, 0.0) {
         return Ok(x_min);
     }
-    let mut fx_max = f(x_max)?;
+    let fx_max = f(x_max)?;
     if close(fx_max, 0.0) {
         return Ok(x_max);
     }
@@ -86,9 +85,100 @@ where
     if guess >= x_max {
         return Err(Error::InvalidInput { reason: format!("guess ({guess}) > xMax ({x_max})") });
     }
-    let sign = |a: f64, b: f64| if b >= 0.0 { a.abs() } else { -a.abs() };
+    brent_impl(&f, accuracy, guess, Bracket { x_min, fx_min, x_max, fx_max }, 2, max_evaluations)
+}
+
+/// Finds a root of `f` near `guess`, widening a bracket from `step` first (QuantLib
+/// `Solver1D::solve(f, accuracy, guess, step)` with `Brent`). The same steps are taken so that the
+/// iterations match QuantLib, and evaluations count as in QuantLib. Reproduces QuantLib v1.42
+/// `ql/math/solver1d.hpp` and `ql/math/solvers1d/brent.hpp`.
+pub fn brent_with_step<F>(f: F, accuracy: f64, guess: f64, step: f64, max_evaluations: usize) -> Result<f64, Error>
+where
+    F: Fn(f64) -> Result<f64, Error>,
+{
+    if accuracy <= 0.0 {
+        return Err(Error::InvalidInput { reason: format!("accuracy ({accuracy}) must be positive") });
+    }
+    let accuracy = accuracy.max(f64::EPSILON);
+    let growth_factor = 1.6;
+    let mut flipflop = -1;
+
+    let first = f(guess)?;
+    if close(first, 0.0) {
+        return Ok(guess);
+    }
+    let (mut x_min, mut fx_min, mut x_max, mut fx_max);
+    if first > 0.0 {
+        x_min = guess - step;
+        fx_min = f(x_min)?;
+        x_max = guess;
+        fx_max = first;
+    } else {
+        x_min = guess;
+        fx_min = first;
+        x_max = guess + step;
+        fx_max = f(x_max)?;
+    }
 
     let mut evaluations = 2;
+    while evaluations <= max_evaluations {
+        if fx_min * fx_max <= 0.0 {
+            if close(fx_min, 0.0) {
+                return Ok(x_min);
+            }
+            if close(fx_max, 0.0) {
+                return Ok(x_max);
+            }
+            let root = (x_max + x_min) / 2.0;
+            return brent_impl(&f, accuracy, root, Bracket { x_min, fx_min, x_max, fx_max }, evaluations, max_evaluations);
+        }
+        if fx_min.abs() < fx_max.abs() {
+            x_min += growth_factor * (x_min - x_max);
+            fx_min = f(x_min)?;
+        } else if fx_min.abs() > fx_max.abs() {
+            x_max += growth_factor * (x_max - x_min);
+            fx_max = f(x_max)?;
+        } else if flipflop == -1 {
+            x_min += growth_factor * (x_min - x_max);
+            fx_min = f(x_min)?;
+            evaluations += 1;
+            flipflop = 1;
+        } else {
+            x_max += growth_factor * (x_max - x_min);
+            fx_max = f(x_max)?;
+            flipflop = -1;
+        }
+        evaluations += 1;
+    }
+    Err(Error::NoConvergence {
+        reason: format!(
+            "unable to bracket root in {max_evaluations} function evaluations (last bracket attempt: f[{x_min},{x_max}] -> [{fx_min:e},{fx_max:e}])"
+        ),
+    })
+}
+
+struct Bracket {
+    x_min: f64,
+    fx_min: f64,
+    x_max: f64,
+    fx_max: f64,
+}
+
+/// QuantLib `Brent::solveImpl`.
+fn brent_impl<F>(
+    f: &F,
+    accuracy: f64,
+    guess: f64,
+    bracket: Bracket,
+    mut evaluations: usize,
+    max_evaluations: usize,
+) -> Result<f64, Error>
+where
+    F: Fn(f64) -> Result<f64, Error>,
+{
+    let Bracket { mut x_min, mut fx_min, mut x_max, mut fx_max } = bracket;
+    let sign = |a: f64, b: f64| if b >= 0.0 { a.abs() } else { -a.abs() };
+
     let mut root = guess;
     let mut froot = f(root)?;
     evaluations += 1;

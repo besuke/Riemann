@@ -254,7 +254,9 @@ tribble(
   "Wrapper", "Evaluation date",  "`Settings` singleton, set before the call",             "Passed to `settlement_date`; no global state",
   "Wrapper", "Flat base curve",  "`FlatForward`",                                         "No constructor; quotes must be fitted",
   "Wrapper", "Cash flows",       "A `Leg` of objects, read one by one",                   "`bond_cashflows` returns one table",
-  "Core",    "Zero spread",      "An observer of a quote and of the base curve",          "A new curve value, with the spread as a number; the spread's day count is the base curve's",
+  "Core",    "Zero spread",      "An observer of a quote and of the base curve",          "A new curve value, with the spread as a number",
+  "Core",    "Spread's day count", "The base curve's; the day counter argument is ignored at v1.42", "The base curve's; there is no such argument",
+  "Core",    "Search for the spread", "Brent from a guess, widening from a step of 0.01",  "The same steps, with the same limit on evaluations",
   "Core",    "Bond",             "`Instrument` object that holds an engine and caches",   "Immutable value; functions take the bond and the inputs",
   "Core",    "Price and yield",  "`BondFunctions` over a cash flow `Leg`",                "Pure functions over the same cash flows",
   "Core",    "Yield solver",     "Newton-safe with the same accuracy and guess",          "The same defaults, as explicit arguments"

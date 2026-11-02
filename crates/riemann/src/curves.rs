@@ -271,8 +271,8 @@ impl YieldCurve<f64> {
     }
 
     /// `spread` added to the zero rates of `base` in the given compounding (QuantLib
-    /// `ZeroSpreadedTermStructure`). Reference date, day count and last date are the base's;
-    /// the base is always read with extrapolation.
+    /// `ZeroSpreadedTermStructure`). Reference date, day count, last date and whether it
+    /// extrapolates are the base's; the base is always read with extrapolation.
     pub fn zero_spreaded(
         base: YieldCurve,
         spread: f64,
@@ -287,7 +287,7 @@ impl YieldCurve<f64> {
         Ok(YieldCurve {
             reference_date: base.reference_date,
             day_count: base.day_count.clone(),
-            extrapolate: false,
+            extrapolate: base.extrapolate,
             shape: Shape::ZeroSpreaded {
                 base: Box::new(base),
                 spread,
@@ -402,11 +402,6 @@ impl<T: Operand> YieldCurve<T> {
     pub fn with_extrapolation(mut self, extrapolate: bool) -> YieldCurve<T> {
         self.extrapolate = extrapolate;
         self
-    }
-
-    /// Whether the curve reads past its last date.
-    pub fn allows_extrapolation(&self) -> bool {
-        self.extrapolate
     }
 
     pub fn reference_date(&self) -> Date {

@@ -41,6 +41,59 @@ fn engine_of(name: &str) -> CdsEngine {
     }
 }
 
+/// Swaps made as QuantLib's `MakeCreditDefaultSwap` makes them (`tools/golden/p8_cds_builder.R`).
+#[test]
+fn builder_settings_against_quantlib() {
+    let rows = golden_rows("cds_builder.csv");
+    assert_eq!(rows.len(), 200);
+    let mut worst = 0.0f64;
+    for r in &rows {
+        let n = |i: usize| number(&r[i]);
+        let cds = Cds::new(CdsSpec {
+            side: if r[1] == "buyer" { ProtectionSide::Buyer } else { ProtectionSide::Seller },
+            notional: n(3),
+            running_spread: n(4),
+            schedule: ScheduleSpec {
+                effective_date: today(),
+                termination_date: common::date(&r[2]),
+                tenor: Period::new(3, TimeUnit::Months),
+                calendar: HolidayCalendar::from(Calendar::WeekendsOnly),
+                convention: BusinessDayConvention::Following,
+                termination_convention: BusinessDayConvention::Unadjusted,
+                rule: DateGenerationRule::Cds2015,
+                end_of_month: false,
+                first_date: None,
+                next_to_last_date: None,
+            },
+            payment_convention: BusinessDayConvention::Following,
+            day_count: act360(),
+            last_period_day_count: Some(DayCount::Actual360 { include_last_day: true }),
+            upfront: Some(0.0),
+            protection_start: Some(today()),
+            trade_date: Some(today()),
+            cash_settlement_days: 3,
+            rebates_accrual: true,
+        })
+        .unwrap();
+        let hazard = HazardCurve::flat(today(), act365(), n(6)).unwrap();
+        let v = cds_value(engine_of(&r[0]), &cds, &hazard, n(7), &flat_rate(n(5)), today()).unwrap();
+        let upfront = v.fair_upfront.expect("the builder's swap has a cash settlement date ahead");
+        for (ours, column, scale) in [
+            (v.npv, 8, n(3)),
+            (v.coupon_leg_npv, 9, n(3)),
+            (v.default_leg_npv, 10, n(3)),
+            (v.accrual_rebate_npv, 11, n(3)),
+            (v.fair_spread, 12, 1.0),
+            (upfront, 13, 1.0),
+        ] {
+            let difference = (ours - n(column)).abs() / scale;
+            worst = worst.max(difference);
+            assert!(difference < 1e-12, "column {column}: {ours} against {} in {r:?}", r[column]);
+        }
+    }
+    println!("largest difference per unit of notional: {worst:.3e}");
+}
+
 #[test]
 fn values_against_quantlib() {
     let rows = golden_rows("cds_values.csv");

@@ -1,0 +1,27 @@
+# QuantLib R package 1.42; synthetic inputs; tools/golden/p11_z_spread_edges.R; bond 2024-03-20 to 2031-03-20, 1.5%, T+2, Japan, Actual/365; evaluation 46328; nodes 46328:1 46358:0.99983562994859354 46508:0.99852164179489744 46693:0.99600798934399148 47058:0.98807171286193052 48153:0.95122942450071402 48518:0.93053089581120574
+label,price,type,compounding,frequency,settlement,accuracy,max_evaluations,guess,extrapolate,status,z_spread,message
+ordinary,99,Clean,Compounded,2,46331,1e-10,100,0,1,ok,0.0077845934186891192,
+dirty,99,Dirty,Compounded,2,46331,1e-10,100,0,1,ok,0.008238524968227804,
+coarse accuracy,99,Clean,Compounded,2,46331,0.001,100,0,1,ok,0.0077993411773767882,
+coarse with far guess,99,Clean,Compounded,2,46331,0.001,100,0.20000000000000001,1,ok,0.0077774356589040009,
+coarse and negative,130,Clean,Continuous,1,46331,0.01,100,0.050000000000000003,1,ok,-0.058591691715211953,
+guess is the root,99,Clean,Compounded,2,46331,1e-10,100,0.0077845934186891192,1,ok,0.0077845934186891192,
+high price,200,Clean,Continuous,1,46331,1e-10,100,0,1,ok,-0.15691434297549384,
+low price,20,Clean,Continuous,1,46331,1e-10,100,0,1,ok,0.39268756974660785,
+very low price,1,Clean,Continuous,1,46331,1e-10,1000,0,1,ok,1.3414649269070897,
+price of zero,0,Dirty,Continuous,1,46331,1e-10,100,0,1,ok,2481.1528732037377,
+negative price,-5,Dirty,Continuous,1,46331,1e-10,100,0,1,failed,NA,positive compound factor required
+simple with high price,130,Clean,Simple,1,46331,1e-10,100,0,1,ok,-0.052025908765356316,
+simple with low price,60,Clean,Simple,1,46331,1e-10,100,0,1,ok,0.17493662187382325,
+quarterly,99,Clean,Compounded,4,46331,1e-10,100,0,1,ok,0.0077584748362062713,
+one evaluation,99,Clean,Compounded,2,46331,1e-10,1,0,1,failed,NA,unable to bracket root in 1 function evaluations (last bracket attempt: f[0;0.01] -> [-3.3067;0.91874])
+two evaluations,20,Clean,Continuous,1,46331,1e-10,2,0,1,failed,NA,unable to bracket root in 2 function evaluations (last bracket attempt: f[0;0.026] -> [-82.3067;-71.6135])
+three evaluations,99,Clean,Compounded,2,46331,1e-10,3,0,1,failed,NA,maximum number of function evaluations (3) exceeded
+five evaluations,20,Clean,Continuous,1,46331,1e-10,5,0,1,failed,NA,unable to bracket root in 5 function evaluations (last bracket attempt: f[0;0.456976] -> [-82.3067;4.5263])
+settlement on coupon,99,Clean,Compounded,2,46469,1e-10,100,0,1,ok,0.0073542771587057883,
+settlement at the end,99,Clean,Compounded,2,47927,1e-10,100,0,1,failed,NA,non tradable at March 20th; 2031 (maturity being March 20th; 2031)
+settlement after end,99,Clean,Compounded,2,47937,1e-10,100,0,1,failed,NA,non tradable at March 30th; 2031 (maturity being March 20th; 2031)
+before issue,99,Clean,Compounded,2,45361,1e-10,100,0,1,failed,NA,negative time (-2.11781) given
+accuracy of zero,99,Clean,Compounded,2,46331,0,100,0,1,failed,NA,accuracy (0) must be positive
+short with extrapolation,99,Clean,Compounded,2,46331,1e-10,100,0,1,ok,0.010297875513768493,
+no extrapolation,99,Clean,Compounded,2,46331,1e-10,100,0,0,failed,NA,time (2.38356) is past max curve time (2)
