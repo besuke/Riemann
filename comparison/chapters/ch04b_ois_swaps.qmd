@@ -92,10 +92,10 @@ RiemannFinMath:
 
 ```{r}
 #| label: short-riemann
-swap_short <- RiemannFinMath::ois_swap(short$side, short$nominal, short$effective, short$maturity, "tonar", short$fixed_rate)
+swap_short <- RiemannFinMath::create_ois_swap(short$side, short$nominal, short$effective, short$maturity, "tonar", short$fixed_rate)
 print(swap_short)
-riemann_short <- RiemannFinMath::ois_swap_value(swap_short, tona_curve, short$evaluation)
-riemann_short_flows <- RiemannFinMath::ois_swap_cashflows(swap_short, tona_curve, short$evaluation)
+riemann_short <- RiemannFinMath::compute_ois_swap_value(swap_short, tona_curve, short$evaluation)
+riemann_short_flows <- RiemannFinMath::get_ois_swap_cashflows(swap_short, tona_curve, short$evaluation)
 riemann_short_flows |>
   select(-error) |>
   knitr::kable(digits = 4, caption = "Cash flows")
@@ -111,7 +111,7 @@ value_rows("Short:", quantlib_short, riemann_short) |>
 
 ```{r}
 #| label: daily
-RiemannFinMath::ois_swap_daily_rates(swap_short, tona_curve, short$evaluation) |>
+RiemannFinMath::compute_ois_swap_daily_rates(swap_short, tona_curve, short$evaluation) |>
   transmute(fixing_date, next_date, days, day_fraction, forward_percent = 100 * forward_rate, applied_percent = 100 * applied_rate) |>
   knitr::kable(digits = 4, caption = "Each day of the overnight coupon, in percent")
 ```
@@ -152,9 +152,9 @@ tona_curve_after <- RiemannFinMath::build_ois_curve(
   after_date, tona_date, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), interpolation = "log_linear"
 ) |>
   RiemannFinMath::with_extrapolation()
-riemann_after <- RiemannFinMath::ois_swap_value(swap_short, tona_curve, after_date, fixings)
-riemann_after_flows <- RiemannFinMath::ois_swap_cashflows(swap_short, tona_curve, after_date, fixings)
-riemann_after_rebuilt <- RiemannFinMath::ois_swap_value(swap_short, tona_curve_after, after_date, fixings)
+riemann_after <- RiemannFinMath::compute_ois_swap_value(swap_short, tona_curve, after_date, fixings)
+riemann_after_flows <- RiemannFinMath::get_ois_swap_cashflows(swap_short, tona_curve, after_date, fixings)
+riemann_after_rebuilt <- RiemannFinMath::compute_ois_swap_value(swap_short, tona_curve_after, after_date, fixings)
 ```
 
 ```{r}
@@ -174,7 +174,7 @@ The same date without the fixings is an error on both sides. RiemannFinMath's me
 
 ```{r}
 #| label: missing-fixing
-tryCatch(RiemannFinMath::ois_swap_value(swap_short, tona_curve, after_date), error = conditionMessage)
+tryCatch(RiemannFinMath::compute_ois_swap_value(swap_short, tona_curve, after_date), error = conditionMessage)
 ```
 
 ## Two-year SOFR swap
@@ -199,9 +199,9 @@ RiemannFinMath:
 
 ```{r}
 #| label: sofr-riemann
-swap_long <- RiemannFinMath::ois_swap(long$side, long$nominal, long$effective, long$maturity, "sofr", long$fixed_rate)
-riemann_long <- RiemannFinMath::ois_swap_value(swap_long, sofr_curve, long$evaluation)
-riemann_long_flows <- RiemannFinMath::ois_swap_cashflows(swap_long, sofr_curve, long$evaluation)
+swap_long <- RiemannFinMath::create_ois_swap(long$side, long$nominal, long$effective, long$maturity, "sofr", long$fixed_rate)
+riemann_long <- RiemannFinMath::compute_ois_swap_value(swap_long, sofr_curve, long$evaluation)
+riemann_long_flows <- RiemannFinMath::get_ois_swap_cashflows(swap_long, sofr_curve, long$evaluation)
 riemann_long_flows |>
   select(-error) |>
   knitr::kable(digits = 4, caption = "Cash flows")
@@ -234,7 +234,7 @@ quantlib_sensitivity <- map_dbl(seq_len(nrow(sofr)), \(i) {
   }
   (move(1) - move(-1)) / (2 * h) * 1e-4
 })
-riemann_sensitivity <- RiemannFinMath::ois_swap_quote_sensitivity(swap_long, sofr_curve, long$evaluation)
+riemann_sensitivity <- RiemannFinMath::compute_ois_swap_quote_sensitivity(swap_long, sofr_curve, long$evaluation)
 compare_values(
   paste("Quote", sofr$tenor), "currency per bp of quote",
   quantlib_sensitivity, riemann_sensitivity$npv_per_bp[match(sofr$tenor, riemann_sensitivity$tenor)], "QuantLib, finite difference"
@@ -252,7 +252,7 @@ number_of_keys <- function(prefix) sum(str_starts(lagrange_values$key, fixed(pas
 amount_keys <- function(prefix) sprintf("%s.amount.%02d", prefix, seq_len(number_of_keys(prefix) / 2))
 date_keys <- function(prefix) sprintf("%s.date.%02d", prefix, seq_len(number_of_keys(prefix) / 2))
 leg_of <- function(flows, name) flows |> filter(leg == name)
-daily_rows <- RiemannFinMath::ois_swap_daily_rates(swap_short, tona_curve, short$evaluation)
+daily_rows <- RiemannFinMath::compute_ois_swap_daily_rates(swap_short, tona_curve, short$evaluation)
 daily_keys <- function(name) sprintf("ois.daily.%s.%02d", name, seq_len(nrow(daily_rows)))
 short_fixed <- leg_of(riemann_short_flows, "fixed")
 short_overnight <- leg_of(riemann_short_flows, "overnight")

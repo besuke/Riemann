@@ -38,6 +38,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ## 命名の方針
 
+- **公開関数は動詞から始める**（2026-11-03 のユーザーの指示）。`create_`（条件や設定からオブジェクトを作成）、`generate_`（規則から日付列・シナリオ・乱数列などを生成）、`get_`（保存済みの値を取得）、`compute_`（新たに算出）。`make_`、`calculate_`、`value_` と名詞だけの名前は使わない。取得か計算かは実際の処理で判断する。比較先のライブラリーの関数名は変えない。適用状況と既存の API の改名案は `docs/naming_migration.md`（OIS スワップだけ適用済み）。
 - 関数・メソッド・変数・モジュールは snake_case。
 - 型・構造体・enum・trait は PascalCase。
 - 定数は SCREAMING_SNAKE_CASE。

@@ -48,7 +48,7 @@ R CMD INSTALL crates/riemann-r
 | 債券 | `fixed_rate_bond`、`settlement_date`、`bond_values`、`clean_price`、`dirty_price`、`accrued_amount`、`duration`、`convexity`、`basis_point_value`、`yield_value_basis_point`、`yield_from_price`、`value_on_curve`、`bond_cashflows`、`value_with_zero_spread`、`z_spread_from_price` |
 | 日本式の債券計算 | `remaining_years`、`price_from_simple_rate`、`simple_rate_from_price`、`price_from_compound_yield`、`compound_yield_from_price`、`risk_from_simple_rate`、`risk_from_compound_yield` |
 | OIS カーブ | `ois_instruments`、`build_ois_curve`（`tonar`・`estr`・`sofr`・`sonia`）、`with_extrapolation`、`discount`、`zero_rate`、`forward_rate`、`quote_repricing`、`discount_nodes`、`curve_values` |
-| OIS スワップ | `ois_swap`、`ois_swap_value`、`ois_swap_cashflows`、`ois_swap_daily_rates`、`ois_swap_quote_sensitivity`（`docs/spec_ois_swap.md`） |
+| OIS スワップ | `create_ois_swap`、`compute_ois_swap_value`、`get_ois_swap_cashflows`、`compute_ois_swap_daily_rates`、`compute_ois_swap_quote_sensitivity`（`docs/spec_ois_swap.md`） |
 | カレンダー | `is_business_day`、`holidays` |
 | 並列バッチ | `bond_values_batch`、`curve_values_batch` |
 

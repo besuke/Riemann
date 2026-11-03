@@ -27,10 +27,10 @@ GaussQuant の `trade_ois_swap_py_GQH` を通して、QuantLib の `MakeOIS` で
 
 ## 3. 実装
 
-- `OisSwap::new`：`OisSwapSpec` から 2 つのレグを作る。値は不変である。
-- `ois_swap_value`：予測カーブと割引カーブ、評価日、Fixing を引数に取る。グローバルな状態はない。カーブの型について総称で、自動微分にも使う。
-- `overnight_days`：日次の明細。`ois_swap_quote_sensitivity`：カーブの節点の自動微分と、陰関数定理で気配へ。カーブは予測と割引の両方に使う。
-- R：`ois_swap`、`ois_swap_value`、`ois_swap_cashflows`、`ois_swap_daily_rates`、`ois_swap_quote_sensitivity`。予測カーブが別の指標ならエラーにする。
+- `create_ois_swap`：`OisSwapSpec` から 2 つのレグを作る。値は不変である。
+- `compute_ois_swap_value`：予測カーブと割引カーブ、評価日、Fixing を引数に取る。グローバルな状態はない。カーブの型について総称で、自動微分にも使う。
+- `compute_ois_swap_daily_rates`：日次の明細。`compute_ois_swap_quote_sensitivity`：カーブの節点の自動微分と、陰関数定理で気配へ。カーブは予測と割引の両方に使う。
+- R：`create_ois_swap`、`compute_ois_swap_value`、`get_ois_swap_cashflows`、`compute_ois_swap_daily_rates`、`compute_ois_swap_quote_sensitivity`。予測カーブが別の指標ならエラーにする。
 
 **QuantLib との違い**
 

@@ -145,68 +145,66 @@ fn period_of_frequency(frequency: u32) -> Result<Period, Error> {
     }
 }
 
-impl OisSwap {
-    /// Builds the swap. Both schedules are backward and modified following on the index's calendar,
-    /// and end of month when the start is. Fixed payments adjust modified following and overnight
-    /// payments following, as `FixedVsFloatingSwap` and `OvernightLeg` do.
-    pub fn new(spec: OisSwapSpec) -> Result<OisSwap, Error> {
-        if spec.termination_date <= spec.effective_date {
-            return invalid("the termination date must be after the effective date".into());
-        }
-        let calendar = spec.index.calendar.clone();
-        let end_of_month = calendar.is_end_of_month(spec.effective_date)?;
-        let schedule_of = |frequency: u32| -> Result<Vec<Date>, Error> {
-            Ok(generate_schedule(&ScheduleSpec {
-                effective_date: spec.effective_date,
-                termination_date: spec.termination_date,
-                tenor: period_of_frequency(frequency)?,
-                calendar: calendar.clone(),
-                convention: ModifiedFollowing,
-                termination_convention: ModifiedFollowing,
-                rule: DateGenerationRule::Backward,
-                end_of_month,
-                first_date: None,
-                next_to_last_date: None,
-            })?
-            .dates)
-        };
-        let lag = Period::new(spec.payment_lag as i32, TimeUnit::Days);
-        let fixed_day_count = spec.fixed_day_count.clone().unwrap_or_else(|| spec.index.day_count.clone());
-        let fixed_leg = schedule_of(spec.fixed_frequency)?
-            .windows(2)
-            .map(|w| {
-                Ok(FixedRateCoupon {
-                    payment_date: calendar.advance(w[1], lag, ModifiedFollowing, false)?,
-                    nominal: spec.nominal,
-                    rate: spec.fixed_rate,
-                    day_count: fixed_day_count.clone(),
-                    accrual_start: w[0],
-                    accrual_end: w[1],
-                    ref_start: w[0],
-                    ref_end: w[1],
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        let overnight_leg = schedule_of(spec.overnight_frequency)?
-            .windows(2)
-            .map(|w| {
-                let value_dates = daily_dates(&spec.index, w[0], w[1])?;
-                let day_fractions = value_dates
-                    .windows(2)
-                    .map(|d| spec.index.day_count.year_fraction(d[0], d[1], None, None))
-                    .collect::<Result<Vec<_>, Error>>()?;
-                Ok(OvernightCoupon {
-                    payment_date: calendar.advance(w[1], lag, Following, false)?,
-                    accrual_start: w[0],
-                    accrual_end: w[1],
-                    accrual: spec.index.day_count.year_fraction(w[0], w[1], Some(w[0]), Some(w[1]))?,
-                    value_dates,
-                    day_fractions,
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        Ok(OisSwap { spec, fixed_leg, overnight_leg })
+/// Builds the swap. Both schedules are backward and modified following on the index's calendar,
+/// and end of month when the start is. Fixed payments adjust modified following and overnight
+/// payments following, as `FixedVsFloatingSwap` and `OvernightLeg` do.
+pub fn create_ois_swap(spec: OisSwapSpec) -> Result<OisSwap, Error> {
+    if spec.termination_date <= spec.effective_date {
+        return invalid("the termination date must be after the effective date".into());
     }
+    let calendar = spec.index.calendar.clone();
+    let end_of_month = calendar.is_end_of_month(spec.effective_date)?;
+    let schedule_of = |frequency: u32| -> Result<Vec<Date>, Error> {
+        Ok(generate_schedule(&ScheduleSpec {
+            effective_date: spec.effective_date,
+            termination_date: spec.termination_date,
+            tenor: period_of_frequency(frequency)?,
+            calendar: calendar.clone(),
+            convention: ModifiedFollowing,
+            termination_convention: ModifiedFollowing,
+            rule: DateGenerationRule::Backward,
+            end_of_month,
+            first_date: None,
+            next_to_last_date: None,
+        })?
+        .dates)
+    };
+    let lag = Period::new(spec.payment_lag as i32, TimeUnit::Days);
+    let fixed_day_count = spec.fixed_day_count.clone().unwrap_or_else(|| spec.index.day_count.clone());
+    let fixed_leg = schedule_of(spec.fixed_frequency)?
+        .windows(2)
+        .map(|w| {
+            Ok(FixedRateCoupon {
+                payment_date: calendar.advance(w[1], lag, ModifiedFollowing, false)?,
+                nominal: spec.nominal,
+                rate: spec.fixed_rate,
+                day_count: fixed_day_count.clone(),
+                accrual_start: w[0],
+                accrual_end: w[1],
+                ref_start: w[0],
+                ref_end: w[1],
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let overnight_leg = schedule_of(spec.overnight_frequency)?
+        .windows(2)
+        .map(|w| {
+            let value_dates = daily_dates(&spec.index, w[0], w[1])?;
+            let day_fractions = value_dates
+                .windows(2)
+                .map(|d| spec.index.day_count.year_fraction(d[0], d[1], None, None))
+                .collect::<Result<Vec<_>, Error>>()?;
+            Ok(OvernightCoupon {
+                payment_date: calendar.advance(w[1], lag, Following, false)?,
+                accrual_start: w[0],
+                accrual_end: w[1],
+                accrual: spec.index.day_count.year_fraction(w[0], w[1], Some(w[0]), Some(w[1]))?,
+                value_dates,
+                day_fractions,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    Ok(OisSwap { spec, fixed_leg, overnight_leg })
 }
 
 /// The daily schedule of `OvernightIndexedCoupon`: the business days from `start` to `end`.
@@ -266,7 +264,7 @@ fn compounded_rate<T: Operand>(
 }
 
 /// The amount of a coupon of the overnight leg (`FloatingRateCoupon::amount`).
-pub fn overnight_coupon_amount<T: Operand>(
+pub fn compute_overnight_coupon_amount<T: Operand>(
     swap: &OisSwap,
     coupon: &OvernightCoupon,
     forecast: &YieldCurve<T>,
@@ -280,7 +278,7 @@ pub fn overnight_coupon_amount<T: Operand>(
 /// The value at the discount curve's reference date (`DiscountingSwapEngine` with
 /// `FixedVsFloatingSwap::fetchResults`). Flows paid on or before that date have occurred, and their
 /// fixings are not needed.
-pub fn ois_swap_value<T: Operand>(
+pub fn compute_ois_swap_value<T: Operand>(
     swap: &OisSwap,
     forecast: &YieldCurve<T>,
     discount: &YieldCurve<T>,
@@ -319,7 +317,7 @@ pub fn ois_swap_value<T: Operand>(
     let (mut overnight_npv, mut overnight_bps, mut any_overnight) = (zero, zero, false);
     for coupon in swap.overnight_leg.iter().filter(|c| c.payment_date > reference) {
         let df = discount.discount(coupon.payment_date)?;
-        overnight_npv = overnight_npv + overnight_coupon_amount(swap, coupon, forecast, evaluation_date, fixings)? * df;
+        overnight_npv = overnight_npv + compute_overnight_coupon_amount(swap, coupon, forecast, evaluation_date, fixings)? * df;
         overnight_bps = overnight_bps + df * (swap.spec.nominal * coupon.accrual);
         any_overnight = true;
     }
@@ -340,7 +338,7 @@ pub fn ois_swap_value<T: Operand>(
 }
 
 /// The days of an overnight coupon, with the rate each one uses.
-pub fn overnight_days(
+pub fn compute_ois_swap_daily_rates(
     coupon: &OvernightCoupon,
     forecast: &YieldCurve,
     evaluation_date: Date,
@@ -364,7 +362,7 @@ pub fn overnight_days(
 /// The derivatives of the NPV with respect to each quote of the curve, which both forecasts and
 /// discounts: automatic differentiation on the nodes, and the implicit function theorem from the
 /// nodes to the quotes.
-pub fn ois_swap_quote_sensitivity(
+pub fn compute_ois_swap_quote_sensitivity(
     swap: &OisSwap,
     ois: &OisCurve,
     evaluation_date: Date,
@@ -372,7 +370,7 @@ pub fn ois_swap_quote_sensitivity(
 ) -> Result<Vec<OisSwapQuoteSensitivity>, Error> {
     let recorder = Recorder::new();
     let lifted = ois.curve.lift(&recorder)?;
-    let value = ois_swap_value(swap, &lifted.curve, &lifted.curve, evaluation_date, fixings)?;
+    let value = compute_ois_swap_value(swap, &lifted.curve, &lifted.curve, evaluation_date, fixings)?;
     let vars: Vec<_> = lifted.inputs.iter().map(|(_, v)| *v).collect();
     let node = recorder.gradient(value.npv, &vars)?;
     let jacobian = ois.quote_jacobian()?;

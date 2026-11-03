@@ -2,8 +2,8 @@ chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,ver
 ch13_parallel_batches,"Clean price, 1 thread","per 100, largest",QuantLib C++,NA,NA,0,NA,REF,NA
 ch13_parallel_batches,"Clean price, 4 threads","per 100, largest",QuantLib C++,NA,NA,0,NA,REF,NA
 ch13_parallel_batches,1 thread against 4 threads,"per 100, largest",RiemannFinMath itself,NA,NA,0,NA,REF,NA
-ch13_parallel_batches,"Running time, 1 thread",seconds,QuantLib C++,10.700000000000001,1.4499999999999993,-9.250000000000002,NA,N/C,Time on this machine for one run; the batch also builds each bond and computes every measure
-ch13_parallel_batches,"Running time, 4 threads",seconds,QuantLib C++,10.700000000000001,0.6600000000000001,-10.040000000000001,NA,N/C,Time on this machine for one run; the batch also builds each bond and computes every measure
+ch13_parallel_batches,"Running time, 1 thread",seconds,QuantLib C++,0.3899999999999997,0.1899999999999995,-0.20000000000000018,NA,N/C,Time on this machine for one run; the batch also builds each bond and computes every measure
+ch13_parallel_batches,"Running time, 4 threads",seconds,QuantLib C++,0.3899999999999997,0.05999999999999872,-0.33000000000000096,NA,N/C,Time on this machine for one run; the batch also builds each bond and computes every measure
 ch13_parallel_batches,TONAR discount,"discount factor, largest",QuantLib C++,NA,NA,0,NA,REF,NA
 ch13_parallel_batches,SOFR discount,"discount factor, largest",QuantLib C++,NA,NA,0,NA,REF,NA
 ch13_parallel_batches,1 thread against 4 threads,"discount factor, largest",RiemannFinMath itself,NA,NA,0,NA,REF,NA

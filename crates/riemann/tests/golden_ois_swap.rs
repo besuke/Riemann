@@ -7,7 +7,7 @@ mod common;
 use common::{date, day_count, golden_rows};
 use riemann::curves::YieldCurve;
 use riemann::names;
-use riemann::ois_swap::{ois_swap_quote_sensitivity, ois_swap_value, overnight_coupon_amount, overnight_days, Fixings, OisSwap, OisSwapSpec, SwapSide};
+use riemann::ois_swap::{create_ois_swap, compute_ois_swap_quote_sensitivity, compute_ois_swap_value, compute_overnight_coupon_amount, compute_ois_swap_daily_rates, Fixings, OisSwap, OisSwapSpec, SwapSide};
 use riemann::ois::{build_ois_curve, OisCurveInstrument, OisCurveSpec, OisInterpolation};
 use riemann::time::{Period, TimeUnit};
 
@@ -38,7 +38,7 @@ fn swaps_against_quantlib() {
         let number = |i: usize| r[i].parse::<f64>().unwrap();
         let index = names::overnight_index(&r[0]).unwrap();
         let dc_name = if matches!(r[0].as_str(), "tonar" | "sonia") { "actual_365_fixed" } else { "actual_360" };
-        let swap = OisSwap::new(OisSwapSpec {
+        let swap = create_ois_swap(OisSwapSpec {
             side: if r[1] == "payer" { SwapSide::Payer } else { SwapSide::Receiver },
             nominal: number(2),
             effective_date: date(&r[3]),
@@ -60,7 +60,7 @@ fn swaps_against_quantlib() {
         } else {
             r[14].split(' ').map(|n| { let (d, v) = n.split_once(':').unwrap(); (date(d), v.parse().unwrap()) }).collect()
         };
-        let value = ois_swap_value(&swap, &forecast, &discount, evaluation, &fixings);
+        let value = compute_ois_swap_value(&swap, &forecast, &discount, evaluation, &fixings);
         if r[15] == "failed" {
             let message = value.expect_err("QuantLib failed here").to_string();
             assert!(message.contains("Missing"), "{message} against {}", r[27]);
@@ -97,7 +97,7 @@ fn swaps_against_quantlib() {
         for (i, c) in swap.overnight_leg.iter().enumerate() {
             assert_eq!(c.payment_date, overnight_dates[i], "overnight payment {i} in {r:?}");
             if overnight_amounts[i] != "NA" {
-                let amount = overnight_coupon_amount(&swap, c, &forecast, evaluation, &fixings).unwrap();
+                let amount = compute_overnight_coupon_amount(&swap, c, &forecast, evaluation, &fixings).unwrap();
                 close(amount, overnight_amounts[i], nominal, "overnight amount", &mut worst, r);
             }
         }
@@ -114,7 +114,7 @@ fn the_legacy_swap_after_fixings_on_quantlibs_curve() {
     let rows = golden_rows("ois_swap_moved_date.csv");
     let r = &rows[0];
     let c = curve(&r[0], "actual_365_fixed");
-    let swap = OisSwap::new(OisSwapSpec {
+    let swap = create_ois_swap(OisSwapSpec {
         side: SwapSide::Payer,
         nominal: 1e7,
         effective_date: riemann::Date::from_ymd(2022, 8, 23).unwrap(),
@@ -134,7 +134,7 @@ fn the_legacy_swap_after_fixings_on_quantlibs_curve() {
     ]
     .into_iter()
     .collect();
-    let v = ois_swap_value(&swap, &c, &c, riemann::Date::from_ymd(2022, 8, 25).unwrap(), &fixings).unwrap();
+    let v = compute_ois_swap_value(&swap, &c, &c, riemann::Date::from_ymd(2022, 8, 25).unwrap(), &fixings).unwrap();
     let mut worst = 0.0f64;
     close(v.npv, &r[1], 1.0, "npv", &mut worst, r);
     close(v.fixed_leg_npv, &r[2], 1.0, "fixed", &mut worst, r);
@@ -144,7 +144,7 @@ fn the_legacy_swap_after_fixings_on_quantlibs_curve() {
 }
 
 fn example_swap(side: SwapSide) -> OisSwap {
-    OisSwap::new(OisSwapSpec {
+    create_ois_swap(OisSwapSpec {
         side,
         nominal: 1e7,
         effective_date: date("46329"),
@@ -182,25 +182,25 @@ fn example_curve(quotes: &[f64]) -> riemann::ois::OisCurve {
 fn the_two_sides_are_opposite_and_the_fair_rate_gives_zero() {
     let quotes = [0.008, 0.01, 0.012, 0.014];
     let c = example_curve(&quotes).curve;
-    let payer = ois_swap_value(&example_swap(SwapSide::Payer), &c, &c, date("46328"), &Fixings::new()).unwrap();
-    let receiver = ois_swap_value(&example_swap(SwapSide::Receiver), &c, &c, date("46328"), &Fixings::new()).unwrap();
+    let payer = compute_ois_swap_value(&example_swap(SwapSide::Payer), &c, &c, date("46328"), &Fixings::new()).unwrap();
+    let receiver = compute_ois_swap_value(&example_swap(SwapSide::Receiver), &c, &c, date("46328"), &Fixings::new()).unwrap();
     assert!((payer.npv + receiver.npv).abs() < 1e-8);
     assert!((payer.fair_rate.unwrap() - receiver.fair_rate.unwrap()).abs() < 1e-14);
     let mut at_fair = example_swap(SwapSide::Payer).spec;
     at_fair.fixed_rate = payer.fair_rate.unwrap();
-    let swap = OisSwap::new(at_fair).unwrap();
-    assert!(ois_swap_value(&swap, &c, &c, date("46328"), &Fixings::new()).unwrap().npv.abs() < 1e-7);
+    let swap = create_ois_swap(at_fair).unwrap();
+    assert!(compute_ois_swap_value(&swap, &c, &c, date("46328"), &Fixings::new()).unwrap().npv.abs() < 1e-7);
 }
 
 #[test]
 fn quote_sensitivities_agree_with_rebuilding_the_curve() {
     let quotes = [0.008, 0.01, 0.012, 0.014];
     let swap = example_swap(SwapSide::Payer);
-    let sensitivity = ois_swap_quote_sensitivity(&swap, &example_curve(&quotes), date("46328"), &Fixings::new()).unwrap();
+    let sensitivity = compute_ois_swap_quote_sensitivity(&swap, &example_curve(&quotes), date("46328"), &Fixings::new()).unwrap();
     assert_eq!(sensitivity.len(), quotes.len());
     let npv = |q: &[f64]| {
         let c = example_curve(q).curve;
-        ois_swap_value(&swap, &c, &c, date("46328"), &Fixings::new()).unwrap().npv
+        compute_ois_swap_value(&swap, &c, &c, date("46328"), &Fixings::new()).unwrap().npv
     };
     let h = 1e-6;
     for s in &sensitivity {
@@ -219,7 +219,7 @@ fn days_use_fixings_up_to_the_evaluation_date() {
     let coupon = &swap.overnight_leg[0];
     let evaluation = coupon.value_dates[2];
     let fixings: Fixings = [(coupon.value_dates[0], 0.05), (coupon.value_dates[1], 0.06)].into_iter().collect();
-    let days = overnight_days(coupon, &c, evaluation, &fixings).unwrap();
+    let days = compute_ois_swap_daily_rates(coupon, &c, evaluation, &fixings).unwrap();
     assert_eq!(days[0].applied_rate, 0.05);
     assert_eq!(days[1].applied_rate, 0.06);
     assert_eq!(days[2].fixing, None);

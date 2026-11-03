@@ -22,13 +22,13 @@
 #' @param fixed_day_count Day count of the fixed leg, or `NULL` for the index's.
 #' @return A `riemann_ois_swap` value, which does not change.
 #' @examples
-#' swap <- ois_swap("payer", 1e7, "2026-11-04", "2031-11-04", "tonar", 0.012)
+#' swap <- create_ois_swap("payer", 1e7, "2026-11-04", "2031-11-04", "tonar", 0.012)
 #' swap
 #' @export
-ois_swap <- function(side, nominal, effective_date, termination_date, index, fixed_rate, spread = 0,
+create_ois_swap <- function(side, nominal, effective_date, termination_date, index, fixed_rate, spread = 0,
                      fixed_frequency = 1L, overnight_frequency = 1L, payment_lag = 0L, fixed_day_count = NULL) {
   pointer <- checked(.Call(
-    wrap__ois_swap, side, as.numeric(nominal), as_serial(effective_date), as_serial(termination_date), index, as.numeric(fixed_rate),
+    wrap__create_ois_swap, side, as.numeric(nominal), as_serial(effective_date), as_serial(termination_date), index, as.numeric(fixed_rate),
     if (is.null(fixed_day_count)) "" else fixed_day_count, as.numeric(spread), as.integer(fixed_frequency), as.integer(overnight_frequency),
     as.integer(payment_lag)
   ))$value
@@ -60,62 +60,62 @@ fixing_columns <- function(fixings) {
 #' reference date, and flows paid on or before that date have occurred. A swap whose flows have all
 #' been paid by the evaluation date is worth 0, as in QuantLib.
 #'
-#' @param swap A swap from [ois_swap()].
+#' @param swap A swap from [create_ois_swap()].
 #' @param curve A curve from [build_ois_curve()] of the swap's index, which forecasts the overnight rates.
 #' @param evaluation_date One date.
 #' @param fixings `NULL`, or a data frame with the columns `date` and `rate`. Rates are decimals.
 #' @param discount_curve A curve that discounts. The default is `curve`.
 #' @param coupon The position of the coupon in the overnight leg.
 #' @param on_error `"stop"` or `"na"`; see [RiemannFinMath-package].
-#' @return `ois_swap_value()` returns a one-row tibble with `npv`, `fixed_leg_npv`, `overnight_leg_npv`,
+#' @return `compute_ois_swap_value()` returns a one-row tibble with `npv`, `fixed_leg_npv`, `overnight_leg_npv`,
 #'   `fixed_leg_bps`, `overnight_leg_bps` (the change for 1bp, with the leg's sign), `fair_rate` and
 #'   `fair_spread`. These two are `NA` when no coupon of that leg is left to pay.
-#'   `ois_swap_cashflows()` returns a tibble with `leg`, `payment_date`, `accrual_start`, `accrual_end`,
-#'   `amount` (unsigned) and `error`. `ois_swap_daily_rates()` returns a tibble with `fixing_date`,
+#'   `get_ois_swap_cashflows()` returns a tibble with `leg`, `payment_date`, `accrual_start`, `accrual_end`,
+#'   `amount` (unsigned) and `error`. `compute_ois_swap_daily_rates()` returns a tibble with `fixing_date`,
 #'   `next_date`, `days`, `day_fraction`, `fixing`, `forward_rate` and `applied_rate`.
-#'   `ois_swap_quote_sensitivity()` returns a tibble with `tenor`, `rate`, `pillar_date` and `npv_per_bp`,
+#'   `compute_ois_swap_quote_sensitivity()` returns a tibble with `tenor`, `rate`, `pillar_date` and `npv_per_bp`,
 #'   the change of the value for +1bp on the quote with the curve following; the curve both forecasts
 #'   and discounts.
 #' @examples
 #' instruments <- ois_instruments(c("ON", "1Y", "5Y", "10Y"), c(0.002, 0.004, 0.009, 0.014), 2L, 1L, 0L)
 #' curve <- build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", instruments)
-#' swap <- ois_swap("payer", 1e7, "2026-11-04", "2031-11-04", "tonar", 0.012)
-#' ois_swap_value(swap, curve, "2026-11-02")
-#' ois_swap_cashflows(swap, curve, "2026-11-02")
-#' head(ois_swap_daily_rates(swap, curve, "2026-11-02"))
-#' ois_swap_quote_sensitivity(swap, curve, "2026-11-02")
+#' swap <- create_ois_swap("payer", 1e7, "2026-11-04", "2031-11-04", "tonar", 0.012)
+#' compute_ois_swap_value(swap, curve, "2026-11-02")
+#' get_ois_swap_cashflows(swap, curve, "2026-11-02")
+#' head(compute_ois_swap_daily_rates(swap, curve, "2026-11-02"))
+#' compute_ois_swap_quote_sensitivity(swap, curve, "2026-11-02")
 #' started <- tibble::tibble(date = as.Date(c("2026-11-04", "2026-11-05")), rate = c(0.002, 0.0021))
-#' ois_swap_value(swap, curve, "2026-11-06", started)
+#' compute_ois_swap_value(swap, curve, "2026-11-06", started)
 #' @export
-ois_swap_value <- function(swap, curve, evaluation_date, fixings = NULL, discount_curve = curve) {
+compute_ois_swap_value <- function(swap, curve, evaluation_date, fixings = NULL, discount_curve = curve) {
   f <- fixing_columns(fixings)
-  tibble::as_tibble(checked(.Call(wrap__ois_swap_value, swap$pointer, curve$pointer, discount_curve$pointer, as_serial(evaluation_date), f$dates, f$rates)))
+  tibble::as_tibble(checked(.Call(wrap__compute_ois_swap_value, swap$pointer, curve$pointer, discount_curve$pointer, as_serial(evaluation_date), f$dates, f$rates)))
 }
 
-#' @rdname ois_swap_value
+#' @rdname compute_ois_swap_value
 #' @export
-ois_swap_cashflows <- function(swap, curve, evaluation_date, fixings = NULL, on_error = "stop") {
+get_ois_swap_cashflows <- function(swap, curve, evaluation_date, fixings = NULL, on_error = "stop") {
   f <- fixing_columns(fixings)
-  rows <- finish_rows(checked(.Call(wrap__ois_swap_cashflows, swap$pointer, curve$pointer, as_serial(evaluation_date), f$dates, f$rates)), on_error)
+  rows <- finish_rows(checked(.Call(wrap__get_ois_swap_cashflows, swap$pointer, curve$pointer, as_serial(evaluation_date), f$dates, f$rates)), on_error)
   tibble(leg = rows$leg, payment_date = as_date(rows$payment_date), accrual_start = as_date(rows$accrual_start),
          accrual_end = as_date(rows$accrual_end), amount = rows$amount, error = rows$error)
 }
 
-#' @rdname ois_swap_value
+#' @rdname compute_ois_swap_value
 #' @export
-ois_swap_daily_rates <- function(swap, curve, evaluation_date, fixings = NULL, coupon = 1L) {
+compute_ois_swap_daily_rates <- function(swap, curve, evaluation_date, fixings = NULL, coupon = 1L) {
   f <- fixing_columns(fixings)
-  rows <- checked(.Call(wrap__ois_swap_daily_rates, swap$pointer, curve$pointer, as.integer(coupon), as_serial(evaluation_date), f$dates, f$rates))
+  rows <- checked(.Call(wrap__compute_ois_swap_daily_rates, swap$pointer, curve$pointer, as.integer(coupon), as_serial(evaluation_date), f$dates, f$rates))
   fixing_date <- as_date(rows$fixing_date)
   next_date <- as_date(rows$next_date)
   tibble(fixing_date = fixing_date, next_date = next_date, days = as.integer(next_date - fixing_date), day_fraction = rows$day_fraction,
          fixing = rows$fixing, forward_rate = rows$forward_rate, applied_rate = rows$applied_rate)
 }
 
-#' @rdname ois_swap_value
+#' @rdname compute_ois_swap_value
 #' @export
-ois_swap_quote_sensitivity <- function(swap, curve, evaluation_date, fixings = NULL) {
+compute_ois_swap_quote_sensitivity <- function(swap, curve, evaluation_date, fixings = NULL) {
   f <- fixing_columns(fixings)
-  rows <- checked(.Call(wrap__ois_swap_quote_sensitivity, swap$pointer, curve$pointer, as_serial(evaluation_date), f$dates, f$rates))
+  rows <- checked(.Call(wrap__compute_ois_swap_quote_sensitivity, swap$pointer, curve$pointer, as_serial(evaluation_date), f$dates, f$rates))
   tibble(tenor = curve$instruments$tenor[rows$instrument], rate = rows$rate, pillar_date = as_date(rows$pillar_date), npv_per_bp = rows$d_npv * 1e-4)
 }
