@@ -129,7 +129,7 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 - 仕様書 7 章の「testthat で GaussQuant と直接比べる」は未実施である。
 - Windows 以外では、ビルドも確かめていない（`Makevars` は未実行）。
 
-## 8. 配布整備（作業中）
+## 8. 配布整備
 
 ### 8.1 パッケージ名
 
@@ -175,6 +175,23 @@ CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名�
 この確認は導入の確認であり、数値の照合は Rust のテストと検証 QMD にある。
 
 **環境変数をすべて消すと終了時に落ちる**：`env -i` で環境変数を消した R では、終了時に Segmentation fault（139）になった。`RiemannFinMath` を使わず `tibble` だけを読み込むスクリプトでも同じなので、このパッケージの問題ではない。通常の環境変数では、パッケージの読み込み、バッチ、quickstart のすべてで終了コード 0 である。`tibble` の依存のどれが原因かは確かめていない。
+
+### 8.6 版 0.3.0【実行確認】（2026-11-04）
+
+P11（Z スプレッド、OIS スワップ、Hull-White の校正、Longstaff–Schwartz と Sobol 列、MBS、LMM の構成要素）を加えた版である。公開関数は 81 個。8.3 節と 8.4 節は 0.2.0 の記録として残す。
+
+| 作業 | 結果 |
+|---|---|
+| ソースパッケージ | `RiemannFinMath_0.3.0.tar.gz` を `tools/package/build_source_package.R` で作った（コミット `16e58be` と同じ内容） |
+| `R CMD check --as-cran` | **未完了**。リポジトリの外の短いパス（`C:\rfm030\check`）で 2 回実行し、2 回とも導入の段階で止まった。新しく作られた依存 crate のビルドスクリプト（1 回目は `rayon-core`、2 回目は `proc-macro2`）を Windows の Smart App Control がブロックした（os error 4551、Code Integrity のイベント 3077 と 3118）。テストには進んでいない。アプリ制御の設定は変えておらず、回避もしていない |
+| Windows バイナリ | `RiemannFinMath_0.3.0.zip` を、コミット `16e58be` の `crates/riemann-r` から `R CMD INSTALL --build` で作った。0.2.0 と違い、tar.gz からは作っていない（上の理由）。中身は同じソースだが、tar.gz からのビルドは確かめていない |
+| 導入と動作の確認 | 別ライブラリー `C:\rfm030\lib`（`tibble` とその依存 9 個だけを複製）に zip を導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで `tools/package/smoke_test.R` を新しい R セッションで実行した。34 項目すべて成功、失敗 0、終了コード 0。P11 の 4 項目（Hull-White の校正、Longstaff–Schwartz、MBS、Caplet）を含む |
+| 読み込んだ場所 | 別ライブラリーの 10 パッケージと R の標準ライブラリーの 7 個だけ。`RiemannFinMath` は `C:/rfm030/lib` から読み込んだ。版 0.3.0、公開関数 81 個。新しい関数のヘルプも見つかった |
+| DLL の依存（`objdump`） | Windows のシステム DLL と `R.dll` だけ |
+
+ファイル、ログ、SHA-256 は `dist/`（git に入れない）にあり、一覧は `dist/MANIFEST.txt` である。0.2.0 の配布ファイルは `dist/archive-0.2.0/` に移した。
+
+**残り**：tar.gz からのソース導入と `R CMD check` は、アプリ制御がビルドスクリプトを止めない環境（設定を変えた Windows、または Linux）で実行する必要がある。それまで、ソース版は「作成済み・検査未完了」として扱う。この確認は数値の照合ではなく導入の確認であり、数値の照合は Rust のテスト、比較文書、検証 QMD にある。
 
 ### 8.5 制限と残り
 

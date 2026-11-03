@@ -95,7 +95,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P11-5 | MBS のプリペイメントと OAS（II-8.8） | **完了**（`docs/spec_mbs.md`）。LagrangeFinance のシナリオ表と 20 経路を再現。静的 OAS は比較元の `uniroot` の精度で最大 0.26 bp の差（N/C） |
 | P11-6 | LMM。**当面は LagrangeFinance の Caplet と相関の例（II-7.4）を再現する範囲**（ユーザーの指示）。本格的なモデルへの拡張は別途判断 | **完了**（`docs/spec_lmm.md`）。同じ R の乱数を渡し、Caplet と標本相関を差 0〜1.3e-18 で再現。LMM 全体は未実装 |
 
-**配布ファイルの更新が未了（機能追加の後）**：`dist/` は 0.2.0 のままで、P11-1 と CDS の新しい引数が入っていない。機能追加が一区切りついた後にまとめて更新する。版の番号は未決（新しい関数があるので 0.3.0 を想定）。変える場所は `Cargo.toml`、`crates/riemann-r/src/rust/Cargo.toml`、`DESCRIPTION`、`README.md`、`docs/spec_r.md` 8 章、`tools/package/smoke_test.R`。手順は `crates/riemann-r/README.md`。
+**配布版 0.3.0（2026-11-04）**：`dist/` に tar.gz と zip を作った（`docs/spec_r.md` 8.6 節、`dist/MANIFEST.txt`）。zip は別ライブラリー・Rust なしの PATH・リポジトリ外で smoke test 34 項目が成功。**tar.gz の `R CMD check` とソース導入は未完了**：新しいフォルダーでのビルドスクリプトを Smart App Control が 2 回ブロックした。zip は tar.gz からではなくリポジトリのパッケージから作った。設定は変えておらず、回避もしていない。
 
 ## QuantLib との比較資料（`comparison/`、2026-11-01 完了）
 
