@@ -36,7 +36,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 評価日・参照日 | グローバルな評価日、参照日が動くカーブと固定のカーブ | 評価日と参照日を引数で明示する | 設計上の違い | 評価日を変えた再計算は、引数を変えて呼び直す |
 | fixing | `addFixing`、欠けた fixing のエラー、当日の fixing の扱い | OIS スワップの `fixings` 引数 | 一部対応 | IBOR の fixing は対象外。当日 fixing を予測するかの切り替えはない |
 | キャッシュフロー表 | `cashflows()`、利率・期間・金額、`CashFlows.npv`、`CashFlows.bps` | `get_bond_cashflows`、`compute_ois_swap_cashflows` | 一部対応 | 任意のキャッシュフロー列の NPV と BPS を計算する関数がない |
-| 既定のカーブ | `FlatForward`、`ZeroCurve`、`DiscountCurve`、`ZeroSpreadedTermStructure` | **Rust にはあるが R に公開していない**（`YieldCurve::flat`、`zero`、`interpolated_discounts`、`zero_spreaded`） | 一部対応 | R からカーブを直接作れない。多くの例の前提になる |
+| 既定のカーブ | `FlatForward`、`ZeroCurve`、`DiscountCurve`、`ZeroSpreadedTermStructure` | `create_flat_curve`、`create_zero_curve`、`create_discount_curve`、`create_zero_spreaded_curve`（2026-11-04 に公開） | 対応済み | 参照日は固定（評価日とともに動かない。設計上の違い） |
 | ブートストラップ | OIS、SOFR 先物、債券、IBOR スワップ、ベーシス、クロスカレンシー。補間は LogCubicDiscount、LinearZero、FlatForward、CubicZero | OIS（単調対数 3 次、対数線形） | 一部対応 | 先物、債券のヘルパー、線形ゼロ・フラットフォワード・3 次ゼロの補間、ジャンプがない |
 | 外挿 | `enableExtrapolation` | `with_extrapolation` | 対応済み | |
 | カーブの加工 | `ZeroSpreaded`、`PiecewiseZeroSpreaded`、`ImpliedTermStructure` | 債券の Z スプレッド計算の内部のみ | 一部対応 | 区分的なスプレッド、参照日を移したカーブがない |
@@ -57,9 +57,9 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 10 | Instruments and pricing engines | European（解析解と Greeks）、Heston、MC | 一部対応 | Heston。評価日を変える再計算は呼び直し |
 | 11 | The Observer pattern | 二重カーブの IBOR スワップ（C++） | 設計上対象外 | |
 | 12 | Updating multiple market quotes | 債券ヘルパーと Nelson–Siegel のフィット、気配の更新 | 未対応 | 当てはめカーブ、債券ヘルパー |
-| 13 | Term structures | フラットカーブ、参照日が動く・固定 | 一部対応 | R でフラットカーブを作れない |
+| 13 | Term structures | フラットカーブ、参照日が動く・固定 | 一部対応 | 参照日が動くカーブ（設計上の違い。新しい日付で作り直す）。Observer は対象外 |
 | 14 | Cash-flow analysis | 固定利付債のキャッシュフロー表、`CashFlows.npv`、`bps` | 一部対応 | 任意のキャッシュフローの NPV・BPS、R のフラットカーブ |
-| 16 | Common interface of term structures | フラット・割引係数カーブ、割引・フォワード、スプレッドつき | 一部対応 | R でカーブを作れない。IBOR 部分は対象外 |
+| 16 | Common interface of term structures | フラット・割引係数カーブ、割引・フォワード、スプレッドつき | 一部対応 | Euribor の予測は対象外。それ以外は再現した（`curves.R`） |
 | 17 | Fitted bond curves | Nelson–Siegel、指数スプライン、B スプライン、Svensson | 未対応 | 当てはめカーブ |
 | 18 | Curve bootstrapping | SOFR 先物と OIS、IBOR スワップ、ベーシス、ジャンプ | 一部対応 | 先物のヘルパー、ジャンプ。IBOR は対象外 |
 | 19 | Cross-currency curves | MtM クロスカレンシーベーシスでのブートストラップ | 未対応 | クロスカレンシーのブートストラップ |
@@ -121,6 +121,10 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 6. **American オプションの近似式**（Barone-Adesi–Whaley、Bjerksund–Stensland）。Examples EquityOption、LagrangeFinance II-4.5 が使う。
 
 後回しにするもの：当てはめカーブ、OIS 変動利付債、lookback・lockout、先物ヘルパー、Heston、インフレ、クロスカレンシー、転換社債、アジア型、G2、CVA。
+
+## 6. 作ったサンプル
+
+R パッケージの `inst/examples/quantlib_guide/` にある。一覧と主要な結果は同じフォルダーの `README.md`、実行方法は各スクリプトの冒頭にある。インストールしたパッケージからは `source(system.file("examples", "quantlib_guide", "<名前>.R", package = "RiemannFinMath"))` で実行できる。テストは `tests/testthat/test-quantlib-guide-examples.R`。
 
 ## 5. 今の機能で作れるサンプル
 

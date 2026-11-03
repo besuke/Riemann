@@ -15,6 +15,7 @@ counterparts <- tribble(
   ~fn, ~quantlib,
   "compute_accrued_amount", "Bond_accruedAmount",
   "compute_asset_swap_quote_sensitivity", "None; finite difference over GaussQuant",
+  "create_zero_spreaded_curve", "ZeroSpreadedTermStructure",
   "create_ois_swap", "MakeOIS",
   "compute_ois_swap_value", "OvernightIndexedSwap, DiscountingSwapEngine",
   "compute_ois_swap_cashflows", "FixedVsFloatingSwap_fixedLeg, overnightLeg",
@@ -73,6 +74,7 @@ counterparts <- tribble(
   "compute_monte_carlo_european_value", "None compared; different random numbers",
   "compute_ois_asset_swap", "None; GaussQuant R on a QuantLib curve",
   "create_mbs_pass_through", "None",
+  "create_zero_curve", "ZeroCurve",
   "create_ois_instruments", "None; the helpers of the curve",
   "compute_prdc_value", "None; blackFormula for the closed form",
   "compute_price_from_compound_yield", "None; GaussQuant R",
@@ -93,6 +95,8 @@ counterparts <- tribble(
   "compute_yield_sensitivity", "None; duration and convexity of BondFunctions",
   "compute_yield_value_basis_point", "BondFunctions_yieldValueBasisPoint",
   "compute_zero_rate", "YieldTermStructure_zeroRate",
+  "create_discount_curve", "DiscountCurve",
+  "create_flat_curve", "FlatForward",
   "create_fixed_rate_bond", "Schedule, FixedRateBond"
 )
 exports <- getNamespaceExports("RiemannFinMath") |> sort()

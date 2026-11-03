@@ -594,11 +594,36 @@ fn helpers_of(spec: &OisCurveSpec) -> Result<Vec<Helper>, Error> {
 }
 
 impl OisCurve {
+    /// A curve given directly, not bootstrapped: no instruments and no repricing. `index` is the
+    /// overnight index whose conventions it forecasts with (OIS swaps, asset swaps); it does not
+    /// matter for discounting.
+    pub fn given(curve: YieldCurve, index: OvernightIndex) -> OisCurve {
+        let reference_date = curve.reference_date();
+        OisCurve {
+            spec: OisCurveSpec {
+                evaluation_date: reference_date,
+                reference_date,
+                index,
+                curve_day_count: curve.day_count().clone(),
+                instruments: Vec::new(),
+                interpolation: OisInterpolation::LogLinear,
+                accuracy: 1e-12,
+            },
+            quote_repricing: Vec::new(),
+            curve,
+        }
+    }
+
     /// How the nodes move with the quotes, by the implicit function theorem at the solved curve:
     /// each node solves `implied_quote(nodes) = quote`, so the derivative of the nodes with
     /// respect to the quotes is the inverse of the matrix of derivatives of the implied quotes
     /// with respect to the nodes. The iterations of the root finder are not differentiated.
     pub fn quote_jacobian(&self) -> Result<QuoteJacobian, Error> {
+        if self.spec.instruments.is_empty() {
+            return Err(Error::InvalidInput {
+                reason: "the curve was not bootstrapped from quotes, so it has no sensitivities to quotes".into(),
+            });
+        }
         let spec = &self.spec;
         let helpers = helpers_of(spec)?;
         let reference = spec.reference_date;

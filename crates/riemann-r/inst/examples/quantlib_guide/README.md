@@ -15,7 +15,8 @@ source(system.file("examples", "quantlib_guide", "bonds.R", package = "RiemannFi
 
 | Script | Guide pages | Status | Main results |
 |---|---|---|---|
-| `bonds.R` | A taste of QuantLib; Cash flows and bonds; Cash-flow analysis; Vanilla bonds | Partly reproduced: the calculations from a yield | Cash flows, settlement dates, accrued amounts, clean price, durations and convexity equal QuantLib 1.42; the yield from a price of 98 differs from the Guide's print by 2.5e-11 and equals QuantLib 1.42, so the difference is one of QuantLib versions |
+| `bonds.R` | A taste of QuantLib; Cash flows and bonds; Cash-flow analysis; Vanilla bonds | Partly reproduced: from a yield, and on a flat curve built on each evaluation date | Cash flows, settlement dates, accrued amounts, prices, durations and convexity equal QuantLib 1.42; prices and NPVs on the curve equal the Guide, also after the evaluation date moves; the yield from a price of 98 differs from the Guide's print by 2.5e-11 and equals QuantLib 1.42, so the difference is one of QuantLib versions |
+| `curves.R` | Term structures and their reference dates; The common interface of interest-rate term structures | Partly reproduced: no moving reference date, no Euribor | Flat, discount-factor and spreaded curves: discount factors and bond prices equal the Guide; forward rates agree to the Guide's 6 printed decimals |
 | `options.R` | Instruments and pricing engines; Numerical Greeks | Partly reproduced: no Heston | European value and Greeks equal; the barrier Greeks are exact derivatives, against the Guide's finite differences; the Guide's theta divides one Actual/360 day by 1/365 |
 | `spreads.R` | Spread calculations | Partly reproduced: the z-spread | The z-spread over a bootstrapped SOFR curve equals the Guide and QuantLib 1.42 (64.7566 bp); no SimpleThenCompounded yield, i-spread or OAS |
 

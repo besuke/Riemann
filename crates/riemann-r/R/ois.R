@@ -55,7 +55,11 @@ bootstrap_ois_curve <- function(evaluation_date, reference_date, index, curve_da
 
 #' @export
 print.riemann_ois_curve <- function(x, ...) {
-  cat("<riemann_ois_curve>", x$index, x$interpolation, "with", nrow(x$instruments), "instruments\n")
+  if (is.null(x$instruments)) {
+    cat("<riemann_ois_curve>", x$kind, "curve, given directly; forecasts with", x$index, "\n")
+  } else {
+    cat("<riemann_ois_curve>", x$index, x$interpolation, "with", nrow(x$instruments), "instruments\n")
+  }
   invisible(x)
 }
 
@@ -156,6 +160,6 @@ get_quote_repricing <- function(curve) {
 #' @rdname get_quote_repricing
 #' @export
 get_discount_nodes <- function(curve) {
-  rows <- .Call(wrap__get_discount_nodes, curve$pointer)
+  rows <- checked(.Call(wrap__get_discount_nodes, curve$pointer))$value
   tibble(date = as_date(rows$date), discount = rows$discount)
 }

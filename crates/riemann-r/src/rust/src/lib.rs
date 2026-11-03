@@ -25,8 +25,8 @@ use riemann::longstaff_schwartz::{
 use riemann::math::sobol::SobolSequence;
 use riemann::lmm::{self, CapletTerms};
 use riemann::mbs::{self, Amortization, PassThroughTerms, RatePaths};
-use riemann::interest_rate::Compounding;
-use riemann::curves::CurveInput;
+use riemann::interest_rate::{Compounding, InterestRate};
+use riemann::curves::{CurveInput, LogDiscountInterpolation, YieldCurve};
 use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
 use riemann::ois_swap::{self, Fixings, OisSwap, OisSwapSpec};
@@ -989,14 +989,69 @@ fn get_quote_repricing(curve: ExternalPtr<OisCurve>) -> List {
 
 #[extendr]
 fn get_discount_nodes(curve: ExternalPtr<OisCurve>) -> List {
-    let (dates, values) = curve
-        .curve
-        .discount_nodes()
-        .expect("an OIS curve holds discount factors");
-    list!(
-        date = dates.iter().map(|d| d.serial()).collect::<Vec<i32>>(),
-        discount = values.to_vec()
+    match curve.curve.discount_nodes() {
+        Some((dates, values)) => list!(
+            value = list!(date = dates.iter().map(|d| d.serial()).collect::<Vec<i32>>(), discount = values.to_vec())
+        ),
+        None => failure(riemann::Error::InvalidInput { reason: "this curve is not given by discount factors".into() }),
+    }
+}
+
+// ---- curves given directly -----------------------------------------------------------------------
+
+fn given_curve(build: impl FnOnce() -> Core<YieldCurve>, index: &str) -> List {
+    let run = || -> Core<OisCurve> { Ok(OisCurve::given(build()?, names::parse_overnight_index(index)?)) };
+    outcome(run().map(|curve| list!(value = ExternalPtr::new(curve))))
+}
+
+#[extendr]
+fn create_flat_curve(reference_date: i32, rate: f64, day_count: &str, compounding: &str, frequency: i32, index: &str) -> List {
+    given_curve(
+        || {
+            let rate = InterestRate::new(rate, names::parse_day_count(day_count)?, names::parse_compounding(compounding)?, frequency.max(0) as u32)?;
+            Ok(YieldCurve::flat(date(reference_date)?, rate))
+        },
+        index,
     )
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn create_zero_curve(dates: Vec<i32>, rates: Vec<f64>, day_count: &str, compounding: &str, frequency: i32, index: &str) -> List {
+    given_curve(
+        || {
+            let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<_>>>()?;
+            YieldCurve::zero(dates, rates, names::parse_day_count(day_count)?, names::parse_compounding(compounding)?, frequency.max(0) as u32)
+        },
+        index,
+    )
+}
+
+#[extendr]
+fn create_discount_curve(dates: Vec<i32>, discounts: Vec<f64>, day_count: &str, interpolation: &str, index: &str) -> List {
+    given_curve(
+        || {
+            let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<_>>>()?;
+            let interpolation = match interpolation {
+                "log_linear" => LogDiscountInterpolation::LogLinear,
+                "monotonic_log_cubic" => LogDiscountInterpolation::MonotonicLogCubic,
+                other => {
+                    return Err(riemann::Error::InvalidInput { reason: format!("interpolation must be log_linear or monotonic_log_cubic, not {other}") })
+                }
+            };
+            YieldCurve::interpolated_discounts(dates, discounts, names::parse_day_count(day_count)?, interpolation)
+        },
+        index,
+    )
+}
+
+#[extendr]
+fn create_zero_spreaded_curve(curve: ExternalPtr<OisCurve>, spread: f64, compounding: &str, frequency: i32) -> List {
+    let run = || -> Core<OisCurve> {
+        let spreaded = YieldCurve::zero_spreaded(curve.curve.clone(), spread, names::parse_compounding(compounding)?, frequency.max(0) as u32)?;
+        Ok(OisCurve::given(spreaded, curve.spec.index.clone()))
+    };
+    outcome(run().map(|c| list!(value = ExternalPtr::new(c))))
 }
 
 // ---- sensitivities ---------------------------------------------------------------------------
@@ -2598,6 +2653,10 @@ extendr_module! {
     fn compute_forward_rate;
     fn get_quote_repricing;
     fn get_discount_nodes;
+    fn create_flat_curve;
+    fn create_zero_curve;
+    fn create_discount_curve;
+    fn create_zero_spreaded_curve;
     fn is_business_day;
     fn generate_holidays;
     fn compute_bond_values_batch;

@@ -10,7 +10,7 @@
 # Needs: RiemannFinMath and tibble. QuantLib (the R package) is optional.
 #
 # Not reproduced here, because RiemannFinMath lacks the feature (docs/quantlib_guide_inventory.md):
-# prices on a discount curve built in R (FlatForward), CashFlows.npv and bps on a curve, the yield with
+# CashFlows.npv and bps on a curve, the yield with
 # SimpleThenCompounded compounding, step-up and amortizing bonds, zero-coupon bonds on a curve, floaters.
 
 library(RiemannFinMath)
@@ -108,9 +108,27 @@ add("Vanilla bonds", "Modified duration at 3.5%, Actual/360, semiannual", 3.5426
 add("Vanilla bonds", "Convexity at 3.5%, Actual/360, semiannual", 14.76085604114641,
     compute_convexity(vanilla, 0.035, "actual_360", "compounded", 2L, settle), q[6])
 
+# ---- "Vanilla bonds" on a flat 4% Actual/360 curve, built on each evaluation date -------------------------
+# QuantLib's FlatForward(0, TARGET, ...) moves its reference date with the evaluation date; here a curve is
+# built on each date instead.
+on_curve <- function(eval) compute_bond_value_on_curve(vanilla, create_flat_curve(eval, 0.04, "actual_360"), eval)
+v0 <- on_curve("2024-05-02")
+add("Vanilla bonds", "Clean price on the curve, 2 May 2024", 96.19296369916307, v0$clean_price)
+add("Vanilla bonds", "Dirty price on the curve, 2 May 2024", 96.93463036582973, v0$dirty_price)
+add("Vanilla bonds", "NPV on the curve, 2 May 2024", 9688.079274968233, v0$npv)
+v1 <- on_curve("2024-08-07")
+add("Vanilla bonds", "Dirty price on the curve, 7 August 2024", 96.48435372417977, v1$dirty_price)
+add("Vanilla bonds", "NPV / 100 on the curve, 7 August 2024", 97.93059953484016, v1$npv / 100)
+add("Vanilla bonds", "Clean price on the curve, 1 February 2028", 99.9882359483094, on_curve("2028-02-01")$clean_price)
+v3 <- on_curve("2028-02-04")
+add("Vanilla bonds", "Clean price, 4 February 2028 (settlement after maturity)", 0, v3$clean_price)
+add("Vanilla bonds", "NPV, 4 February 2028", 10144.656928164271, v3$npv)
+
 results <- do.call(rbind, rows)
 cat("QuantLib Guide, fixed-rate bonds priced from a yield\n")
 cat("QuantLib R package:", if (has_quantlib) as.character(utils::packageVersion("QuantLib")) else "not installed", "\n\n")
-print(as.data.frame(results), digits = 12, row.names = FALSE)
+old <- options(width = 250)
+print(as.data.frame(results), digits = 12, row.names = FALSE, right = FALSE)
+options(old)
 cat("\nThe Guide prints some values rounded; their differences show only that rounding.\n")
 invisible(results)
