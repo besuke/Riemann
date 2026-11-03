@@ -86,8 +86,8 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 |---|---|---|
 | P11-1 | Z スプレッド、債券キャッシュフロー表 | **完了**（`docs/spec_bonds.md` 4.4 節）。QuantLib v1.42 のソースを読み、探索を同じ手順に直した。境界ケース 25 件も一致 |
 | P11-2 | OIS スワップ本体（レグ、NPV、日次複利、Fixing。LagrangeFinance II-3.2〜II-3.4） | **完了**（`docs/spec_ois_swap.md`）。QuantLib と 300 件照合。旧版について気づいた点は同 5 章 |
-| P11-3 | Hull-White の校正（II-6.4） | **次にやる** |
-| P11-4 | Longstaff–Schwartz、Sobol 列（II-4.6） | 未着手 |
+| P11-3 | Hull-White の校正（II-6.4） | **完了**（`docs/spec_hull_white.md` 1.1 節）。QuantLib の校正 60 件と照合。`ln(a)`、`ln(sigma)` などの独自の選択と、比較元との違いを同節に明記 |
+| P11-4 | Longstaff–Schwartz、Sobol 列（II-4.6） | **次にやる** |
 | P11-5 | MBS のプリペイメントと OAS（II-8.8） | 未着手 |
 | P11-6 | LMM。**当面は LagrangeFinance の Caplet と相関の例（II-7.4）を再現する範囲**（ユーザーの指示）。本格的なモデルへの拡張は別途判断 | 未着手 |
 

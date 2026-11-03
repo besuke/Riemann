@@ -14,7 +14,10 @@ use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::cashflow_analysis::{YieldConvention, YieldSolver};
 use riemann::cashflows::CashFlow;
 use riemann::cds::{self, Cds, CdsCurve, CdsCurveSpec, CdsSpec, CdsValue, HazardCurve, SpreadQuote};
-use riemann::hull_white::{self, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
+use riemann::hull_white::{
+    self, CalibrationInstrument, CalibrationQuote, CalibrationSettings, CallableFlow, GridSettings, HullWhite, Quadrature,
+    SwaptionFlows,
+};
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
 use riemann::interest_rate::Compounding;
 use riemann::curves::CurveInput;
@@ -1421,6 +1424,81 @@ fn compute_sabr_volatility(
 }
 
 #[extendr]
+#[allow(clippy::too_many_arguments)]
+fn calibrate_hull_white(
+    option_type: Vec<String>,
+    strike: Vec<f64>,
+    option_maturity: Vec<f64>,
+    bond_maturity: Vec<f64>,
+    option_price: Vec<f64>,
+    option_weight: Vec<f64>,
+    payer: Vec<i32>,
+    swaption_maturity: Vec<f64>,
+    flow_counts: Vec<i32>,
+    payment_times: Vec<f64>,
+    coupons: Vec<f64>,
+    nominal: Vec<f64>,
+    swaption_price: Vec<f64>,
+    swaption_weight: Vec<f64>,
+    curve: ExternalPtr<OisCurve>,
+    initial_mean_reversion: f64,
+    initial_volatility: f64,
+    fix_mean_reversion: bool,
+    max_iterations: i32,
+) -> List {
+    let run = || -> Core<List> {
+        let mut quotes = Vec::with_capacity(strike.len() + payer.len());
+        for i in 0..strike.len() {
+            quotes.push(CalibrationQuote {
+                instrument: CalibrationInstrument::BondOption {
+                    kind: names::parse_option_type(&option_type[i])?,
+                    strike: strike[i],
+                    maturity: option_maturity[i],
+                    bond_maturity: bond_maturity[i],
+                },
+                price: option_price[i],
+                weight: option_weight[i],
+            });
+        }
+        let mut start = 0;
+        for i in 0..payer.len() {
+            let end = start + flow_counts[i] as usize;
+            quotes.push(CalibrationQuote {
+                instrument: CalibrationInstrument::Swaption(SwaptionFlows {
+                    payer: payer[i] != 0,
+                    maturity: swaption_maturity[i],
+                    value_time: swaption_maturity[i],
+                    payment_times: payment_times[start..end].to_vec(),
+                    coupons: coupons[start..end].to_vec(),
+                    nominal: nominal[i],
+                }),
+                price: swaption_price[i],
+                weight: swaption_weight[i],
+            });
+            start = end;
+        }
+        let settings = CalibrationSettings {
+            initial_mean_reversion,
+            initial_volatility,
+            fix_mean_reversion,
+            max_iterations: max_iterations.max(0) as usize,
+        };
+        let c = hull_white::calibrate_hull_white(&quotes, &curve.curve, &settings)?;
+        Ok(list!(
+            mean_reversion = c.mean_reversion,
+            volatility = c.volatility,
+            objective = c.objective,
+            root_mean_square_error = c.root_mean_square_error,
+            at_lower_limit = c.at_lower_limit,
+            iterations = c.iterations as i32,
+            stop_reason = c.stop.name(),
+            model_prices = c.model_prices
+        ))
+    };
+    outcome(run())
+}
+
+#[extendr]
 fn calibrate_sabr(kind: &str, strike: Vec<f64>, volatility: Vec<f64>, forward: f64, expiry: f64, beta: f64) -> List {
     let run = || -> Core<List> {
         let c = sabr::calibrate_sabr(names::parse_sabr_volatility_type(kind)?, &strike, &volatility, forward, expiry, beta)?;
@@ -2183,6 +2261,7 @@ extendr_module! {
     fn compute_hull_white_bermudan_swaption_value;
     fn compute_hull_white_callable_bond_value;
     fn compute_sabr_volatility;
+    fn calibrate_hull_white;
     fn calibrate_sabr;
     fn create_credit_default_swap;
     fn create_hazard_curve;

@@ -863,6 +863,17 @@ hw.option_bp.0.5.2,II-6.4.3,106.18923522728862
 hw.option_bp.1.3,II-6.4.3,77.73309575826947
 hw.option_bp.2.5,II-6.4.3,105.51068225127413
 hw.option_bp.3.7,II-6.4.3,205.00616693379436
+hw.calibration.model_bp.0.5.2,II-6.4.3,106.09397852827773
+hw.calibration.model_bp.1.3,II-6.4.3,77.5836513730882
+hw.calibration.model_bp.2.5,II-6.4.3,105.56899820598098
+hw.calibration.model_bp.3.7,II-6.4.3,205.55127469055466
+hw.calibration.error_bp.0.5.2,II-6.4.3,-0.09525669901089273
+hw.calibration.error_bp.1.3,II-6.4.3,-0.14944438518127434
+hw.calibration.error_bp.2.5,II-6.4.3,0.058315954706844586
+hw.calibration.error_bp.3.7,II-6.4.3,0.5451077567603102
+hw.calibration.a_pct,II-6.4.3,7.747873878964794
+hw.calibration.sigma_pct,II-6.4.3,1.193290276274429
+hw.calibration.objective,II-6.4.3,0.03480821354203165
 callable.bullet,II-8.4.2,104.68710235460091
 callable.callable,II-8.4.2,100.45163090223686
 callable.call_value,II-8.4.2,4.235471452364052

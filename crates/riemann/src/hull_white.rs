@@ -1,11 +1,15 @@
 //! The Hull-White one-factor model fitted to a yield curve: zero-coupon bonds and options on them,
 //! European swaptions by Jamshidian's decomposition, and callable bonds and Bermudan swaptions on a
-//! state grid.
+//! state grid, and the calibration of the parameters to market prices.
 //!
 //! Closed forms follow QuantLib v1.42 `ql/models/shortrate/onefactormodels/hullwhite.cpp` (Copyright
 //! (C) 2001, 2002, 2003 Sadruddin Rejeb; (C) 2006 Chiara Fornarola; (C) 2007 StatPro Italia srl) and
 //! `ql/pricingengines/swaption/jamshidianswaptionengine.cpp` (Copyright (C) 2001, 2002, 2003 Sadruddin
 //! Rejeb; (C) 2013 Peter Caspers); modified BSD license. See THIRD_PARTY_NOTICES.
+//!
+//! The option on a bond factors QuantLib's expression, which loses its digits when `a` is small. The
+//! calibration is this library's own method, and its objective, constraints and stopping tests differ
+//! from QuantLib's and LagrangeFinance's as `docs/spec_hull_white.md` sets out.
 //!
 //! The grid follows LagrangeFinance II-8.4: the state and the discount over a step are jointly
 //! normal, so each step is an exact conditional expectation, computed by Gauss-Hermite quadrature
@@ -17,12 +21,23 @@
 use crate::autodiff::{Operand, Recorder};
 use crate::curves::YieldCurve;
 use crate::interest_rate::Compounding;
+use crate::math::linear::solve;
 use crate::math::solver1d::solve_brent;
 use crate::options::{compute_forward_value, ForwardInputs, ForwardModel, OptionType};
 use crate::Error;
 
 fn invalid<T>(reason: String) -> Result<T, Error> {
     Err(Error::InvalidInput { reason })
+}
+
+/// `(1 - exp(-y)) / y`, accurate for small `y`, where its value and derivative tend to 1 and -1/2.
+fn one_minus_exp_over<T: Operand>(y: T) -> T {
+    if y.primal().abs() < 1e-4 {
+        let cubic = y * y * y * (1.0 / 24.0);
+        y * y * (1.0 / 6.0) - y * 0.5 + 1.0 - cubic
+    } else {
+        (-(-y).exp() + 1.0) / y
+    }
 }
 
 /// The model: mean reversion, volatility and the initial curve.
@@ -49,14 +64,9 @@ impl<T: Operand> HullWhite<'_, T> {
         self.curve.discount_at(t, true)
     }
 
-    /// `(1 - exp(-a (big_t - t))) / a`, and `big_t - t` when the mean reversion is too small.
+    /// `(1 - exp(-a (big_t - t))) / a`, which tends to `big_t - t` as the mean reversion tends to zero.
     pub fn b(&self, t: f64, big_t: f64) -> T {
-        let a = self.mean_reversion;
-        if a.primal() < f64::EPSILON.sqrt() {
-            a.like(big_t - t)
-        } else {
-            (-(a * (big_t - t)).exp().recip() + 1.0) / a
-        }
+        one_minus_exp_over(self.mean_reversion * (big_t - t)) * (big_t - t)
     }
 
     /// QuantLib `HullWhite::A`.
@@ -91,20 +101,10 @@ impl<T: Operand> HullWhite<'_, T> {
         self.check()?;
         let a = self.mean_reversion;
         let sigma = self.volatility;
-        let v = if a.primal() < f64::EPSILON.sqrt() {
-            sigma * self.b(bond_start, bond_maturity) * maturity.sqrt()
-        } else {
-            let e = |x: T| x.exp();
-            let c = e(a * (-2.0) * (bond_start - maturity))
-                - e(a * (-2.0) * bond_start)
-                - (e(-a * (bond_start + bond_maturity - 2.0 * maturity))
-                    - e(-a * (bond_start + bond_maturity)))
-                    * 2.0
-                + e(a * (-2.0) * (bond_maturity - maturity))
-                - e(a * (-2.0) * bond_maturity);
-            let floored = c.max(c.like(0.0));
-            sigma / (a * (a * 2.0).sqrt()) * floored.sqrt()
-        };
+        // QuantLib's form subtracts exponentials, and rounding dominates it when a is small. This is the
+        // same value factored: (1 - exp(-2 a T)) (exp(-a (s - T)) - exp(-a (S - T)))^2 under its square root.
+        let variance_factor = one_minus_exp_over(a * (2.0 * maturity)) * maturity;
+        let v = sigma * variance_factor.sqrt() * (-a * (bond_start - maturity)).exp() * self.b(bond_start, bond_maturity);
         let forward = self.discount(bond_maturity)?;
         let k = self.discount(bond_start)? * strike;
         // the standard deviation is the Black volatility over a time of 1
@@ -211,6 +211,280 @@ pub fn compute_jamshidian_swaption_sensitivity(
         value: value.primal(),
         d_mean_reversion: g[0].mean(),
         d_volatility: g[1].mean(),
+    })
+}
+
+/// What a calibration is fitted to.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalibrationInstrument {
+    /// A European option on a zero-coupon bond, expiring at `maturity`.
+    BondOption { kind: OptionType, strike: f64, maturity: f64, bond_maturity: f64 },
+    /// A European swaption by Jamshidian's decomposition.
+    Swaption(SwaptionFlows),
+}
+
+/// A market price to fit. The term of the objective is `weight * (model - price)^2`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CalibrationQuote {
+    pub instrument: CalibrationInstrument,
+    pub price: f64,
+    pub weight: f64,
+}
+
+/// The starting point and options of [`calibrate_hull_white`]. The default start is LagrangeFinance's.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CalibrationSettings {
+    pub initial_mean_reversion: f64,
+    pub initial_volatility: f64,
+    /// Keep the mean reversion at its initial value and fit the volatility alone.
+    pub fix_mean_reversion: bool,
+    pub max_iterations: usize,
+}
+
+impl Default for CalibrationSettings {
+    fn default() -> Self {
+        CalibrationSettings {
+            initial_mean_reversion: 0.05,
+            initial_volatility: 0.01,
+            fix_mean_reversion: false,
+            max_iterations: 200,
+        }
+    }
+}
+
+/// Why a calibration stopped. Only [`CalibrationStop::MaxIterations`] means that no test was met.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalibrationStop {
+    /// The relative reduction of the objective fell to 1e-14 or below.
+    CostChange,
+    /// No free variable moved by more than 1e-10, in the logarithm of the parameter.
+    SmallStep,
+    /// The residuals are orthogonal to the Jacobian's columns, to a cosine of 1e-10.
+    Gradient,
+    /// No trial step lowered the objective, with the damping raised 30 times.
+    NoFurtherReduction,
+    MaxIterations,
+}
+
+impl CalibrationStop {
+    pub fn name(self) -> &'static str {
+        match self {
+            CalibrationStop::CostChange => "cost_change",
+            CalibrationStop::SmallStep => "small_step",
+            CalibrationStop::Gradient => "gradient",
+            CalibrationStop::NoFurtherReduction => "no_further_reduction",
+            CalibrationStop::MaxIterations => "max_iterations",
+        }
+    }
+}
+
+/// The result of [`calibrate_hull_white`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct HullWhiteCalibration {
+    pub mean_reversion: f64,
+    pub volatility: f64,
+    /// The sum of `weight * (model - price)^2`.
+    pub objective: f64,
+    /// `sqrt(objective / number of quotes)`.
+    pub root_mean_square_error: f64,
+    /// The model's price of each quote, in their order.
+    pub model_prices: Vec<f64>,
+    /// The mean reversion ended at [`MIN_FITTED_MEAN_REVERSION`]: the data asks for no mean reversion.
+    pub at_lower_limit: bool,
+    pub iterations: usize,
+    pub stop: CalibrationStop,
+}
+
+fn value_of_quote<T: Operand>(model: &HullWhite<T>, quote: &CalibrationQuote) -> Result<T, Error> {
+    match &quote.instrument {
+        CalibrationInstrument::BondOption { kind, strike, maturity, bond_maturity } => {
+            let strike = model.mean_reversion.like(*strike);
+            model.discount_bond_option(*kind, strike, *maturity, *maturity, *bond_maturity)
+        }
+        CalibrationInstrument::Swaption(flows) => compute_jamshidian_swaption(model, flows),
+    }
+}
+
+/// The weighted residuals, the model's prices and the Jacobian in the free variables.
+#[allow(clippy::type_complexity)]
+fn calibration_residuals(
+    x: &[f64],
+    fixed_mean_reversion: Option<f64>,
+    quotes: &[CalibrationQuote],
+    curve: &YieldCurve,
+) -> Result<(Vec<f64>, Vec<f64>, Vec<Vec<f64>>), Error> {
+    let mut residuals = Vec::with_capacity(quotes.len());
+    let mut prices = Vec::with_capacity(quotes.len());
+    let mut jacobian = Vec::with_capacity(quotes.len());
+    for quote in quotes {
+        let recorder = Recorder::new();
+        let lifted = curve.lift(&recorder)?;
+        let inputs: Vec<_> = x.iter().map(|&v| recorder.input(v)).collect();
+        let (a, sigma) = match fixed_mean_reversion {
+            Some(a) => (recorder.constant(a), inputs[0].exp()),
+            None => (inputs[0].exp(), inputs[1].exp()),
+        };
+        let model = HullWhite { mean_reversion: a, volatility: sigma, curve: &lifted.curve };
+        let value = value_of_quote(&model, quote)?;
+        let gradient = recorder.gradient(value, &inputs)?;
+        let scale = quote.weight.sqrt();
+        prices.push(value.primal());
+        residuals.push(scale * (value.primal() - quote.price));
+        jacobian.push(gradient.iter().map(|g| scale * g.mean()).collect());
+    }
+    Ok((residuals, prices, jacobian))
+}
+
+/// The lower limit of a fitted mean reversion: QuantLib's square root of the machine epsilon, below
+/// which it takes the limit of `a = 0`. A logarithm cannot reach zero, and QuantLib's constraint excludes
+/// zero too. To fit with `a = 0` exactly, hold it fixed. The objective at this limit was at most 6.7e-7
+/// above its value at zero, relatively, in the tests of `docs/spec_hull_white.md`.
+pub const MIN_FITTED_MEAN_REVERSION: f64 = 1.490_116_119_384_765_6e-8;
+
+/// The largest move of `ln(a)` or `ln(sigma)` in one step. As `a` tends to zero its column of the
+/// Jacobian vanishes with it and the scaled step in `ln(a)` grows without limit, which would otherwise
+/// hold back the step in the volatility too.
+const MAX_LOG_STEP: f64 = 2.0;
+
+/// Fits the mean reversion and the volatility to market prices, or the volatility alone, by
+/// Levenberg-Marquardt on `ln(a)` and `ln(sigma)`. The Jacobian comes from automatic differentiation.
+/// The objective is the weighted sum of squared price differences, and the result depends only on the
+/// inputs. `docs/spec_hull_white.md` sets out how this differs from QuantLib and LagrangeFinance.
+pub fn calibrate_hull_white(
+    quotes: &[CalibrationQuote],
+    curve: &YieldCurve,
+    settings: &CalibrationSettings,
+) -> Result<HullWhiteCalibration, Error> {
+    let CalibrationSettings { initial_mean_reversion, initial_volatility, fix_mean_reversion, max_iterations } = *settings;
+    if !(initial_volatility > 0.0) || !initial_volatility.is_finite() {
+        return invalid(format!("the initial volatility must be positive, not {initial_volatility}"));
+    }
+    let start_is_valid = if fix_mean_reversion { initial_mean_reversion >= 0.0 } else { initial_mean_reversion > 0.0 };
+    if !start_is_valid || !initial_mean_reversion.is_finite() {
+        let bound = if fix_mean_reversion { "must not be negative" } else { "must be positive" };
+        return invalid(format!("the initial mean reversion {bound}, not {initial_mean_reversion}"));
+    }
+    let free = if fix_mean_reversion { 1 } else { 2 };
+    if quotes.len() < free {
+        return invalid(format!("calibration needs at least {free} quotes for {free} free parameters, not {}", quotes.len()));
+    }
+    if quotes.iter().any(|q| !q.price.is_finite() || !q.weight.is_finite() || !(q.weight > 0.0)) {
+        return invalid("calibration needs finite prices and positive, finite weights".into());
+    }
+    if max_iterations == 0 {
+        return invalid("calibration needs at least 1 iteration".into());
+    }
+
+    let fixed = fix_mean_reversion.then_some(initial_mean_reversion);
+    let mut x: Vec<f64> = if fix_mean_reversion {
+        vec![initial_volatility.ln()]
+    } else {
+        vec![initial_mean_reversion.ln(), initial_volatility.ln()]
+    };
+    let cost = |r: &[f64]| r.iter().map(|e| e * e).sum::<f64>();
+    let (mut r, mut prices, mut j) = calibration_residuals(&x, fixed, quotes, curve)?;
+    let log_lower_limit = MIN_FITTED_MEAN_REVERSION.ln();
+    let mut lambda = 1e-3;
+    let mut iterations = 0;
+    let mut stop = CalibrationStop::MaxIterations;
+    'outer: for _ in 0..max_iterations {
+        iterations += 1;
+        let mut jtj = vec![vec![0.0; free]; free];
+        let mut rhs = vec![vec![0.0]; free];
+        for (row, e) in j.iter().zip(&r) {
+            for a in 0..free {
+                rhs[a][0] -= row[a] * e;
+                for b in 0..free {
+                    jtj[a][b] += row[a] * row[b];
+                }
+            }
+        }
+        // At the lower limit of a, with the descent pointing below it, only the volatility moves.
+        let held = fixed.is_none() && x[0] <= log_lower_limit && rhs[0][0] < 0.0;
+        if held {
+            rhs[0][0] = 0.0;
+            jtj[0].fill(0.0);
+            for row in &mut jtj {
+                row[0] = 0.0;
+            }
+        }
+        let residual_norm = cost(&r).sqrt();
+        let largest_cosine = (0..free)
+            .filter(|&k| jtj[k][k] > 0.0)
+            .map(|k| rhs[k][0].abs() / (jtj[k][k].sqrt() * residual_norm))
+            .fold(0.0, f64::max);
+        if residual_norm == 0.0 || largest_cosine <= 1e-10 {
+            stop = CalibrationStop::Gradient;
+            break;
+        }
+        let scale: Vec<f64> = (0..free).map(|k| if jtj[k][k] > 0.0 { jtj[k][k].sqrt() } else { 1.0 }).collect();
+        let mut accepted = false;
+        for _ in 0..30 {
+            // Marquardt's damping, on columns scaled to unit length so that a small column of a
+            // tiny mean reversion cannot make the system look singular
+            let mut scaled = vec![vec![0.0; free]; free];
+            let mut scaled_rhs = vec![vec![0.0]; free];
+            for a in 0..free {
+                scaled_rhs[a][0] = rhs[a][0] / scale[a];
+                for b in 0..free {
+                    scaled[a][b] = jtj[a][b] / (scale[a] * scale[b]);
+                }
+                scaled[a][a] += lambda;
+            }
+            let Ok(step) = solve(&scaled, &scaled_rhs) else {
+                lambda *= 4.0;
+                continue;
+            };
+            let limited: Vec<f64> = step.iter().zip(&scale).map(|(s, d)| (s[0] / d).clamp(-MAX_LOG_STEP, MAX_LOG_STEP)).collect();
+            let mut trial: Vec<f64> = x.iter().zip(&limited).map(|(v, s)| v + s).collect();
+            if fixed.is_none() {
+                trial[0] = trial[0].max(log_lower_limit);
+            }
+            // a failed or non-finite evaluation counts as a step that did not improve
+            let evaluated = calibration_residuals(&trial, fixed, quotes, curve);
+            if let Ok((rt, pt, jt)) = evaluated {
+                let (before, after) = (cost(&r), cost(&rt));
+                if after < before {
+                    let largest_step = x.iter().zip(&trial).map(|(old, new)| (new - old).abs()).fold(0.0, f64::max);
+                    x = trial;
+                    r = rt;
+                    prices = pt;
+                    j = jt;
+                    lambda = (lambda * 0.3).max(1e-12);
+                    accepted = true;
+                    if (before - after) / before <= 1e-14 {
+                        stop = CalibrationStop::CostChange;
+                        break 'outer;
+                    }
+                    if largest_step <= 1e-10 {
+                        stop = CalibrationStop::SmallStep;
+                        break 'outer;
+                    }
+                    break;
+                }
+            }
+            lambda *= 4.0;
+        }
+        if !accepted {
+            stop = CalibrationStop::NoFurtherReduction;
+            break;
+        }
+    }
+    let (mean_reversion, volatility) = match fixed {
+        Some(a) => (a, x[0].exp()),
+        None if x[0] <= log_lower_limit => (MIN_FITTED_MEAN_REVERSION, x[1].exp()),
+        None => (x[0].exp(), x[1].exp()),
+    };
+    let objective = cost(&r);
+    Ok(HullWhiteCalibration {
+        mean_reversion,
+        volatility,
+        objective,
+        root_mean_square_error: (objective / quotes.len() as f64).sqrt(),
+        model_prices: prices,
+        at_lower_limit: fixed.is_none() && x[0] <= log_lower_limit,
+        iterations,
+        stop,
     })
 }
 
@@ -648,5 +922,172 @@ mod tests {
         let model = HullWhite { mean_reversion: -0.1, volatility: 0.01, curve: &curve };
         assert!(compute_jamshidian_swaption(&model, &swaption(true)).is_err());
         assert!(compute_callable_bond(&[], 0.1, 0.01, &curve, &GridSettings::default()).is_err());
+    }
+
+    fn bond_option_quotes(a: f64, sigma: f64, curve: &YieldCurve) -> Vec<CalibrationQuote> {
+        let model = HullWhite { mean_reversion: a, volatility: sigma, curve };
+        [(0.5, 2.0, 0.95), (1.0, 3.0, 0.94), (2.0, 5.0, 0.92), (3.0, 7.0, 0.89)]
+            .iter()
+            .map(|&(maturity, bond_maturity, strike)| CalibrationQuote {
+                instrument: CalibrationInstrument::BondOption { kind: OptionType::Call, strike, maturity, bond_maturity },
+                price: model.discount_bond_option(OptionType::Call, strike, maturity, maturity, bond_maturity).unwrap(),
+                weight: 1.0,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn calibration_recovers_the_parameters_of_its_own_prices() {
+        let curve = flat(0.03);
+        let quotes = bond_option_quotes(0.08, 0.012, &curve);
+        let fit = calibrate_hull_white(&quotes, &curve, &CalibrationSettings::default()).unwrap();
+        assert!((fit.mean_reversion - 0.08).abs() < 1e-9, "{}", fit.mean_reversion);
+        assert!((fit.volatility - 0.012).abs() < 1e-10, "{}", fit.volatility);
+        assert!(fit.root_mean_square_error < 1e-13, "{}", fit.root_mean_square_error);
+        assert_ne!(fit.stop, CalibrationStop::MaxIterations);
+        // the same inputs give the same result
+        assert_eq!(fit, calibrate_hull_white(&quotes, &curve, &CalibrationSettings::default()).unwrap());
+    }
+
+    #[test]
+    fn calibration_recovers_from_swaptions_and_from_other_starts() {
+        let curve = flat(0.02);
+        let model = HullWhite { mean_reversion: 0.1, volatility: 0.01, curve: &curve };
+        let quotes: Vec<CalibrationQuote> = (1..=3)
+            .flat_map(|start| [3, 6].map(|years| (start, years)))
+            .map(|(start, years)| {
+                let flows = SwaptionFlows {
+                    payer: start % 2 == 0,
+                    maturity: start as f64,
+                    value_time: start as f64,
+                    payment_times: (1..=years).map(|i| (start + i) as f64).collect(),
+                    coupons: vec![0.02; years],
+                    nominal: 1.0,
+                };
+                let price = compute_jamshidian_swaption(&model, &flows).unwrap();
+                CalibrationQuote { instrument: CalibrationInstrument::Swaption(flows), price, weight: 1.0 }
+            })
+            .collect();
+        for (a, sigma) in [(0.05, 0.01), (0.5, 0.03), (0.005, 0.002)] {
+            let settings = CalibrationSettings { initial_mean_reversion: a, initial_volatility: sigma, ..Default::default() };
+            let fit = calibrate_hull_white(&quotes, &curve, &settings).unwrap();
+            assert!((fit.mean_reversion - 0.1).abs() < 1e-8, "{a} {sigma} {}", fit.mean_reversion);
+            assert!((fit.volatility - 0.01).abs() < 1e-9, "{a} {sigma} {}", fit.volatility);
+        }
+    }
+
+    #[test]
+    fn calibration_holds_a_fixed_mean_reversion() {
+        let curve = flat(0.03);
+        let quotes = bond_option_quotes(0.08, 0.012, &curve);
+        let settings = CalibrationSettings { initial_mean_reversion: 0.08, fix_mean_reversion: true, ..Default::default() };
+        let fit = calibrate_hull_white(&quotes[..1], &curve, &settings).unwrap();
+        assert_eq!(fit.mean_reversion, 0.08);
+        assert!((fit.volatility - 0.012).abs() < 1e-10, "{}", fit.volatility);
+    }
+
+    #[test]
+    fn a_common_weight_scales_the_objective_and_keeps_the_result() {
+        let curve = flat(0.03);
+        let mut quotes = bond_option_quotes(0.08, 0.012, &curve);
+        quotes[0].price += 1e-4;
+        let plain = calibrate_hull_white(&quotes, &curve, &CalibrationSettings::default()).unwrap();
+        for q in &mut quotes {
+            q.weight = 1e8;
+        }
+        let scaled = calibrate_hull_white(&quotes, &curve, &CalibrationSettings::default()).unwrap();
+        assert!((scaled.objective / plain.objective / 1e8 - 1.0).abs() < 1e-8, "{}", scaled.objective / plain.objective);
+        assert!((scaled.mean_reversion - plain.mean_reversion).abs() < 1e-9);
+        assert!((scaled.volatility - plain.volatility).abs() < 1e-10);
+    }
+
+    #[test]
+    fn the_objective_is_stationary_at_the_result() {
+        // noisy prices: moving either parameter away from the result must not lower the objective
+        let curve = flat(0.03);
+        let mut quotes = bond_option_quotes(0.08, 0.012, &curve);
+        quotes[1].price += 2e-4;
+        quotes[3].price -= 1e-4;
+        let fit = calibrate_hull_white(&quotes, &curve, &CalibrationSettings::default()).unwrap();
+        let objective = |a: f64, sigma: f64| {
+            let model = HullWhite { mean_reversion: a, volatility: sigma, curve: &curve };
+            quotes.iter().map(|q| (value_of_quote(&model, q).unwrap() - q.price).powi(2)).sum::<f64>()
+        };
+        assert!((objective(fit.mean_reversion, fit.volatility) - fit.objective).abs() < 1e-18);
+        for (da, ds) in [(1e-4, 0.0), (-1e-4, 0.0), (0.0, 1e-5), (0.0, -1e-5)] {
+            assert!(objective(fit.mean_reversion + da, fit.volatility + ds) >= fit.objective);
+        }
+    }
+
+    #[test]
+    fn calibration_rejects_invalid_inputs() {
+        let curve = flat(0.03);
+        let quotes = bond_option_quotes(0.08, 0.012, &curve);
+        let run = |q: &[CalibrationQuote], s: CalibrationSettings| calibrate_hull_white(q, &curve, &s);
+        let base = CalibrationSettings::default();
+        assert!(run(&quotes[..1], base).is_err());
+        assert!(run(&quotes, CalibrationSettings { initial_mean_reversion: 0.0, ..base }).is_err());
+        assert!(run(&quotes, CalibrationSettings { initial_volatility: -0.01, ..base }).is_err());
+        assert!(run(&quotes, CalibrationSettings { max_iterations: 0, ..base }).is_err());
+        let mut bad = quotes.clone();
+        bad[0].weight = 0.0;
+        assert!(run(&bad, base).is_err());
+        bad = quotes.clone();
+        bad[0].price = f64::NAN;
+        assert!(run(&bad, base).is_err());
+        // a mean reversion of zero is allowed when it is held fixed
+        let fixed = CalibrationSettings { initial_mean_reversion: 0.0, fix_mean_reversion: true, ..base };
+        assert_eq!(run(&quotes, fixed).unwrap().mean_reversion, 0.0);
+    }
+
+    #[test]
+    fn prices_are_smooth_as_the_mean_reversion_tends_to_zero() {
+        // QuantLib's form loses all its digits here: its value at a = 1e-7 can be off by more than the value
+        let curve = flat(0.03);
+        let f = swaption(true);
+        let at = |a: f64| compute_jamshidian_swaption(&HullWhite { mean_reversion: a, volatility: 0.01, curve: &curve }, &f).unwrap();
+        let limit = at(0.0);
+        let slope = (at(1e-6) - limit) / 1e-6;
+        for a in [1e-12, 1e-10, 1e-8, 1e-7, 1e-6, 1e-5, 9.9e-5, 1.01e-4, 1e-3] {
+            let expected = limit + slope * a;
+            assert!((at(a) - expected).abs() <= 1e-11 + (a * a), "{a} {} {expected}", at(a));
+        }
+        // the zero-coupon limit, against the closed form of a = 0
+        let model = HullWhite { mean_reversion: 0.0, volatility: 0.01, curve: &curve };
+        let direct = model.discount_bond_option(OptionType::Call, 0.9, 2.0, 2.0, 5.0).unwrap();
+        let v: f64 = 0.01 * 3.0 * 2.0f64.sqrt();
+        let inputs = ForwardInputs { forward: (-0.15f64).exp(), strike: (-0.06f64).exp() * 0.9, volatility: v, time: 1.0, discount: 1.0 };
+        assert!((direct - compute_forward_value(ForwardModel::Black, OptionType::Call, &inputs).unwrap()).abs() < 1e-15);
+    }
+
+    #[test]
+    fn calibration_stops_at_the_lower_limit_of_the_mean_reversion() {
+        // prices that a negative mean reversion would fit best: long options priced above a = 0
+        let curve = flat(0.03);
+        let mut quotes = bond_option_quotes(0.0, 0.012, &curve);
+        for (q, bump) in quotes.iter_mut().zip([0.0, 1e-4, 3e-4, 6e-4]) {
+            q.price += bump;
+        }
+        let fit = calibrate_hull_white(&quotes, &curve, &CalibrationSettings::default()).unwrap();
+        assert!(fit.at_lower_limit, "{}", fit.mean_reversion);
+        assert_eq!(fit.mean_reversion, MIN_FITTED_MEAN_REVERSION);
+        assert_ne!(fit.stop, CalibrationStop::MaxIterations);
+        // the volatility is still fitted: moving it does not lower the objective
+        let objective = |sigma: f64| {
+            let model = HullWhite { mean_reversion: fit.mean_reversion, volatility: sigma, curve: &curve };
+            quotes.iter().map(|q| (value_of_quote(&model, q).unwrap() - q.price).powi(2)).sum::<f64>()
+        };
+        assert!(objective(fit.volatility * 1.001) >= fit.objective);
+        assert!(objective(fit.volatility * 0.999) >= fit.objective);
+    }
+
+    #[test]
+    fn calibration_reports_when_it_runs_out_of_iterations() {
+        let curve = flat(0.03);
+        let quotes = bond_option_quotes(0.08, 0.012, &curve);
+        let settings = CalibrationSettings { max_iterations: 1, ..Default::default() };
+        let fit = calibrate_hull_white(&quotes, &curve, &settings).unwrap();
+        assert_eq!(fit.iterations, 1);
+        assert_eq!(fit.stop, CalibrationStop::MaxIterations);
     }
 }

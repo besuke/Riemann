@@ -75,6 +75,76 @@ compute_hull_white_callable_bond_value <- function(time, coupon, principal, call
                                   curve$pointer, as.integer(points), as.numeric(limit), as.integer(nodes), as.numeric(spacing))))
 }
 
+#' Calibrate the Hull-White model to market prices
+#'
+#' Fits the mean reversion and the volatility to market prices of options on zero-coupon bonds and
+#' European swaptions, or the volatility alone with `fix_mean_reversion = TRUE`. It minimizes
+#' `sum(weight * (model - price)^2)` by Levenberg-Marquardt on `log(a)` and `log(sigma)`, with exact
+#' derivatives, and repeats the same result for the same inputs. The result is the fit of the model to
+#' these prices, not a statement that the model is right.
+#'
+#' This is not the method of QuantLib or of the legacy text, and `docs/spec_hull_white.md` lists the
+#' differences. The default objective of QuantLib is the relative price error, which
+#' `weight = 1 / price^2` reproduces. A mean reversion that the data pushes to zero stops at about
+#' `1.49e-8` and sets `at_lower_limit`: a logarithm cannot reach zero. To fit with a mean reversion of
+#' exactly zero, use `initial_mean_reversion = 0` with `fix_mean_reversion = TRUE`.
+#'
+#' @param curve A curve, as for [compute_hull_white_bond_option_value()].
+#' @param bond_options A data frame with `option_type`, `strike`, `maturity`, `bond_maturity`, `price` and
+#'   optionally `weight`, or `NULL`. Maturities are in years from the date of the curve.
+#' @param swaptions A data frame with `payer`, `maturity`, the list columns `payment_times` and `coupons`
+#'   (coupon amounts, without the notional), `price`, and optionally `nominal` (1) and `weight` (1), or `NULL`.
+#' @param initial_mean_reversion,initial_volatility The starting point; positive. A fixed mean
+#'   reversion may be zero.
+#' @param fix_mean_reversion Hold the mean reversion at `initial_mean_reversion`.
+#' @param max_iterations The largest number of iterations. Reaching it is reported in `stop_reason`, not an
+#'   error, so check that column.
+#' @return A one-row tibble with `mean_reversion`, `volatility`, `objective`, `root_mean_square_error`,
+#'   `at_lower_limit`, `iterations`, `stop_reason` (`"cost_change"`, `"small_step"`, `"gradient"`,
+#'   `"no_further_reduction"` or `"max_iterations"`) and the list column `repricing`: a tibble of `instrument`,
+#'   `market_price`, `model_price` and `difference`, bond options first.
+#' @examples
+#' instruments <- create_ois_instruments(c("1Y", "5Y", "10Y", "20Y"), c(0.01, 0.015, 0.02, 0.022), 2L, 1L, 0L)
+#' curve <- bootstrap_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", instruments)
+#' options <- tibble::tibble(
+#'   option_type = "call", strike = c(0.98, 0.95, 0.9), maturity = c(0.5, 1, 2), bond_maturity = c(2, 3, 5)
+#' )
+#' options$price <- compute_hull_white_bond_option_value(
+#'   options$option_type, options$strike, options$maturity, options$bond_maturity, 0.08, 0.012, curve
+#' )
+#' calibrate_hull_white(curve, bond_options = options)
+#' @export
+calibrate_hull_white <- function(curve, bond_options = NULL, swaptions = NULL, initial_mean_reversion = 0.05, initial_volatility = 0.01,
+                                 fix_mean_reversion = FALSE, max_iterations = 200L) {
+  column_or <- function(frame, name, default) if (name %in% names(frame)) as.numeric(frame[[name]]) else rep(default, nrow(frame))
+  need <- function(frame, columns, arg) {
+    missing_columns <- setdiff(columns, names(frame))
+    if (length(missing_columns)) stop("`", arg, "` needs the columns ", paste(missing_columns, collapse = ", "), ".", call. = FALSE)
+  }
+  if (is.null(bond_options)) bond_options <- tibble::tibble(option_type = character(), strike = numeric(), maturity = numeric(), bond_maturity = numeric(), price = numeric())
+  if (is.null(swaptions)) swaptions <- tibble::tibble(payer = logical(), maturity = numeric(), payment_times = list(), coupons = list(), price = numeric())
+  need(bond_options, c("option_type", "strike", "maturity", "bond_maturity", "price"), "bond_options")
+  need(swaptions, c("payer", "maturity", "payment_times", "coupons", "price"), "swaptions")
+  times <- lapply(swaptions$payment_times, as.numeric)
+  coupons <- lapply(swaptions$coupons, as.numeric)
+  if (!identical(lengths(times), lengths(coupons))) stop("Each swaption needs as many coupons as payment times.", call. = FALSE)
+  fit <- checked(.Call(
+    wrap__calibrate_hull_white, as.character(bond_options$option_type), as.numeric(bond_options$strike), as.numeric(bond_options$maturity),
+    as.numeric(bond_options$bond_maturity), as.numeric(bond_options$price), column_or(bond_options, "weight", 1),
+    as.integer(swaptions$payer), as.numeric(swaptions$maturity), as.integer(lengths(times)), as.numeric(unlist(times)), as.numeric(unlist(coupons)),
+    column_or(swaptions, "nominal", 1), as.numeric(swaptions$price), column_or(swaptions, "weight", 1), curve$pointer,
+    as.numeric(initial_mean_reversion), as.numeric(initial_volatility), as_flag(fix_mean_reversion), as.integer(max_iterations)
+  ))
+  market <- c(as.numeric(bond_options$price), as.numeric(swaptions$price))
+  repricing <- tibble::tibble(
+    instrument = rep(c("bond_option", "swaption"), c(nrow(bond_options), nrow(swaptions))),
+    market_price = market, model_price = fit$model_prices, difference = fit$model_prices - market
+  )
+  fit$model_prices <- NULL
+  fit$repricing <- list(repricing)
+  tibble::as_tibble(fit)
+}
+
 #' SABR volatility and calibration
 #'
 #' The expansions of Hagan et al. Forward and strike must be positive; the shifted form is not

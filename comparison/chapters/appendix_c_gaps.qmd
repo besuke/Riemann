@@ -19,7 +19,6 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | II-4.5 | Barone-Adesi-Whaley and Bjerksund-Stensland approximations | Not implemented; the tree is compared |
 | II-4.6 | Sobol sequences and Longstaff-Schwartz | Not implemented |
 | II-5.2.5, II-5.6.4 | CDS cash flow and probability tables | Not returned |
-| II-6.4 | Hull-White calibration | Not implemented |
 | II-6.5, II-7.3 to II-7.5 | BGM/LMM, HJM, FMM | Not implemented |
 | II-7.2 | Simulated Hull-White paths | Not returned |
 | II-8.4.3 | Exercise decisions of the callable bond | Not returned |

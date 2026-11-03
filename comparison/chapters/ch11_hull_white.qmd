@@ -212,9 +212,222 @@ bind_rows(
   show_results()
 ```
 
+## Calibration
+
+`calibrate_hull_white()` fits the mean reversion and the volatility to market prices. The three libraries solve related problems with different methods, so the table below states each one. A difference in the fitted parameters is a difference between methods unless the row says otherwise.
+
+```{r}
+#| label: calibration-conditions
+tribble(
+  ~Aspect, ~`QuantLib v1.42 (C++)`, ~`LagrangeFinance II-6.4`, ~RiemannFinMath,
+  "Instruments", "Calibration helpers, here `SwaptionHelper`", "Options on zero-coupon bonds; 3 fit points, 1 validation point", "Options on zero-coupon bonds and European swaptions",
+  "Input data", "Quoted volatilities, turned into prices by the helpers", "Synthetic prices: the closed form at a = 0.08, sigma = 0.012, flat zero rate 0.03", "Prices given by the caller, as numbers",
+  "Objective", "Sum of `weight * error^2`; the default error is relative, `|market - model| / market`; also price and implied volatility errors", "`sum((10000 * (model - market))^2)`", "Sum of `weight * (model - market)^2`; `weight = 1 / market^2` gives the relative error, `weight = 1e8` the legacy objective; no implied volatility error",
+  "Variables", "a and sigma themselves", "a and sigma themselves", "`ln(a)` and `ln(sigma)`",
+  "Constraint", "`PositiveConstraint`, `p > 0`; a step outside it returns a penalty of 1e10", "Bounds: a in [0.001, 1], sigma in [0.0001, 0.1]", "Positive through the variables; a has a lower limit of 1.49e-8 and no upper bound",
+  "Is a = 0 possible?", "No: the constructor rejects it (`invalid value`) and the search penalizes it. Below 1.49e-8 the price is the limit of a = 0", "No: the lower bound is 0.001", "Not in a fit, because `ln(a)` cannot reach it. Yes when a is held fixed",
+  "Method", "MINPACK `lmdif`, Levenberg-Marquardt with a trust region", "R `optim`, L-BFGS-B", "Levenberg-Marquardt with Marquardt damping on scaled columns; a move in a logarithm is limited to 2 per step",
+  "Jacobian or gradient", "Forward differences, `epsfcn` 1e-8", "Differences with the default `ndeps` of 1e-3", "Automatic differentiation",
+  "Stopping", "`ftol` from `EndCriteria`, `xtol` and `gtol` 1e-8 by default; at most `maxIterations * (n + 1)` evaluations", "`factr = 1e3`, `maxit = 1000`", "Relative reduction 1e-14, step 1e-10, cosine 1e-10, or no reduction with the damping raised 30 times; `max_iterations = 200`",
+  "Start", "The current parameters of the model", "a = 0.05, sigma = 0.01", "a = 0.05, sigma = 0.01 by default",
+  "Fixed parameters", "`fixParameters`", "None", "`fix_mean_reversion`"
+) |>
+  knitr::kable(caption = "The conditions of each calibration")
+```
+
+### Against LagrangeFinance
+
+The fit uses the same three prices, the same start and the same objective. The legacy optimizer stops at an objective of 0.0348, and RiemannFinMath reaches the parameters behind the prices. Those rows are not comparable. The prices and the objective at the legacy parameters are, and they are judged.
+
+```{r}
+#| label: calibration-lagrange-calls
+market_table <- legacy$tbl_bond_option_market |>
+  transmute(option_type = "call", strike, maturity = option_maturity, bond_maturity, price = market_price, weight = 1e8, sample)
+fit_points <- filter(market_table, sample == "fit")
+validation <- filter(market_table, sample == "validation")
+legacy_a <- lagrange_value("hw.calibration.a_pct") / 100
+legacy_sigma <- lagrange_value("hw.calibration.sigma_pct") / 100
+at_legacy <- RiemannFinMath::compute_hull_white_bond_option_value(
+  "call", market_table$strike, market_table$maturity, market_table$bond_maturity, legacy_a, legacy_sigma, option_curve
+)
+fit <- RiemannFinMath::calibrate_hull_white(option_curve, bond_options = select(fit_points, -sample))
+fit_validation <- RiemannFinMath::compute_hull_white_bond_option_value(
+  "call", validation$strike, validation$maturity, validation$bond_maturity, fit$mean_reversion, fit$volatility, option_curve
+)
+# The legacy objective and bounds, changing only the step of the differences in the gradient
+legacy_objective <- function(p) {
+  model <- pmap_dbl(select(fit_points, maturity, bond_maturity, strike), \(maturity, bond_maturity, strike) {
+    legacy$compute_hw_bond_option_price_LRL(maturity, bond_maturity, strike, p[[1]], p[[2]], legacy$hw_initial_zero_rate)
+  })
+  sum((10000 * (model - fit_points$price))^2)
+}
+small_step <- stats::optim(
+  c(a = 0.05, sigma = 0.01), legacy_objective, method = "L-BFGS-B", lower = c(0.001, 0.0001), upper = c(1, 0.1),
+  control = list(maxit = 1000, factr = 1e3, ndeps = c(1e-6, 1e-6))
+)
+```
+
+```{r}
+#| label: calibration-lagrange-results
+different_optimizer <- "Different optimizers: the legacy fit stops before the minimum"
+bind_rows(
+  against_lagrange(
+    sprintf("Model price at the legacy fit, %.1fy on bond %.0fy", market_table$maturity, market_table$bond_maturity), "bp of a bond worth 1",
+    sprintf("hw.calibration.model_bp.%g.%g", market_table$maturity, market_table$bond_maturity), 1e4 * at_legacy
+  ),
+  against_lagrange(
+    "Objective at the legacy fit", "bp squared", "hw.calibration.objective",
+    sum((1e4 * (at_legacy[market_table$sample == "fit"] - fit_points$price))^2)
+  ),
+  lagrange_not_comparable("Fitted mean reversion", "percent", "hw.calibration.a_pct", 100 * fit$mean_reversion, different_optimizer),
+  lagrange_not_comparable("Fitted volatility", "percent", "hw.calibration.sigma_pct", 100 * fit$volatility, different_optimizer),
+  lagrange_not_comparable("Objective at each fit", "bp squared", "hw.calibration.objective", fit$objective, different_optimizer),
+  lagrange_not_comparable(
+    "Validation option at each fit", "bp of a bond worth 1", sprintf("hw.calibration.model_bp.%g.%g", validation$maturity, validation$bond_maturity),
+    1e4 * fit_validation, different_optimizer
+  ),
+  against_lagrange(
+    sprintf("Repricing error at the legacy fit, %.1fy on bond %.0fy", market_table$maturity, market_table$bond_maturity), "bp of a bond worth 1",
+    sprintf("hw.calibration.error_bp.%g.%g", market_table$maturity, market_table$bond_maturity), 1e4 * (at_legacy - market_table$price)
+  ),
+  lagrange_not_comparable(
+    sprintf("Repricing error at each fit, %.1fy on bond %.0fy", market_table$maturity, market_table$bond_maturity), "bp of a bond worth 1",
+    sprintf("hw.calibration.error_bp.%g.%g", market_table$maturity, market_table$bond_maturity),
+    1e4 * (c(fit$repricing[[1]]$model_price, fit_validation) - market_table$price), different_optimizer
+  ),
+  compare_values("Fitted mean reversion against the value behind the prices", "percent", 100 * legacy$hw_reference_a, 100 * fit$mean_reversion, "Value behind the prices"),
+  compare_values("Fitted volatility against the value behind the prices", "percent", 100 * legacy$hw_reference_sigma, 100 * fit$volatility, "Value behind the prices"),
+  compare_values("Fitted mean reversion against `optim` with `ndeps` 1e-6", "percent", 100 * small_step$par[["a"]], 100 * fit$mean_reversion, "Legacy objective, R optim"),
+  compare_values("Fitted volatility against `optim` with `ndeps` 1e-6", "percent", 100 * small_step$par[["sigma"]], 100 * fit$volatility, "Legacy objective, R optim")
+) |>
+  show_results()
+```
+
+The last two rows show the cause of the difference. With the legacy objective and bounds, and only the step of the numerical gradient changed from the default of `optim`, the search reaches the same minimum.
+
+### Against QuantLib
+
+QuantLib cannot fit the bond options through its R binding, so these rows use swaptions with its `SwaptionHelper`. The market prices are the helpers' Black prices. QuantLib uses the price error, its usual tolerances and its own `LevenbergMarquardt`.
+
+```{r}
+#| label: calibration-quantlib-inputs
+helper_table <- tibble(start = c(1L, 2L, 3L, 5L, 7L), years = c(5L, 5L, 5L, 5L, 3L), volatility = c(0.44, 0.41, 0.38, 0.34, 0.31), shift = c(0.002, -0.002, 0.003, -0.003, 0.002))
+knitr::kable(helper_table, digits = 4, caption = "Swaptions: exercise and length in years, Black volatility, strike minus the forward rate")
+helper_days <- function(start_years, years) {
+  begin <- QuantLib::Calendar_advance(QuantLib::NullCalendar(), today, start_years, "Years", "Unadjusted")
+  finish <- QuantLib::Calendar_advance(QuantLib::NullCalendar(), begin, years, "Years", "Unadjusted")
+  helper_schedule <- QuantLib::Schedule(begin, finish, QuantLib::Period("Annual"), QuantLib::NullCalendar(), "Unadjusted", "Unadjusted", "Forward", FALSE)
+  map_int(seq_len(QuantLib::Schedule_size(helper_schedule)) - 1L, \(i) as.integer(QuantLib::Date_serialNumber(QuantLib::Schedule_date(helper_schedule, i)))) -
+    as.integer(QuantLib::Date_serialNumber(today))
+}
+helper_rows <- helper_table |>
+  mutate(
+    days = map2(start, years, helper_days),
+    forward = map_dbl(days, \(d) (exp(-swaption$rate * d[1] / 365) - exp(-swaption$rate * d[length(d)] / 365)) / sum(diff(d) / 365 * exp(-swaption$rate * d[-1] / 365))),
+    strike = forward + shift
+  )
+```
+
+```{r}
+#| label: calibration-quantlib-calls
+ql_calibrate <- function(fix_a, rows = helper_rows) {
+  model <- QuantLib::HullWhite(handle, 0.05, 0.01)
+  engine <- QuantLib::JamshidianSwaptionEngine(model)
+  helpers <- QuantLib::CalibrationHelperVector()
+  made <- pmap(select(rows, start, years, volatility, strike), \(start, years, volatility, strike) {
+    helper <- QuantLib::SwaptionHelper(
+      QuantLib::Period(start, "Years"), QuantLib::Period(years, "Years"), QuantLib::QuoteHandle(QuantLib::SimpleQuote(volatility)), index,
+      QuantLib::Period("Annual"), dc, dc, handle, QuantLib::BlackCalibrationHelper_PriceError_get(), strike, 1
+    )
+    QuantLib::BlackCalibrationHelper_setPricingEngine(helper, engine)
+    QuantLib::CalibrationHelperVector_push_back(helpers, helper)
+    helper
+  })
+  method <- QuantLib::LevenbergMarquardt(1e-8, 1e-8, 1e-8)
+  criteria <- QuantLib::EndCriteria(1000L, 100L, 1e-8, 1e-8, 1e-8)
+  if (fix_a) {
+    QuantLib::CalibratedModel_calibrate(model, helpers, method, criteria, QuantLib::NoConstraint(), numeric(0), c(TRUE, FALSE))
+  } else {
+    QuantLib::CalibratedModel_calibrate(model, helpers, method, criteria)
+  }
+  parameters <- QuantLib::CalibratedModel_params(model)
+  list(
+    a = QuantLib::Array___getitem__(parameters, 0L), sigma = QuantLib::Array___getitem__(parameters, 1L),
+    market = map_dbl(made, \(h) QuantLib::BlackCalibrationHelper_marketValue(h)), model = map_dbl(made, \(h) QuantLib::BlackCalibrationHelper_modelValue(h))
+  )
+}
+ql_fit <- ql_calibrate(FALSE)
+ql_fixed <- ql_calibrate(TRUE)
+riemann_swaptions <- helper_rows |>
+  transmute(
+    payer = shift > 0, maturity = map_dbl(days, \(d) d[1] / 365), payment_times = map(days, \(d) d[-1] / 365),
+    coupons = map2(days, strike, \(d, k) k * diff(d) / 365), price = ql_fit$market
+  )
+riemann_fit <- RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = riemann_swaptions)
+riemann_fixed <- RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = riemann_swaptions, fix_mean_reversion = TRUE)
+```
+
+```{r}
+#| label: calibration-quantlib-results
+small_a <- c(1e-3, 1e-5, 1e-7)
+bind_rows(
+  compare_values("Fitted mean reversion", "percent", 100 * ql_fit$a, 100 * riemann_fit$mean_reversion),
+  compare_values("Fitted volatility", "percent", 100 * ql_fit$sigma, 100 * riemann_fit$volatility),
+  compare_values("Objective, 1e8 times the sum of squares", "bp squared", 1e8 * sum((ql_fit$market - ql_fit$model)^2), 1e8 * riemann_fit$objective),
+  compare_values(sprintf("Model price, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * ql_fit$model, 1e4 * riemann_fit$repricing[[1]]$model_price),
+  compare_values(sprintf("Repricing error, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * (ql_fit$model - ql_fit$market), 1e4 * riemann_fit$repricing[[1]]$difference),
+  compare_values("Volatility with the mean reversion fixed at 0.05", "percent", 100 * ql_fixed$sigma, 100 * riemann_fixed$volatility),
+  compare_values("Objective with the mean reversion fixed at 0.05", "bp squared", 1e8 * sum((ql_fixed$market - ql_fixed$model)^2), 1e8 * riemann_fixed$objective),
+  compare_values(sprintf("Repricing error with a fixed, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * (ql_fixed$model - ql_fixed$market), 1e4 * riemann_fixed$repricing[[1]]$difference),
+  compare_values(
+    sprintf("European value at a mean reversion of %g", small_a), "per 100", map_dbl(small_a, \(a) ql_european(a, swaption$sigma)),
+    map_dbl(small_a, \(a) RiemannFinMath::compute_hull_white_swaption_value(TRUE, times[1], payment_times, coupons, a, swaption$sigma, riemann_curve, nominal = swaption$nominal)$value)
+  )
+) |>
+  show_results()
+```
+
+The last rows are a numerical difference, not a choice of model. `HullWhite::discountBondOption` in QuantLib subtracts exponentials that nearly cancel, so rounding takes over as the mean reversion falls toward its threshold of 1.49e-8. RiemannFinMath factors the same expression and keeps its digits. In a fit whose minimum lies at a mean reversion of zero, QuantLib stops at a small positive value, RiemannFinMath stops at its lower limit and sets `at_lower_limit`, and the two mean reversions then differ for this reason.
+
+### A mean reversion near zero
+
+These swaptions have the same dates and strikes, with Black volatilities that rise with the exercise instead of falling. A positive mean reversion lowers the volatility of later exercises, so these prices favour no mean reversion at all. The first table refits the volatility at each fixed mean reversion.
+
+```{r}
+#| label: near-zero-calls
+near_zero_rows <- mutate(helper_rows, volatility = c(0.30, 0.33, 0.36, 0.40, 0.43))
+ql_near_zero <- ql_calibrate(FALSE, near_zero_rows)
+near_zero_swaptions <- mutate(riemann_swaptions, price = ql_near_zero$market)
+riemann_near_zero <- RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = near_zero_swaptions)
+profile_points <- c(0, riemann_near_zero$mean_reversion, 1e-4, 1e-3, 1e-2, 0.05, 0.1)
+profile <- map(profile_points, \(a) {
+  RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = near_zero_swaptions, initial_mean_reversion = a, fix_mean_reversion = TRUE)
+})
+tibble(
+  mean_reversion = sprintf("%g", profile_points),
+  volatility_percent = map_dbl(profile, \(f) 100 * f$volatility),
+  objective_bp_squared = map_dbl(profile, \(f) 1e8 * f$objective),
+  rise_from_zero_percent = 100 * (map_dbl(profile, \(f) f$objective) / profile[[1]]$objective - 1)
+) |>
+  knitr::kable(digits = c(0, 4, 4, 6), caption = "RiemannFinMath: the objective with the volatility refitted at each mean reversion")
+```
+
+```{r}
+#| label: near-zero-results
+bind_rows(
+  compare_values("Fitted mean reversion", "percent", 100 * ql_near_zero$a, 100 * riemann_near_zero$mean_reversion),
+  compare_values("Fitted volatility", "percent", 100 * ql_near_zero$sigma, 100 * riemann_near_zero$volatility),
+  compare_values("Objective, each with its own prices", "bp squared", 1e8 * sum((ql_near_zero$market - ql_near_zero$model)^2), 1e8 * riemann_near_zero$objective),
+  compare_values(sprintf("Repricing error, swaption %d", seq_len(nrow(near_zero_rows))), "bp of the notional", 1e4 * (ql_near_zero$model - ql_near_zero$market), 1e4 * riemann_near_zero$repricing[[1]]$difference)
+) |>
+  show_results()
+```
+
+The objective rises steadily from a mean reversion of zero, so the minimum lies on the boundary of the allowed range and neither library can reach it: QuantLib excludes zero and `ln(a)` cannot represent it. RiemannFinMath stops at its lower limit, 0.000018 percent above the objective at zero. QuantLib stops at a small positive value with a different volatility, so in this case the parameters, the objective and the repricing errors do not agree. Its objective is above the rise that its mean reversion alone explains, which shows that its volatility has not reached the minimum either. Which of its rounding error and its penalty causes that was not separated.
+
 ## Not available
 
-Hull-White calibration, the exercise decisions of the callable bond, the simulated short-rate paths, HJM, BGM/LMM, FMM and MBS are in the legacy text and not in RiemannFinMath. See @sec-gaps.
+The exercise decisions of the callable bond, the simulated short-rate paths, HJM, BGM/LMM, FMM and MBS are in the legacy text and not in RiemannFinMath. See @sec-gaps.
 
 ## Differences of wrapper and core
 
@@ -228,7 +441,9 @@ tribble(
   "Core",    "European",     "Jamshidian; searches `r*` to 1e-8",                      "Jamshidian; searches to 1e-12 and refines by Newton",
   "Core",    "Bermudan",     "Trinomial tree; converges with the steps",               "Exact conditional expectation on a state grid",
   "Core",    "Model values", "The model holds its parameters and observes the curve",  "Parameters are arguments; no model object",
-  "Core",    "Derivatives",  "Not exposed",                                            "Automatic differentiation for the European swaption"
+  "Core",    "Derivatives",  "Not exposed",                                            "Automatic differentiation for the European swaption",
+  "Wrapper", "Calibration",  "Helpers, a method, end criteria; the model changes in place", "Data frames of quotes; returns the parameters and the repricing",
+  "Core",    "Small a",      "Subtracts nearly equal exponentials; takes the limit below 1.49e-8", "The same expression factored, accurate down to a = 0"
 ) |>
   show_design()
 ```

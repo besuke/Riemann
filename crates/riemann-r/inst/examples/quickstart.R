@@ -77,6 +77,16 @@ print(RiemannFinMath::compute_ois_swap_value(swap, curve, "2026-11-06", fixings)
 print(RiemannFinMath::generate_holidays("brazil_settlement", "2026-01-01", "2026-12-31"))
 print(RiemannFinMath::is_business_day("turkey", c("2026-05-19", "2026-05-20")))
 
+# ---- Hull-White: fit the mean reversion and the volatility to option prices --------------------
+
+hw_curve <- RiemannFinMath::bootstrap_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", instruments)
+hw_options <- tibble(option_type = "call", strike = c(0.98, 0.95, 0.9), maturity = c(0.5, 1, 2), bond_maturity = c(2, 3, 5))
+hw_options$price <- RiemannFinMath::compute_hull_white_bond_option_value(
+  hw_options$option_type, hw_options$strike, hw_options$maturity, hw_options$bond_maturity, 0.08, 0.012, hw_curve
+)
+hw_fit <- RiemannFinMath::calibrate_hull_white(hw_curve, bond_options = hw_options)
+print(hw_fit[c("mean_reversion", "volatility", "stop_reason")])
+
 # ---- many evaluations in parallel; the results do not depend on the number of threads ----------
 
 curves <- tibble(

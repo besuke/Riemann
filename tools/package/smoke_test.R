@@ -84,6 +84,9 @@ check("P9 Bermudan is at least the European", compute_hull_white_bermudan_swapti
 check("P9 a call lowers a callable bond", compute_hull_white_callable_bond_value((1:10) / 2, 1.5, c(rep(0, 9), 100), c(NA, rep(100, 8), NA), 0.15, 0.012, jpy)$issuer_call_value > 0)
 k <- 0.03 * c(0.7, 0.85, 1, 1.15, 1.3)
 check("P9 SABR calibration recovers its own smile", calibrate_sabr("normal", k, compute_sabr_volatility("normal", k, 0.03, 2, 0.03, 0.5, 0.4, -0.3), 0.03, 2, 0.5)$root_mean_square_error < 1e-8)
+hw_options <- tibble::tibble(option_type = "call", strike = c(0.98, 0.95, 0.9), maturity = c(0.5, 1, 2), bond_maturity = c(2, 3, 5))
+hw_options$price <- compute_hull_white_bond_option_value(hw_options$option_type, hw_options$strike, hw_options$maturity, hw_options$bond_maturity, 0.08, 0.012, jpy)
+check("P11 Hull-White calibration recovers its own prices", abs(calibrate_hull_white(jpy, bond_options = hw_options)$mean_reversion - 0.08) < 1e-7)
 
 # P8: credit default swaps, with both engines
 maturity <- as.Date(c("2027-12-20", "2029-12-20", "2031-12-20"))

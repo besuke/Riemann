@@ -94,6 +94,8 @@ used for verification:
   ql/methods/lattices/bsmlattice.hpp
 - crates/riemann/src/hull_white.rs: ql/models/shortrate/onefactormodels/hullwhite.cpp and
   ql/pricingengines/swaption/jamshidianswaptionengine.cpp
+  (the calibration in this file is not derived from QuantLib's code, whose results serve only as
+  test values)
 - crates/riemann/src/sabr.rs: ql/termstructures/volatility/sabr.cpp
 - crates/riemann/src/cds.rs: ql/instruments/creditdefaultswap.cpp,
   ql/pricingengines/credit/midpointcdsengine.cpp, ql/pricingengines/credit/isdacdsengine.cpp and

@@ -5,7 +5,7 @@ mod common;
 
 use common::golden_rows;
 use riemann::curves::{LogDiscountInterpolation, YieldCurve};
-use riemann::hull_white::{compute_bermudan_swaption, compute_callable_bond, compute_jamshidian_swaption, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
+use riemann::hull_white::{MIN_FITTED_MEAN_REVERSION, calibrate_hull_white, CalibrationInstrument, CalibrationQuote, CalibrationSettings, CalibrationStop, compute_bermudan_swaption, compute_callable_bond, compute_jamshidian_swaption, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
 use riemann::interest_rate::{Compounding, InterestRate};
 use riemann::names;
 use riemann::sabr::{compute_sabr_volatility, SabrParameters, SabrVolatilityType};
@@ -124,4 +124,118 @@ fn sabr_volatilities_against_quantlib() {
         assert!(diff < 1e-12, "{v} against {} ({r:?})", n(8));
     }
     println!("SABR: worst difference {worst:e}");
+}
+
+/// QuantLib's `CalibratedModel::calibrate` on swaptions (tools/golden/p11_hull_white_calibration.R).
+#[test]
+fn calibration_against_quantlib() {
+    let curve = curve();
+    let cases = golden_rows("hw_calibration_cases.csv");
+    let instruments = golden_rows("hw_calibration_instruments.csv");
+    assert_eq!(cases.len(), 60);
+    let (mut worst_ql_model, mut worst_ql_model_small_a) = (0.0f64, 0.0f64);
+    let (mut worst_a, mut worst_sigma, mut worst_tight_a, mut worst_tight_sigma) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    let (mut worst_fixed_sigma, mut worst_limit_sigma, mut worst_excess) = (0.0f64, 0.0f64, f64::NEG_INFINITY);
+    let (mut interior, mut limit_cases, mut at_limit) = (0, 0, 0);
+    // QuantLib's objective and each of its model prices against the fit, by kind of case
+    let (mut interior_objective, mut interior_price) = (0.0f64, 0.0f64);
+    let (mut fixed_objective, mut fixed_price) = (0.0f64, 0.0f64);
+    let (mut limit_objective, mut limit_price, mut worst_floor) = (0.0f64, 0.0f64, 0.0f64);
+    for c in &cases {
+        let mode = c[1].as_str();
+        let fix = mode == "price_fixed_a";
+        let rows: Vec<_> = instruments.iter().filter(|r| r[0] == c[0]).collect();
+        assert_eq!(rows.len(), number(&c[9]) as usize);
+        let quotes: Vec<CalibrationQuote> = rows
+            .iter()
+            .map(|r| CalibrationQuote {
+                instrument: CalibrationInstrument::Swaption(swaption_flows(r[1] == "1", &r[2], number(&r[3]))),
+                price: number(&r[4]),
+                weight: if mode == "relative" { 1.0 / number(&r[4]).powi(2) } else { 1.0 },
+            })
+            .collect();
+        // QuantLib's prices at its own parameters, as a check of the instruments
+        let (ql_a, ql_sigma) = (number(&c[5]), number(&c[6]));
+        let model = HullWhite { mean_reversion: ql_a, volatility: ql_sigma, curve: &curve };
+        for (q, r) in quotes.iter().zip(&rows) {
+            let CalibrationInstrument::Swaption(flows) = &q.instrument else { unreachable!() };
+            let difference = (compute_jamshidian_swaption(&model, flows).unwrap() - number(&r[5])).abs();
+            if ql_a > 1e-3 {
+                worst_ql_model = worst_ql_model.max(difference);
+            } else {
+                worst_ql_model_small_a = worst_ql_model_small_a.max(difference);
+            }
+        }
+        let settings = CalibrationSettings {
+            initial_mean_reversion: number(&c[3]),
+            initial_volatility: number(&c[4]),
+            fix_mean_reversion: fix,
+            max_iterations: 500,
+        };
+        let fit = calibrate_hull_white(&quotes, &curve, &settings).unwrap();
+        assert_ne!(fit.stop, CalibrationStop::MaxIterations, "case {}", c[0]);
+        // The objective of any parameters, all priced by Riemann
+        let objective_at = |a: f64, sigma: f64| -> f64 {
+            let model = HullWhite { mean_reversion: a, volatility: sigma, curve: &curve };
+            quotes
+                .iter()
+                .map(|q| {
+                    let CalibrationInstrument::Swaption(flows) = &q.instrument else { unreachable!() };
+                    q.weight * (compute_jamshidian_swaption(&model, flows).unwrap() - q.price).powi(2)
+                })
+                .sum()
+        };
+        let objective_gap = (number(&c[7]) / fit.objective - 1.0).abs();
+        let price_gap = rows.iter().zip(&fit.model_prices).map(|(r, p)| (number(&r[5]) - p).abs()).fold(0.0, f64::max);
+        // not worse than QuantLib's parameters, on the same prices
+        let at_ql = objective_at(ql_a, ql_sigma);
+        worst_excess = worst_excess.max((fit.objective - at_ql) / at_ql);
+        // a local minimum: moving either free parameter by 0.1% does not lower the objective
+        for (da, ds) in [(1.001, 1.0), (0.999, 1.0), (1.0, 1.001), (1.0, 0.999)] {
+            if (fix || fit.at_lower_limit) && da != 1.0 {
+                continue;
+            }
+            let moved = objective_at(fit.mean_reversion * da, fit.volatility * ds);
+            assert!(moved >= fit.objective * (1.0 - 1e-10), "case {}: {moved} {}", c[0], fit.objective);
+        }
+        if fix {
+            worst_fixed_sigma = worst_fixed_sigma.max((fit.volatility - ql_sigma).abs());
+            fixed_objective = fixed_objective.max(objective_gap);
+            fixed_price = fixed_price.max(price_gap);
+        } else if number(&c[10]) > 1e-3 {
+            // well inside the positive range, where the minimum is not at the limit of a
+            worst_a = worst_a.max((fit.mean_reversion - ql_a).abs());
+            worst_sigma = worst_sigma.max((fit.volatility - ql_sigma).abs());
+            worst_tight_a = worst_tight_a.max((fit.mean_reversion - number(&c[10])).abs());
+            worst_tight_sigma = worst_tight_sigma.max((fit.volatility - number(&c[11])).abs());
+            interior_objective = interior_objective.max(objective_gap);
+            interior_price = interior_price.max(price_gap);
+            interior += 1;
+        } else {
+            at_limit += usize::from(fit.at_lower_limit);
+            worst_limit_sigma = worst_limit_sigma.max((fit.volatility - number(&c[11])).abs());
+            limit_objective = limit_objective.max(objective_gap);
+            limit_price = limit_price.max(price_gap);
+            // the limit is a real boundary minimum: with the volatility refitted, the objective rises from a = 0
+            let refit = |a: f64| {
+                let s = CalibrationSettings { initial_mean_reversion: a, fix_mean_reversion: true, initial_volatility: fit.volatility, max_iterations: 500 };
+                calibrate_hull_white(&quotes, &curve, &s).unwrap().objective
+            };
+            let at_zero = refit(0.0);
+            assert!(refit(1e-3) > at_zero && refit(1e-2) > refit(1e-3), "case {}", c[0]);
+            worst_floor = worst_floor.max(refit(MIN_FITTED_MEAN_REVERSION) / at_zero - 1.0);
+            limit_cases += 1;
+        }
+    }
+    println!("instrument {worst_ql_model:e} small a {worst_ql_model_small_a:e} | {interior} interior: a {worst_a:e} sigma {worst_sigma:e} tight a {worst_tight_a:e} sigma {worst_tight_sigma:e} | {limit_cases} limit, {at_limit} at the limit: tight sigma {worst_limit_sigma:e} | fixed {worst_fixed_sigma:e} | excess {worst_excess:e}");
+    println!("objective gap: interior {interior_objective:e} fixed {fixed_objective:e} limit {limit_objective:e}; price gap: interior {interior_price:e} fixed {fixed_price:e} limit {limit_price:e}; floor {worst_floor:e}");
+    assert!(worst_ql_model < 1e-8, "{worst_ql_model}");
+    assert_eq!((interior, limit_cases, at_limit), (11, 29, 29));
+    assert!(worst_a < 5e-5, "{worst_a}");
+    assert!(worst_sigma < 5e-6, "{worst_sigma}");
+    assert!(worst_fixed_sigma < 1e-8, "{worst_fixed_sigma}");
+    assert!(worst_excess < 1e-9, "{worst_excess}");
+    assert!(interior_objective < 5e-7 && fixed_objective < 5e-7, "{interior_objective} {fixed_objective}");
+    assert!(interior_price < 2e-6 && fixed_price < 1e-7, "{interior_price} {fixed_price}");
+    assert!(worst_floor < 1e-6, "{worst_floor}");
 }

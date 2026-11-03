@@ -30,6 +30,7 @@ counterparts <- tribble(
   "compute_bond_values_batch", "None; a loop over BondFunctions_*",
   "bootstrap_hazard_curve", "SpreadCdsHelper, PiecewiseFlatHazardRate",
   "bootstrap_ois_curve", "OISRateHelper, DepositRateHelper, PiecewiseLogCubicDiscount, PiecewiseLogLinearDiscount",
+  "calibrate_hull_white", "CalibratedModel_calibrate, SwaptionHelper, LevenbergMarquardt, EndCriteria",
   "calibrate_sabr", "None in the R binding; R optim around sabrVolatility",
   "compute_cds_maturity", "cdsMaturity",
   "compute_cds_quote_sensitivity", "None; finite difference with a rebuilt curve",

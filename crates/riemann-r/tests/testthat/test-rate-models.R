@@ -45,3 +45,48 @@ test_that("SABR calibration recovers its own smile", {
   expect_error(compute_sabr_volatility("volga", 0.03, 0.03, 1, 0.03, 0.5, 0.4, 0), "SABR volatility type")
   expect_error(compute_sabr_volatility("normal", 0.03, 0.03, 1, 0.03, 0.5, 0.4, 1, on_error = "stop"), "rho")
 })
+
+test_that("a Hull-White calibration recovers the parameters of its own prices", {
+  curve <- hw_curve()
+  options <- tibble::tibble(option_type = "call", strike = c(0.98, 0.95, 0.9, 0.85), maturity = c(0.5, 1, 2, 3), bond_maturity = c(2, 3, 5, 7))
+  options$price <- compute_hull_white_bond_option_value(options$option_type, options$strike, options$maturity, options$bond_maturity, 0.08, 0.012, curve)
+  fit <- calibrate_hull_white(curve, bond_options = options)
+  expect_lt(abs(fit$mean_reversion - 0.08), 1e-8)
+  expect_lt(abs(fit$volatility - 0.012), 1e-9)
+  expect_false(fit$at_lower_limit)
+  expect_false(fit$stop_reason == "max_iterations")
+  expect_named(fit$repricing[[1]], c("instrument", "market_price", "model_price", "difference"))
+  expect_lt(max(abs(fit$repricing[[1]]$difference)), 1e-12)
+  expect_identical(calibrate_hull_white(curve, bond_options = options), fit)
+})
+
+test_that("a Hull-White calibration takes swaptions, weights and a fixed mean reversion", {
+  curve <- hw_curve()
+  swaptions <- tibble::tibble(
+    payer = c(TRUE, FALSE, TRUE), maturity = c(1, 2, 3), payment_times = list(2:4, 3:6, 4:8), coupons = list(rep(0.02, 3), rep(0.02, 4), rep(0.02, 5))
+  )
+  swaptions$price <- purrr::pmap_dbl(swaptions, \(payer, maturity, payment_times, coupons) {
+    compute_hull_white_swaption_value(payer, maturity, payment_times, coupons, 0.1, 0.01, curve)$value
+  })
+  fit <- calibrate_hull_white(curve, swaptions = swaptions)
+  expect_lt(abs(fit$mean_reversion - 0.1), 1e-7)
+  expect_lt(abs(fit$volatility - 0.01), 1e-8)
+  fixed <- calibrate_hull_white(curve, swaptions = swaptions[1, ], initial_mean_reversion = 0.1, fix_mean_reversion = TRUE)
+  expect_identical(fixed$mean_reversion, 0.1)
+  expect_lt(abs(fixed$volatility - 0.01), 1e-8)
+  relative <- calibrate_hull_white(curve, swaptions = dplyr::mutate(swaptions, weight = 1 / price^2))
+  expect_lt(abs(relative$mean_reversion - 0.1), 1e-7)
+})
+
+test_that("a Hull-White calibration reports its limits and rejects bad inputs", {
+  curve <- hw_curve()
+  options <- tibble::tibble(option_type = "call", strike = c(0.98, 0.95, 0.9), maturity = c(0.5, 1, 2), bond_maturity = c(2, 3, 5))
+  options$price <- compute_hull_white_bond_option_value(options$option_type, options$strike, options$maturity, options$bond_maturity, 0.08, 0.012, curve)
+  expect_identical(calibrate_hull_white(curve, bond_options = options, max_iterations = 1L)$stop_reason, "max_iterations")
+  expect_error(calibrate_hull_white(curve), "at least 2 quotes")
+  expect_error(calibrate_hull_white(curve, bond_options = options[, -1]), "needs the columns option_type")
+  expect_error(calibrate_hull_white(curve, bond_options = options, initial_mean_reversion = 0), "must be positive")
+  expect_error(calibrate_hull_white(curve, bond_options = dplyr::mutate(options, weight = 0)), "positive, finite weights")
+  bad <- tibble::tibble(payer = TRUE, maturity = 1, payment_times = list(2:3), coupons = list(0.02), price = 0.01)
+  expect_error(calibrate_hull_white(curve, swaptions = bad, fix_mean_reversion = TRUE), "as many coupons")
+})

@@ -1,11 +1,11 @@
 chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
-ch11_hull_white,Option 0.5y on bond 2y,bp of a bond worth 1,R closed form,106.18923522728862,106.18923522728862,0,NA,REF,NA
-ch11_hull_white,Option 1.0y on bond 3y,bp of a bond worth 1,R closed form,77.73309575826947,77.73309575827392,4.447997525858227e-12,NA,REF,NA
-ch11_hull_white,Option 2.0y on bond 5y,bp of a bond worth 1,R closed form,105.51068225127413,105.51068225127302,-1.1084466677857563e-12,NA,REF,NA
-ch11_hull_white,Option 3.0y on bond 7y,bp of a bond worth 1,R closed form,205.00616693379436,205.00616693379382,-5.400124791776761e-13,NA,REF,NA
-ch11_hull_white,European value,per 100,QuantLib C++,2.400328354245705,2.4003283542429728,-2.7320368189975852e-12,NA,REF,NA
-ch11_hull_white,"European, derivative in mean reversion","per 100, per percent","QuantLib, finite difference",-0.07407574190043675,-0.07407574188186129,1.8575460614123074e-11,NA,REF,NA
-ch11_hull_white,"European, derivative in volatility","per 100, per percent","QuantLib, finite difference",1.915824853635506,1.9158248536294742,-6.0318416927884755e-12,NA,REF,NA
+ch11_hull_white,Option 0.5y on bond 2y,bp of a bond worth 1,R closed form,106.18923522728862,106.1892352272864,-2.2168933355715126e-12,NA,REF,NA
+ch11_hull_white,Option 1.0y on bond 3y,bp of a bond worth 1,R closed form,77.73309575826947,77.73309575827336,3.893774191965349e-12,NA,REF,NA
+ch11_hull_white,Option 2.0y on bond 5y,bp of a bond worth 1,R closed form,105.51068225127413,105.51068225127469,5.542233338928781e-13,NA,REF,NA
+ch11_hull_white,Option 3.0y on bond 7y,bp of a bond worth 1,R closed form,205.00616693379436,205.00616693379547,1.1084466677857563e-12,NA,REF,NA
+ch11_hull_white,European value,per 100,QuantLib C++,2.400328354245705,2.4003283542429736,-2.731148640577885e-12,NA,REF,NA
+ch11_hull_white,"European, derivative in mean reversion","per 100, per percent","QuantLib, finite difference",-0.07407574190043675,-0.07407574188186061,1.8576140625725657e-11,NA,REF,NA
+ch11_hull_white,"European, derivative in volatility","per 100, per percent","QuantLib, finite difference",1.915824853635506,1.9158248536294757,-6.030287380554e-12,NA,REF,NA
 ch11_hull_white,"Bermudan value, tree of 1000 steps",per 100,QuantLib C++,3.0939849464161435,3.0929043224067208,-0.0010806240094227704,NA,REF,NA
 ch11_hull_white,"Bermudan value, tree of 2000 steps",per 100,QuantLib C++,3.0926798498243664,3.0929043224067208,2.2447258235436252e-4,NA,REF,NA
 ch11_hull_white,Bermudan: the tree from 500 to 1000 steps,per 100,QuantLib tree itself,3.0949394119926303,3.0939849464161435,-9.544655764868182e-4,NA,N/C,The tree against itself: how far the baseline still moves
@@ -17,10 +17,10 @@ ch11_hull_white,"Callable, volatility 0.006",per 100,Legacy R function,100.93496
 ch11_hull_white,"Callable, volatility 0.020",per 100,Legacy R function,99.4248694848493,99.42486948484925,-4.263256414560601e-14,NA,REF,NA
 ch11_hull_white,"Callable, grid 161, nodes 16",per 100,Legacy R function,100.44896415624503,100.44896415624466,-3.694822225952521e-13,NA,REF,NA
 ch11_hull_white,"Callable, grid 641, nodes 32",per 100,Legacy R function,100.45211686073664,100.45211686073637,-2.7000623958883807e-13,NA,REF,NA
-ch11_hull_white,Option 0.5y on bond 2y,bp of a bond worth 1,LagrangeFinance II-6.4.3,106.18923522728862,106.18923522728862,0,1e-4,PASS,NA
-ch11_hull_white,Option 1.0y on bond 3y,bp of a bond worth 1,LagrangeFinance II-6.4.3,77.73309575826947,77.73309575827392,4.447997525858227e-12,1e-4,PASS,NA
-ch11_hull_white,Option 2.0y on bond 5y,bp of a bond worth 1,LagrangeFinance II-6.4.3,105.51068225127412,105.51068225127302,-1.0942358130705543e-12,1e-4,PASS,NA
-ch11_hull_white,Option 3.0y on bond 7y,bp of a bond worth 1,LagrangeFinance II-6.4.3,205.00616693379436,205.00616693379382,-5.400124791776761e-13,1e-4,PASS,NA
+ch11_hull_white,Option 0.5y on bond 2y,bp of a bond worth 1,LagrangeFinance II-6.4.3,106.18923522728862,106.1892352272864,-2.2168933355715126e-12,1e-4,PASS,NA
+ch11_hull_white,Option 1.0y on bond 3y,bp of a bond worth 1,LagrangeFinance II-6.4.3,77.73309575826947,77.73309575827336,3.893774191965349e-12,1e-4,PASS,NA
+ch11_hull_white,Option 2.0y on bond 5y,bp of a bond worth 1,LagrangeFinance II-6.4.3,105.51068225127412,105.51068225127469,5.684341886080801e-13,1e-4,PASS,NA
+ch11_hull_white,Option 3.0y on bond 7y,bp of a bond worth 1,LagrangeFinance II-6.4.3,205.00616693379436,205.00616693379547,1.1084466677857563e-12,1e-4,PASS,NA
 ch11_hull_white,Bullet,per 100,LagrangeFinance II-8.4.2,104.68710235460092,104.68710235460104,1.1368683772161603e-13,1e-4,PASS,NA
 ch11_hull_white,Callable,per 100,LagrangeFinance II-8.4.2,100.45163090223686,100.45163090223691,5.684341886080802e-14,1e-4,PASS,NA
 ch11_hull_white,Value of the issuer's call,per 100,LagrangeFinance II-8.4.2,4.235471452364052,4.2354714523641235,7.105427357601002e-14,1e-4,PASS,NA
@@ -31,3 +31,55 @@ ch11_hull_white,"Callable, volatility 0.020",per 100,LagrangeFinance II-8.5,99.4
 ch11_hull_white,"Callable, grid 161, nodes 16",per 100,LagrangeFinance II-8.6,100.44896415624504,100.44896415624466,-3.836930773104541e-13,1e-4,PASS,NA
 ch11_hull_white,"Callable, grid 321, nodes 24",per 100,LagrangeFinance II-8.6,100.45163090223686,100.45163090223691,5.684341886080802e-14,1e-4,PASS,NA
 ch11_hull_white,"Callable, grid 641, nodes 32",per 100,LagrangeFinance II-8.6,100.45211686073664,100.45211686073637,-2.7000623958883807e-13,1e-4,PASS,NA
+ch11_hull_white,"Model price at the legacy fit, 0.5y on bond 2y",bp of a bond worth 1,LagrangeFinance II-6.4.3,106.09397852827772,106.09397852827551,-2.2026824808563106e-12,1e-4,PASS,NA
+ch11_hull_white,"Model price at the legacy fit, 1.0y on bond 3y",bp of a bond worth 1,LagrangeFinance II-6.4.3,77.5836513730882,77.58365137309265,4.447997525858227e-12,1e-4,PASS,NA
+ch11_hull_white,"Model price at the legacy fit, 2.0y on bond 5y",bp of a bond worth 1,LagrangeFinance II-6.4.3,105.56899820598098,105.56899820598153,5.542233338928781e-13,1e-4,PASS,NA
+ch11_hull_white,"Model price at the legacy fit, 3.0y on bond 7y",bp of a bond worth 1,LagrangeFinance II-6.4.3,205.55127469055464,205.55127469055523,5.968558980384842e-13,1e-4,PASS,NA
+ch11_hull_white,Objective at the legacy fit,bp squared,LagrangeFinance II-6.4.3,0.03480821354203165,0.03480821354119209,-8.395645290093512e-13,1e-4,PASS,NA
+ch11_hull_white,Fitted mean reversion,percent,LagrangeFinance II-6.4.3,7.747873878964794,7.999999999997241,0.2521261210324477,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,Fitted volatility,percent,LagrangeFinance II-6.4.3,1.193290276274429,1.1999999999999167,0.006709723725487615,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,Objective at each fit,bp squared,LagrangeFinance II-6.4.3,0.03480821354203165,1.232595164407831e-23,-0.03480821354203165,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,Validation option at each fit,bp of a bond worth 1,LagrangeFinance II-6.4.3,205.55127469055464,205.0061669337988,-0.54510775675584,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,"Repricing error at the legacy fit, 0.5y on bond 2y",bp of a bond worth 1,LagrangeFinance II-6.4.3,-0.09525669901089272,-0.09525669901311318,-2.220459927038121e-12,1e-4,PASS,NA
+ch11_hull_white,"Repricing error at the legacy fit, 1.0y on bond 3y",bp of a bond worth 1,LagrangeFinance II-6.4.3,-0.14944438518127434,-0.14944438517683345,4.440892098500626e-12,1e-4,PASS,NA
+ch11_hull_white,"Repricing error at the legacy fit, 2.0y on bond 5y",bp of a bond worth 1,LagrangeFinance II-6.4.3,0.05831595470684458,0.0583159547073997,5.551184512064822e-13,1e-4,PASS,NA
+ch11_hull_white,"Repricing error at the legacy fit, 3.0y on bond 7y",bp of a bond worth 1,LagrangeFinance II-6.4.3,0.5451077567603102,0.5451077567608653,5.551115123125783e-13,1e-4,PASS,NA
+ch11_hull_white,"Repricing error at each fit, 0.5y on bond 2y",bp of a bond worth 1,LagrangeFinance II-6.4.3,-0.09525669901089272,-3.3306690738754696e-12,0.09525669900756205,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,"Repricing error at each fit, 1.0y on bond 3y",bp of a bond worth 1,LagrangeFinance II-6.4.3,-0.14944438518127434,1.1102230246251565e-12,0.14944438518238456,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,"Repricing error at each fit, 2.0y on bond 5y",bp of a bond worth 1,LagrangeFinance II-6.4.3,0.05831595470684458,0,-0.05831595470684458,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,"Repricing error at each fit, 3.0y on bond 7y",bp of a bond worth 1,LagrangeFinance II-6.4.3,0.5451077567603102,4.440892098500626e-12,-0.5451077567558693,NA,N/C,Different optimizers: the legacy fit stops before the minimum
+ch11_hull_white,Fitted mean reversion against the value behind the prices,percent,Value behind the prices,8,7.999999999997241,-2.758682171588589e-12,NA,REF,NA
+ch11_hull_white,Fitted volatility against the value behind the prices,percent,Value behind the prices,1.2,1.1999999999999167,-8.326672684688674e-14,NA,REF,NA
+ch11_hull_white,Fitted mean reversion against `optim` with `ndeps` 1e-6,percent,"Legacy objective, R optim",7.9999998239397545,7.999999999997241,1.7605748681148725e-7,NA,REF,NA
+ch11_hull_white,Fitted volatility against `optim` with `ndeps` 1e-6,percent,"Legacy objective, R optim",1.1999999955049057,1.1999999999999167,4.495011030059004e-9,NA,REF,NA
+ch11_hull_white,Fitted mean reversion,percent,QuantLib C++,21.402784800990936,21.40284408395649,5.928296555524071e-5,NA,REF,NA
+ch11_hull_white,Fitted volatility,percent,QuantLib C++,2.34534710795748,2.3453515112663372,4.403308857092725e-6,NA,REF,NA
+ch11_hull_white,"Objective, 1e8 times the sum of squares",bp squared,QuantLib C++,623.6144414292822,623.6140383638469,-4.0306543530732597e-4,NA,REF,NA
+ch11_hull_white,"Model price, swaption 1",bp of the notional,QuantLib C++,198.67545118973396,198.67554961360972,9.842387575531575e-5,NA,REF,NA
+ch11_hull_white,"Model price, swaption 2",bp of the notional,QuantLib C++,257.7613610439751,257.76141316529026,5.2121315150088776e-5,NA,REF,NA
+ch11_hull_white,"Model price, swaption 3",bp of the notional,QuantLib C++,267.6623312478729,267.66232683290434,-4.414968543642317e-6,NA,REF,NA
+ch11_hull_white,"Model price, swaption 4",bp of the notional,QuantLib C++,282.1268025114356,282.126700136593,-1.0237484258368568e-4,NA,REF,NA
+ch11_hull_white,"Model price, swaption 5",bp of the notional,QuantLib C++,221.97269982715196,221.9726684095486,-3.1417603366890035e-5,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 1",bp of the notional,QuantLib C++,-2.7455881321942694,-2.7454897083185186,9.842387575087486e-5,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 2",bp of the notional,QuantLib C++,9.190608945203598,9.190661066518745,5.212131514653606e-5,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 3",bp of the notional,QuantLib C++,-17.78604393476317,-17.7860483497317,-4.414968529431462e-6,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 4",bp of the notional,QuantLib C++,0.2733858411214235,0.2732834662788272,-1.0237484259628671e-4,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 5",bp of the notional,QuantLib C++,14.669382938165068,14.669351520561689,-3.141760337932453e-5,NA,REF,NA
+ch11_hull_white,Volatility with the mean reversion fixed at 0.05,percent,QuantLib C++,1.302563073999583,1.3025630334314997,-4.0568083337078065e-8,NA,REF,NA
+ch11_hull_white,Objective with the mean reversion fixed at 0.05,bp squared,QuantLib C++,3885.4904489426644,3885.4904490662007,1.2353621059446596e-7,NA,REF,NA
+ch11_hull_white,"Repricing error with a fixed, swaption 1",bp of the notional,QuantLib C++,-36.65216475487055,-36.65217107985726,-6.324986713934777e-6,NA,REF,NA
+ch11_hull_white,"Repricing error with a fixed, swaption 2",bp of the notional,QuantLib C++,-14.050041022922281,-14.050049530459352,-8.50753707126728e-6,NA,REF,NA
+ch11_hull_white,"Repricing error with a fixed, swaption 3",bp of the notional,QuantLib C++,-23.79379545562648,-23.793805309018055,-9.853391574665693e-6,NA,REF,NA
+ch11_hull_white,"Repricing error with a fixed, swaption 4",bp of the notional,QuantLib C++,32.65112419316891,32.65111275823091,-1.1434938002707895e-5,NA,REF,NA
+ch11_hull_white,"Repricing error with a fixed, swaption 5",bp of the notional,QuantLib C++,26.69204004411726,26.69203208743292,-7.956684338950026e-6,NA,REF,NA
+ch11_hull_white,European value at a mean reversion of 0.001,per 100,QuantLib C++,3.092084359628179,3.0920843594609195,-1.6725953955187833e-10,NA,REF,NA
+ch11_hull_white,European value at a mean reversion of 1e-05,per 100,QuantLib C++,3.10282376392814,3.1022842381838984,-5.395257442417645e-4,NA,REF,NA
+ch11_hull_white,European value at a mean reversion of 1e-07,per 100,QuantLib C++,2.312344531403059,3.1023864530712184,0.7900419216681596,NA,REF,NA
+ch11_hull_white,Fitted mean reversion,percent,QuantLib C++,0.017711334623965812,1.4901161193847656e-6,-0.017709844507846427,NA,REF,NA
+ch11_hull_white,Fitted volatility,percent,QuantLib C++,1.0824888815252387,1.0756431839645098,-0.006845697560728947,NA,REF,NA
+ch11_hull_white,"Objective, each with its own prices",bp squared,QuantLib C++,3913.67877781357,3891.7209962615025,-21.957781552067445,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 1",bp of the notional,QuantLib C++,30.615794515683124,29.48596744979437,-1.1298270658887546,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 2",bp of the notional,QuantLib C++,36.29011059318867,34.75460912774501,-1.5355014654436587,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 3",bp of the notional,QuantLib C++,-4.35580407479888,-6.149194578450555,-1.7933905036516746,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 4",bp of the notional,QuantLib C++,-2.616144537889581,-4.7303208464812005,-2.1141763085916194,NA,REF,NA
+ch11_hull_white,"Repricing error, swaption 5",bp of the notional,QuantLib C++,-40.417354388183405,-41.88349716671868,-1.4661427785352785,NA,REF,NA
