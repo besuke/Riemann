@@ -121,7 +121,7 @@ compare_values(
   show_results()
 ```
 
-The swap itself (legs, fixings, NPV) is not in the public API of RiemannFinMath. See @sec-gaps.
+The swap itself (legs, fixings, NPV) is in the next chapter.
 
 ## SOFR, 2023-09-26
 

@@ -2,14 +2,18 @@
 a <- commandArgs(TRUE); root <- a[1]; qmd <- a[2]; out <- a[3]
 setwd(root); options(warn=-1); suppressPackageStartupMessages({library(tidyverse)})
 tmp <- tempfile(fileext=".R"); invisible(knitr::purl(qmd, output=tmp, quiet=TRUE, documentation=0))
-ex <- parse(tmp, encoding="UTF-8"); env <- new.env(parent=globalenv()); errs <- character()
+ex <- parse(tmp, encoding="UTF-8"); env <- new.env(parent=globalenv()); errs <- character(); summaries <- list()
 sink(file.path(dirname(out), paste0(basename(out), ".log")))
 pdf(NULL)
 for (e in ex) { s <- paste(deparse(e), collapse=" ")
   if (grepl("anim_|gganimate|ggsave|ggplot[(]|show_plot|jgb_yield_url|plan[(]|future_", s)) next
-  r <- tryCatch({ eval(e, env); NULL }, error=function(x) conditionMessage(x))
+  r <- tryCatch({ v <- eval(e, env)
+    # the chapters show these summaries and keep them nowhere, so they are kept here
+    if (grepl("ir_show_swap_summary_GQH", s)) summaries[[as.character(e$title)]] <- v
+    NULL }, error=function(x) conditionMessage(x))
   if (!is.null(r)) errs <- c(errs, paste0(substr(s,1,120)," :: ",r)) }
 sink()
+assign("swap_summaries", summaries, envir=env)
 clean <- function(x, d=0) {
   if (is.data.frame(x)) { keep <- vapply(x, function(c) is.atomic(c)||inherits(c,"Date"), TRUE); return(tibble::as_tibble(x[keep])) }
   if (is.atomic(x)||inherits(x,"Date")) return(x)

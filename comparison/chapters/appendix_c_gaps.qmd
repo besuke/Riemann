@@ -9,7 +9,9 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | II-2.2, II-2.3, II-2.5 | Curves from zero rates or discount factors, flat curves, implied and spreaded curves | Curves come from OIS quotes only. `flat_curve` in this document fits quotes for flat curves |
 | II-2.1 | JGB yield splines | R's `spline`, and no library calculation; the data comes from the network |
 | II-2.4 | Curves from deposits with bonds or swaps | Not implemented; OIS is the focus |
-| II-3.2.3, II-3.3, II-3.4.2 | OIS swap legs, NPV, daily compounding and fixings | Not implemented as an instrument. Only the hand formula for a fair rate is compared |
+| II-3.3.2 | The value after the evaluation date moves | The legacy curve keeps old node dates while its helpers move, a state of QuantLib's that a value has not. Not judged; the OIS swaps chapter explains it |
+| II-3.3.1 | Table of daily compounding | The legacy table holds only missing values, because it reads a column that does not exist. The forward rates are compared instead |
+| QuantLib only | OIS lookback, lockout, observation shift, arithmetic averaging, a spread compounded daily | Not implemented |
 | II-3.4.3, II-3.4.4 | Vanilla swaps and multi-curve valuation | Not implemented |
 | II-3.5, II-3.6 | EONIA curve, its jump adjustment and rate scenarios | Out of scope: OIS is limited to TONAR, ESTR, SOFR and SONIA |
 | II-3.7 | `ModifiedFollowing` on the OIS payments | No argument; always `Following`. Effect shown in the OIS chapter |

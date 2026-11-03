@@ -46,6 +46,30 @@ curve_rows <- bind_rows(
   row(paste0("market.quote_error_bp.", ch3$asw4_curve_summary_tbl$currency), "II-3.7.2", ch3$asw4_curve_summary_tbl$max_abs_quote_error_bp)
 )
 
+summary_rows <- function(prefix, section, summary) {
+  bind_rows(row(paste0(prefix, ".npv"), section, summary$npv), row(paste0(prefix, ".fair_rate_pct"), section, 100 * summary$fair_rate))
+}
+leg_rows <- function(prefix, section, table) {
+  bind_rows(
+    row(sprintf("%s.amount.%02d", prefix, seq_len(nrow(table))), section, table$amount),
+    row(sprintf("%s.date.%02d", prefix, seq_len(nrow(table))), section, serial(table$date))
+  )
+}
+daily <- ch3$jpy_daily_float_cf_tbl
+swap_rows <- bind_rows(
+  summary_rows("ois.short", "II-3.2.3", ch3$swap_summaries[["JPY short OIS summary"]]),
+  summary_rows("ois.after", "II-3.3.2", ch3$swap_summaries[["TONA short OIS summary after fixings"]]),
+  summary_rows("ois.sofr", "II-3.4.2", ch3$swap_summaries[["SOFR OIS summary"]]),
+  leg_rows("ois.short.fixed", "II-3.2.3", ch3$jpy_ois_fixed_cf_tbl),
+  leg_rows("ois.short.overnight", "II-3.2.3", ch3$jpy_ois_overnight_cf_tbl),
+  leg_rows("ois.after.overnight", "II-3.3.2", ch3$jpy_overnight_after_tbl),
+  leg_rows("ois.sofr.overnight", "II-3.4.2", ch3$sofr_overnight_cf_tbl),
+  row(sprintf("ois.daily.days.%02d", seq_len(nrow(daily))), "II-3.3.1", daily$days),
+  row(sprintf("ois.daily.forward_pct.%02d", seq_len(nrow(daily))), "II-3.3.1", 100 * daily$forward_rate_from_df),
+  row(sprintf("ois.daily.amount.%02d", seq_len(nrow(daily))), "II-3.3.1", daily$amount),
+  row("ois.after.pv", "II-3.3.2", ch3$jpy_fixing_diag_tbl$pv)
+)
+
 native <- ch3$asw4_native_asw_tbl |>
   select(currency, accrued = accrued_per_100, fair_spread_bp, spread_annuity, npv, bond_leg_pv, overnight_leg_pv, principal_pv, upfront_pv) |>
   pivot_longer(-currency) |>
@@ -132,5 +156,5 @@ prdc_rows <- bind_rows(
   row(paste0("prdc.volatility.", ch9$volatility_sensitivity_tbl$scenario), "II-9.5.2", ch9$volatility_sensitivity_tbl$prdc_npv)
 )
 
-bind_rows(bond_rows, curve_rows, asw_rows, futures_rows, option_rows, cds_rows, model_rows, prdc_rows) |>
+bind_rows(bond_rows, curve_rows, swap_rows, asw_rows, futures_rows, option_rows, cds_rows, model_rows, prdc_rows) |>
   write_csv("baseline/lagrange_values.csv")

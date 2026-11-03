@@ -7,6 +7,7 @@ use crate::cds::{CdsEngine, ProtectionSide};
 use crate::instruments::PriceType;
 use crate::interest_rate::Compounding;
 use crate::ois::{estr, sofr, sonia, tonar, OisInterpolation, OvernightIndex};
+use crate::ois_swap::SwapSide;
 use crate::options::{BarrierType, Exercise, ForwardModel, OptionType};
 use crate::sabr::SabrVolatilityType;
 use crate::time::{
@@ -205,6 +206,14 @@ pub fn cds_engine(name: &str) -> Result<CdsEngine, Error> {
         "isda" => CdsEngine::Isda,
         other => return unknown("CDS engine", other),
     })
+}
+
+pub fn swap_side(name: &str) -> Result<SwapSide, Error> {
+    match name {
+        "payer" => Ok(SwapSide::Payer),
+        "receiver" => Ok(SwapSide::Receiver),
+        other => Err(Error::InvalidInput { reason: format!("unknown swap side `{other}`: use `payer` or `receiver`") }),
+    }
 }
 
 pub fn compounding(name: &str) -> Result<Compounding, Error> {

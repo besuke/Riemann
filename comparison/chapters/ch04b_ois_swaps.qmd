@@ -1,0 +1,312 @@
+---
+title: "OIS swaps"
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("R/book.R")
+source("R/quantlib_side.R")
+```
+
+The legacy text builds these swaps with QuantLib's `MakeOIS`, through GaussQuant. The verdicts are against its results, at the end of the chapter. The other rows call `MakeOIS` directly, as a reference.
+
+## Curves
+
+The TONAR and SOFR curves of the OIS curves chapter, log-linear and on the legacy text's quotes.
+
+```{r}
+#| label: curves
+chapter <- "part2_quantive_riemann/ch03_ois_swaps_multicurve.qmd"
+as_quotes <- function(x) x |> mutate(tenor = if_else(kind == "overnight_deposit", "ON", tenor)) |> select(tenor, rate)
+tona_date <- "2022-08-19"
+sofr_date <- "2023-09-26"
+tona <- as_quotes(lagrange_object(chapter, "tona_quotes", trade_date_tona = tona_date))
+sofr <- as_quotes(lagrange_object(chapter, "sofr_quotes", trade_date_sofr = sofr_date))
+tona_curve <- RiemannFinMath::build_ois_curve(
+  tona_date, tona_date, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), interpolation = "log_linear"
+) |>
+  RiemannFinMath::with_extrapolation()
+sofr_curve <- RiemannFinMath::build_ois_curve(
+  sofr_date, sofr_date, "sofr", "actual_360", RiemannFinMath::ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L), interpolation = "log_linear"
+) |>
+  RiemannFinMath::with_extrapolation()
+```
+
+## QuantLib set-up
+
+```{r}
+#| label: quantlib-setup
+ql_swap <- function(curve, index, effective, maturity, nominal, fixed_rate) {
+  handle <- QuantLib::YieldTermStructureHandle(curve$curve)
+  builder <- QuantLib::MakeOIS(
+    swapTenor = QuantLib::Period(as.integer(as.Date(maturity) - as.Date(effective)), "Days"), overnightIndex = index, fixedRate = fixed_rate
+  )
+  builder <- QuantLib::MakeOIS_withEffectiveDate(builder, ql_date(effective))
+  builder <- QuantLib::MakeOIS_withTerminationDate(builder, ql_date(maturity))
+  builder <- QuantLib::MakeOIS_withNominal(builder, nominal)
+  builder <- QuantLib::MakeOIS_withDiscountingTermStructure(builder, handle)
+  QuantLib::MakeOIS_makeOIS(builder)
+}
+ql_values <- function(swap) {
+  list(
+    npv = swap$NPV(), fixed = QuantLib::FixedVsFloatingSwap_fixedLegNPV(swap), overnight = QuantLib::OvernightIndexedSwap_overnightLegNPV(swap),
+    fixed_bps = QuantLib::FixedVsFloatingSwap_fixedLegBPS(swap), overnight_bps = QuantLib::OvernightIndexedSwap_overnightLegBPS(swap),
+    fair_rate = QuantLib::FixedVsFloatingSwap_fairRate(swap), fair_spread = QuantLib::FixedVsFloatingSwap_fairSpread(swap)
+  )
+}
+value_rows <- function(prefix, q, r) {
+  bind_rows(
+    compare_values(paste(prefix, "NPV"), "currency", q$npv, r$npv),
+    compare_values(paste(prefix, "fixed leg"), "currency", q$fixed, r$fixed_leg_npv),
+    compare_values(paste(prefix, "overnight leg"), "currency", q$overnight, r$overnight_leg_npv),
+    compare_values(paste(prefix, "fixed leg BPS"), "currency per bp", q$fixed_bps, r$fixed_leg_bps),
+    compare_values(paste(prefix, "overnight leg BPS"), "currency per bp", q$overnight_bps, r$overnight_leg_bps),
+    compare_values(paste(prefix, "fair rate"), "percent", 100 * q$fair_rate, 100 * r$fair_rate),
+    compare_values(paste(prefix, "fair spread"), "percent", 100 * q$fair_spread, 100 * r$fair_spread)
+  )
+}
+```
+
+## One-week TONAR swap
+
+```{r}
+#| label: short-inputs
+short <- list(effective = "2022-08-23", maturity = "2022-08-30", nominal = 1e7, fixed_rate = -0.00015, side = "payer", evaluation = tona_date)
+show_inputs(short)
+```
+
+QuantLib:
+
+```{r}
+#| label: short-quantlib
+ql_set_evaluation_date(tona_date)
+ql_tona <- ql_ois_curve(tona_date, "tonar", QuantLib::Actual365Fixed(), tona$tenor, tona$rate, 2L, interpolation = "log_linear")
+ql_tona_index <- QuantLib::OvernightIndex("TONA", 0L, QuantLib::JPYCurrency(), QuantLib::Japan(), QuantLib::Actual365Fixed(), QuantLib::YieldTermStructureHandle(ql_tona$curve))
+QuantLib::Index_clearFixings(ql_tona_index)
+ql_short <- ql_swap(ql_tona, ql_tona_index, short$effective, short$maturity, short$nominal, short$fixed_rate)
+quantlib_short <- ql_values(ql_short)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: short-riemann
+swap_short <- RiemannFinMath::ois_swap(short$side, short$nominal, short$effective, short$maturity, "tonar", short$fixed_rate)
+print(swap_short)
+riemann_short <- RiemannFinMath::ois_swap_value(swap_short, tona_curve, short$evaluation)
+riemann_short_flows <- RiemannFinMath::ois_swap_cashflows(swap_short, tona_curve, short$evaluation)
+riemann_short_flows |>
+  select(-error) |>
+  knitr::kable(digits = 4, caption = "Cash flows")
+```
+
+```{r}
+#| label: short-results
+value_rows("Short:", quantlib_short, riemann_short) |>
+  show_results()
+```
+
+## Daily rates
+
+```{r}
+#| label: daily
+RiemannFinMath::ois_swap_daily_rates(swap_short, tona_curve, short$evaluation) |>
+  transmute(fixing_date, next_date, days, day_fraction, forward_percent = 100 * forward_rate, applied_percent = 100 * applied_rate) |>
+  knitr::kable(digits = 4, caption = "Each day of the overnight coupon, in percent")
+```
+
+## After fixings
+
+The evaluation date moves to 2022-08-25, and the two fixings of the legacy text are given. QuantLib keeps them in a global store under the index's name, and the evaluation date in a global setting. In RiemannFinMath both are arguments.
+
+**The curve changes on the QuantLib side, in a way RiemannFinMath does not reproduce.** The legacy curve has a fixed reference date and date-relative helpers. When the global evaluation date moves, the helpers' dates move and the curve solves again, but it keeps its old node dates, because `IterativeBootstrap::calculate` only initializes again for a moving curve (`ql/termstructures/iterativebootstrap.hpp`, v1.42). The comment there says that it "makes little sense to use date relative helpers with a non-moving curve if the evaluation date changes".
+
+A RiemannFinMath curve is a value and never changes, and it has no such state. So the rows after fixings are not the same calculation as the legacy text's, and they are not judged. The swap's calculation itself is checked separately: `crates/riemann/tests/golden_ois_swap.rs` gives Riemann the nodes of QuantLib's curve in that state, and it agrees with QuantLib's NPV, legs and fair rate within a relative 1e-11. Below, the unchanged curve and a curve built again for the new date are both shown.
+
+```{r}
+#| label: after-inputs
+fixings <- tibble(date = as.Date(c("2022-08-23", "2022-08-24")), rate = c(-0.000090, -0.000085))
+fixings |>
+  mutate(rate_percent = 100 * rate, .keep = "unused") |>
+  knitr::kable(digits = 4, caption = "Fixings")
+after_date <- "2022-08-25"
+```
+
+QuantLib:
+
+```{r}
+#| label: after-quantlib
+walk2(fixings$date, fixings$rate, \(d, r) ql_tona_index$addFixing(ql_date(d), r))
+ql_set_evaluation_date(after_date)
+quantlib_after <- ql_values(ql_short)
+QuantLib::Index_clearFixings(ql_tona_index)
+ql_set_evaluation_date(tona_date)
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: after-riemann
+tona_curve_after <- RiemannFinMath::build_ois_curve(
+  after_date, tona_date, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), interpolation = "log_linear"
+) |>
+  RiemannFinMath::with_extrapolation()
+riemann_after <- RiemannFinMath::ois_swap_value(swap_short, tona_curve, after_date, fixings)
+riemann_after_flows <- RiemannFinMath::ois_swap_cashflows(swap_short, tona_curve, after_date, fixings)
+riemann_after_rebuilt <- RiemannFinMath::ois_swap_value(swap_short, tona_curve_after, after_date, fixings)
+```
+
+```{r}
+#| label: after-results
+different_curve <- "Different curves: QuantLib's holds old node dates with helpers on the new date"
+bind_rows(
+  not_comparable("NPV, curve unchanged", "currency", quantlib_after$npv, riemann_after$npv, different_curve),
+  not_comparable("Overnight leg, curve unchanged", "currency", quantlib_after$overnight, riemann_after$overnight_leg_npv, different_curve),
+  not_comparable("Fair rate, curve unchanged", "percent", 100 * quantlib_after$fair_rate, 100 * riemann_after$fair_rate, different_curve),
+  not_comparable("NPV, curve built again for the new date", "currency", quantlib_after$npv, riemann_after_rebuilt$npv, different_curve),
+  compare_values("Fixed leg", "currency", quantlib_after$fixed, riemann_after$fixed_leg_npv, note = "Does not depend on the fixings; only the discounting differs")
+) |>
+  show_results()
+```
+
+The same date without the fixings is an error on both sides. RiemannFinMath's message:
+
+```{r}
+#| label: missing-fixing
+tryCatch(RiemannFinMath::ois_swap_value(swap_short, tona_curve, after_date), error = conditionMessage)
+```
+
+## Two-year SOFR swap
+
+```{r}
+#| label: sofr-inputs
+long <- list(effective = "2023-09-28", maturity = "2025-09-28", nominal = 1e7, fixed_rate = 0.05, side = "payer", evaluation = sofr_date)
+show_inputs(long)
+```
+
+QuantLib:
+
+```{r}
+#| label: sofr-quantlib
+ql_set_evaluation_date(sofr_date)
+ql_sofr <- ql_ois_curve(sofr_date, "sofr", QuantLib::Actual360(), sofr$tenor, sofr$rate, 2L, interpolation = "log_linear")
+ql_sofr_index <- QuantLib::Sofr(QuantLib::YieldTermStructureHandle(ql_sofr$curve))
+quantlib_long <- ql_values(ql_swap(ql_sofr, ql_sofr_index, long$effective, long$maturity, long$nominal, long$fixed_rate))
+```
+
+RiemannFinMath:
+
+```{r}
+#| label: sofr-riemann
+swap_long <- RiemannFinMath::ois_swap(long$side, long$nominal, long$effective, long$maturity, "sofr", long$fixed_rate)
+riemann_long <- RiemannFinMath::ois_swap_value(swap_long, sofr_curve, long$evaluation)
+riemann_long_flows <- RiemannFinMath::ois_swap_cashflows(swap_long, sofr_curve, long$evaluation)
+riemann_long_flows |>
+  select(-error) |>
+  knitr::kable(digits = 4, caption = "Cash flows")
+```
+
+```{r}
+#| label: sofr-results
+value_rows("SOFR:", quantlib_long, riemann_long) |>
+  show_results()
+```
+
+## Sensitivity to the quotes
+
+The legacy text has no such example. QuantLib rebuilds the curve with a bump of 1e-6 and revalues. RiemannFinMath uses automatic differentiation and the implicit function theorem.
+
+```{r}
+#| label: sensitivity
+h <- 1e-6
+ql_set_evaluation_date(sofr_date)
+quantlib_npv_on <- function(rates) {
+  curve <- ql_ois_curve(sofr_date, "sofr", QuantLib::Actual360(), sofr$tenor, rates, 2L, interpolation = "log_linear")
+  index <- QuantLib::Sofr(QuantLib::YieldTermStructureHandle(curve$curve))
+  ql_swap(curve, index, long$effective, long$maturity, long$nominal, long$fixed_rate)$NPV()
+}
+quantlib_sensitivity <- map_dbl(seq_len(nrow(sofr)), \(i) {
+  move <- function(sign) {
+    rates <- sofr$rate
+    rates[i] <- rates[i] + sign * h
+    quantlib_npv_on(rates)
+  }
+  (move(1) - move(-1)) / (2 * h) * 1e-4
+})
+riemann_sensitivity <- RiemannFinMath::ois_swap_quote_sensitivity(swap_long, sofr_curve, long$evaluation)
+compare_values(
+  paste("Quote", sofr$tenor), "currency per bp of quote",
+  quantlib_sensitivity, riemann_sensitivity$npv_per_bp[match(sofr$tenor, riemann_sensitivity$tenor)], "QuantLib, finite difference"
+) |>
+  show_results()
+```
+
+## Against LagrangeFinance
+
+The curves, swaps and fixings are those of the legacy text. Its table of daily compounding in II-3.3.1 reads a column that its daily table does not have, so it holds only missing values and is not used. Its table of forward rates is compared instead.
+
+```{r}
+#| label: lagrange
+number_of_keys <- function(prefix) sum(str_starts(lagrange_values$key, fixed(paste0(prefix, "."))))
+amount_keys <- function(prefix) sprintf("%s.amount.%02d", prefix, seq_len(number_of_keys(prefix) / 2))
+date_keys <- function(prefix) sprintf("%s.date.%02d", prefix, seq_len(number_of_keys(prefix) / 2))
+leg_of <- function(flows, name) flows |> filter(leg == name)
+daily_rows <- RiemannFinMath::ois_swap_daily_rates(swap_short, tona_curve, short$evaluation)
+daily_keys <- function(name) sprintf("ois.daily.%s.%02d", name, seq_len(nrow(daily_rows)))
+short_fixed <- leg_of(riemann_short_flows, "fixed")
+short_overnight <- leg_of(riemann_short_flows, "overnight")
+after_overnight <- leg_of(riemann_after_flows, "overnight")
+long_overnight <- leg_of(riemann_long_flows, "overnight")
+bind_rows(
+  against_lagrange("Short: NPV", "currency", "ois.short.npv", riemann_short$npv),
+  against_lagrange("Short: fair rate", "percent", "ois.short.fair_rate_pct", 100 * riemann_short$fair_rate),
+  against_lagrange("Short: fixed amount", "currency", amount_keys("ois.short.fixed"), short_fixed$amount),
+  against_lagrange("Short: fixed payment", "days", date_keys("ois.short.fixed"), as.numeric(short_fixed$payment_date)),
+  against_lagrange("Short: overnight amount", "currency", amount_keys("ois.short.overnight"), short_overnight$amount),
+  against_lagrange("Short: overnight payment", "days", date_keys("ois.short.overnight"), as.numeric(short_overnight$payment_date)),
+  against_lagrange_max("Daily: days, all", "days, largest", daily_keys("days"), daily_rows$days),
+  against_lagrange_max("Daily: forward rates", "percent, largest", daily_keys("forward_pct"), 100 * daily_rows$forward_rate),
+  against_lagrange_max("Daily: interest of each day", "currency, largest", daily_keys("amount"), short$nominal * daily_rows$applied_rate * daily_rows$days / 365),
+  lagrange_not_comparable("After fixings: NPV", "currency", "ois.after.npv", riemann_after$npv, different_curve),
+  lagrange_not_comparable("After fixings: fair rate", "percent", "ois.after.fair_rate_pct", 100 * riemann_after$fair_rate, different_curve),
+  lagrange_not_comparable("After fixings: overnight amount", "currency", amount_keys("ois.after.overnight"), after_overnight$amount, different_curve),
+  lagrange_not_comparable(
+    "After fixings: overnight present value", "currency", "ois.after.pv",
+    after_overnight$amount * RiemannFinMath::discount(tona_curve, after_overnight$payment_date), different_curve
+  ),
+  against_lagrange("SOFR: NPV", "currency", "ois.sofr.npv", riemann_long$npv),
+  against_lagrange("SOFR: fair rate", "percent", "ois.sofr.fair_rate_pct", 100 * riemann_long$fair_rate),
+  against_lagrange(paste("SOFR: overnight amount", seq_len(nrow(long_overnight))), "currency", amount_keys("ois.sofr.overnight"), long_overnight$amount),
+  against_lagrange(paste("SOFR: overnight payment", seq_len(nrow(long_overnight))), "days", date_keys("ois.sofr.overnight"), as.numeric(long_overnight$payment_date))
+) |>
+  show_results()
+```
+
+## Not available
+
+The EONIA case studies of the legacy text (II-3.5, II-3.6) are not compared, because the OIS indices are limited to four. Lookback, lockout, observation shift, arithmetic averaging and a spread compounded daily are in QuantLib and not in RiemannFinMath. See @sec-gaps.
+
+## Differences of wrapper and core
+
+```{r}
+#| label: design
+tribble(
+  ~Layer,    ~Aspect,          ~QuantLib,                                                    ~RiemannFinMath,
+  "Wrapper", "Swap",           "An index on a curve handle, a builder, an engine",            "One call with names; the curve is an argument of the valuation",
+  "Wrapper", "Fixings",        "Added to a global store under the index's name",              "A table passed to each call",
+  "Wrapper", "Evaluation date", "`Settings` singleton: changing it reprices every swap",       "An argument",
+  "Wrapper", "Results",        "One accessor per value; a leg of objects",                    "One table",
+  "Core",    "Evaluation date moves", "The helpers' dates move and the curve solves again on its old node dates", "Nothing changes until a new curve is built",
+  "Core",    "Value dates",    "Optional telescopic schedule; the full one by default",        "The full daily schedule",
+  "Core",    "Forecast",       "Ratio of discount factors after the fixed part",              "The same",
+  "Core",    "Expired swap",   "All values 0 when every flow is paid by the evaluation date", "The same",
+  "Core",    "Risk",           "Not exposed; finite differences by the caller",               "Automatic differentiation and the implicit function theorem"
+) |>
+  show_design()
+```
+
+```{r}
+#| label: finish
+finish_chapter("ch04b_ois_swaps")
+```

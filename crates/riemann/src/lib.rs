@@ -20,6 +20,7 @@ pub mod names;
 pub mod risk;
 pub mod sabr;
 pub mod ois;
+pub mod ois_swap;
 pub mod options;
 pub mod prdc;
 pub mod time;

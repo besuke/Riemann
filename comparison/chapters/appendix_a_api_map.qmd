@@ -15,6 +15,11 @@ counterparts <- tribble(
   ~fn, ~quantlib,
   "accrued_amount", "Bond_accruedAmount",
   "asset_swap_quote_sensitivity", "None; finite difference over GaussQuant",
+  "ois_swap", "MakeOIS",
+  "ois_swap_value", "OvernightIndexedSwap, DiscountingSwapEngine",
+  "ois_swap_cashflows", "FixedVsFloatingSwap_fixedLeg, overnightLeg",
+  "ois_swap_daily_rates", "None; forward rates from the curve",
+  "ois_swap_quote_sensitivity", "None; finite difference with a rebuilt curve",
   "bond_cashflows", "Bond_cashflows, a Leg of objects",
   "value_with_zero_spread", "ZeroSpreadedTermStructure, DiscountingBondEngine",
   "z_spread_from_price", "BondFunctions_zSpread",
@@ -82,7 +87,7 @@ chapter_files <- list.files("chapters", pattern = "^ch.*qmd$", full.names = TRUE
 uses <- map(chapter_files, \(f) {
   text <- readLines(f, encoding = "UTF-8", warn = FALSE) |> paste(collapse = "\n")
   found <- str_match_all(text, "RiemannFinMath::([a-z_0-9]+)")[[1]][, 2] |> unique()
-  tibble(fn = found, chapter = str_extract(basename(f), "ch[0-9]+"))
+  tibble(fn = found, chapter = str_extract(basename(f), "ch[0-9]+[a-z]?"))
 }) |>
   list_rbind() |>
   summarise(Chapters = paste(sort(unique(chapter)), collapse = ", "), .by = fn)

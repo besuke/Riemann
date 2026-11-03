@@ -68,6 +68,14 @@ used for verification:
   ql/methods/finitedifferences/tridiagonaloperator.cpp
 - crates/riemann/src/curves.rs (zero_rate, forward_rate):
   ql/termstructures/yieldtermstructure.cpp
+- crates/riemann/src/ois_swap.rs: ql/instruments/makeois.cpp (Copyright (C) 2009, 2014, 2015 Ferdinando
+  Ametrano; (C) 2015 Paolo Mazzocchi; (C) 2017 Joseph Jeisman; (C) 2017 Fabrice Lecuyer),
+  ql/instruments/overnightindexedswap.cpp and ql/cashflows/overnightindexedcoupon.cpp (Copyright (C)
+  2009 Roland Lichters; (C) 2009 Ferdinando Ametrano; (C) 2014 Peter Caspers; (C) 2017 Joseph Jeisman;
+  (C) 2017 Fabrice Lecuyer), ql/cashflows/overnightindexedcouponpricer.cpp (the same, and (C) 2016
+  Stefano Fondi), ql/instruments/fixedvsfloatingswap.cpp,
+  ql/pricingengines/swap/discountingswapengine.cpp (Copyright (C) 2007, 2009 StatPro Italia srl; (C)
+  2011 Ferdinando Ametrano)
 - crates/riemann/src/instruments/fixed_rate_bond.rs (z_spread_from_price):
   ql/pricingengines/bond/bondfunctions.cpp and ql/cashflows/cashflows.cpp
 - crates/riemann/src/instruments/fixed_rate_bond.rs (value_on_curve):

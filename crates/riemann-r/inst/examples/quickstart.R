@@ -60,6 +60,18 @@ z <- RiemannFinMath::z_spread_from_price(bond, curve, price = 98.5, price_type =
                                          frequency = 2L, settlement_date = settlement)
 cat("Zero spread of a clean price of 98.5:", z, "\n")
 
+# ---- an overnight indexed swap on the curve -----------------------------------------------------
+
+swap <- RiemannFinMath::ois_swap("payer", nominal = 1e7, effective_date = "2026-11-04", termination_date = "2031-11-04",
+                                 index = "tonar", fixed_rate = 0.012)
+print(swap)
+print(RiemannFinMath::ois_swap_value(swap, curve, "2026-11-02"))
+print(RiemannFinMath::ois_swap_cashflows(swap, curve, "2026-11-02"))
+
+# After the start, the past fixings are arguments: there is no global store.
+fixings <- tibble(date = as.Date(c("2026-11-04", "2026-11-05")), rate = c(0.002, 0.0021))
+print(RiemannFinMath::ois_swap_value(swap, curve, "2026-11-06", fixings))
+
 # ---- calendars, for bond settlement and payment dates ------------------------------------------
 
 print(RiemannFinMath::holidays("brazil_settlement", "2026-01-01", "2026-12-31"))

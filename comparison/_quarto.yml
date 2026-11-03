@@ -15,6 +15,7 @@ book:
         - chapters/ch02_fixed_rate_bonds.qmd
         - chapters/ch03_japanese_bond_yields.qmd
         - chapters/ch04_ois_curves.qmd
+        - chapters/ch04b_ois_swaps.qmd
         - chapters/ch05_curve_risk.qmd
     - part: "Bond relative value"
       chapters:

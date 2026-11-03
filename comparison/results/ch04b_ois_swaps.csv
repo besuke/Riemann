@@ -1,0 +1,46 @@
+chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+ch04b_ois_swaps,Short: NPV,currency,QuantLib C++,4.583577596931406,4.583577596931402,-3.552713678800501e-15,NA,REF,NA
+ch04b_ois_swaps,Short: fixed leg,currency,QuantLib C++,28.7672240755912,28.7672240755912,0,NA,REF,NA
+ch04b_ois_swaps,Short: overnight leg,currency,QuantLib C++,-24.183646478659796,-24.1836464786598,-3.552713678800501e-15,NA,REF,NA
+ch04b_ois_swaps,Short: fixed leg BPS,currency per bp,QuantLib C++,-19.178149383561276,-19.178149383561276,0,NA,REF,NA
+ch04b_ois_swaps,Short: overnight leg BPS,currency per bp,QuantLib C++,19.178149383561276,19.178149383561276,0,NA,REF,NA
+ch04b_ois_swaps,Short: fair rate,percent,QuantLib C++,-0.012610000055135528,-0.01261000005513553,-1.734723475976807e-18,NA,REF,NA
+ch04b_ois_swaps,Short: fair spread,percent,QuantLib C++,-0.002389999944864472,-0.00238999994486447,2.168404344971009e-18,NA,REF,NA
+ch04b_ois_swaps,"NPV, curve unchanged",currency,QuantLib C++,6.650498742801762,6.698656417470939,0.0481576746691772,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,"Overnight leg, curve unchanged",currency,QuantLib C++,-22.116748316143788,-22.068567658120262,0.04818065802352578,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,"Fair rate, curve unchanged",percent,QuantLib C++,-0.011532254861284334,-0.011507141391226853,2.5113470057481005e-5,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,"NPV, curve built again for the new date",currency,QuantLib C++,6.650498742801762,7.68769967666751,1.0372009338657477,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,Fixed leg,currency,QuantLib C++,28.76724705894555,28.7672240755912,-2.2983354348582452e-5,NA,REF,Does not depend on the fixings; only the discounting differs
+ch04b_ois_swaps,SOFR: NPV,currency,QuantLib C++,1883.3990780361928,1883.3990780360764,-1.1641532182693481e-10,NA,REF,NA
+ch04b_ois_swaps,SOFR: fixed leg,currency,QuantLib C++,-941699.5390587414,-941699.5390587414,0,NA,REF,NA
+ch04b_ois_swaps,SOFR: overnight leg,currency,QuantLib C++,943582.9381367776,943582.9381367775,-1.1641532182693481e-10,NA,REF,NA
+ch04b_ois_swaps,SOFR: fixed leg BPS,currency per bp,QuantLib C++,-1883.3990781174846,-1883.3990781174846,0,NA,REF,NA
+ch04b_ois_swaps,SOFR: overnight leg BPS,currency per bp,QuantLib C++,1883.3990781174846,1883.3990781174846,0,NA,REF,NA
+ch04b_ois_swaps,SOFR: fair rate,percent,QuantLib C++,5.009999999999569,5.009999999999568,-8.881784197001252e-16,NA,REF,NA
+ch04b_ois_swaps,SOFR: fair spread,percent,QuantLib C++,-0.009999999999568377,-0.00999999999956776,6.175615574477433e-16,NA,REF,NA
+ch04b_ois_swaps,Quote ON,currency per bp of quote,"QuantLib, finite difference",-5.229900125414133e-4,-5.230892548999691e-4,-9.924235855579121e-8,NA,REF,NA
+ch04b_ois_swaps,Quote 1M,currency per bp of quote,"QuantLib, finite difference",-5.206966307014227e-4,-5.207040589259123e-4,-7.4282244896155605e-9,NA,REF,NA
+ch04b_ois_swaps,Quote 3M,currency per bp of quote,"QuantLib, finite difference",0,0,0,NA,REF,NA
+ch04b_ois_swaps,Quote 6M,currency per bp of quote,"QuantLib, finite difference",-6.402842700481415e-8,0,6.402842700481415e-8,NA,REF,NA
+ch04b_ois_swaps,Quote 1Y,currency per bp of quote,"QuantLib, finite difference",-0.08920960826799273,-0.08920959112336277,1.7144629965715197e-8,NA,REF,NA
+ch04b_ois_swaps,Quote 2Y,currency per bp of quote,"QuantLib, finite difference",1883.2178272074088,1883.2178271156226,-9.178620530292392e-8,NA,REF,NA
+ch04b_ois_swaps,Quote 3Y,currency per bp of quote,"QuantLib, finite difference",0,0,0,NA,REF,NA
+ch04b_ois_swaps,Short: NPV,currency,LagrangeFinance II-3.2.3,4.583577596931406,4.583577596931402,-3.552713678800501e-15,1e-4,PASS,NA
+ch04b_ois_swaps,Short: fair rate,percent,LagrangeFinance II-3.2.3,-0.01261000005513552,-0.01261000005513553,-8.673617379884035e-18,1e-4,PASS,NA
+ch04b_ois_swaps,Short: fixed amount,currency,LagrangeFinance II-3.2.3,-28.767123287920526,-28.767123287920526,0,1e-4,PASS,NA
+ch04b_ois_swaps,Short: fixed payment,days,LagrangeFinance II-3.2.3,19234,19234,0,1e-4,PASS,NA
+ch04b_ois_swaps,Short: overnight amount,currency,LagrangeFinance II-3.2.3,-24.183561749824275,-24.18356174982428,-3.552713678800501e-15,1e-4,PASS,NA
+ch04b_ois_swaps,Short: overnight payment,days,LagrangeFinance II-3.2.3,19234,19234,0,1e-4,PASS,NA
+ch04b_ois_swaps,"Daily: days, all","days, largest",LagrangeFinance II-3.3.1,NA,NA,0,1e-4,PASS,NA
+ch04b_ois_swaps,Daily: forward rates,"percent, largest",LagrangeFinance II-3.3.1,NA,NA,8.673617379884035e-18,1e-4,PASS,NA
+ch04b_ois_swaps,Daily: interest of each day,"currency, largest",LagrangeFinance II-3.3.1,NA,NA,0,1e-4,PASS,NA
+ch04b_ois_swaps,After fixings: NPV,currency,LagrangeFinance II-3.3.2,6.650498742801762,6.698656417470939,0.0481576746691772,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,After fixings: fair rate,percent,LagrangeFinance II-3.3.2,-0.01153225486128433,-0.011507141391226853,2.5113470057477535e-5,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,After fixings: overnight amount,currency,LagrangeFinance II-3.3.2,-22.116653158876787,-22.068490339588465,0.04816281928832211,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,After fixings: overnight present value,currency,LagrangeFinance II-3.3.2,-22.116748316143788,-22.068567658120262,0.04818065802352578,NA,N/C,Different curves: QuantLib's holds old node dates with helpers on the new date
+ch04b_ois_swaps,SOFR: NPV,currency,LagrangeFinance II-3.4.2,1883.3990780361928,1883.3990780360764,-1.1641532182693481e-10,1e-4,PASS,NA
+ch04b_ois_swaps,SOFR: fair rate,percent,LagrangeFinance II-3.4.2,5.009999999999569,5.009999999999568,-8.881784197001252e-16,1e-4,PASS,NA
+ch04b_ois_swaps,SOFR: overnight amount 1,currency,LagrangeFinance II-3.4.2,557111.1111138216,557111.1111138216,0,1e-4,PASS,NA
+ch04b_ois_swaps,SOFR: overnight amount 2,currency,LagrangeFinance II-3.4.2,459522.06077262136,459522.0607726213,-5.820766091346741e-11,1e-4,PASS,NA
+ch04b_ois_swaps,SOFR: overnight payment 1,days,LagrangeFinance II-3.4.2,19996,19996,0,1e-4,PASS,NA
+ch04b_ois_swaps,SOFR: overnight payment 2,days,LagrangeFinance II-3.4.2,20360,20360,0,1e-4,PASS,NA

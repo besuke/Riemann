@@ -20,6 +20,7 @@ use riemann::interest_rate::Compounding;
 use riemann::curves::CurveInput;
 use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
+use riemann::ois_swap::{self, Fixings, OisSwap, OisSwapSpec};
 use riemann::options::{self, Greeks, MonteCarloSettings, OptionInputs};
 use riemann::prdc::{self, PrdcMonteCarlo, PrdcSensitivity, PrdcTerms};
 use riemann::risk;
@@ -306,6 +307,178 @@ fn yield_from_price(
         Ok(value_list(rows))
     };
     outcome(rows())
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn ois_swap(
+    side: &str,
+    nominal: f64,
+    effective_date: i32,
+    termination_date: i32,
+    index: &str,
+    fixed_rate: f64,
+    fixed_day_count: &str,
+    spread: f64,
+    fixed_frequency: i32,
+    overnight_frequency: i32,
+    payment_lag: i32,
+) -> List {
+    let build = || -> Core<OisSwap> {
+        OisSwap::new(OisSwapSpec {
+            side: names::swap_side(side)?,
+            nominal,
+            effective_date: date(effective_date)?,
+            termination_date: date(termination_date)?,
+            index: names::overnight_index(index)?,
+            fixed_rate,
+            fixed_day_count: if fixed_day_count.is_empty() { None } else { Some(names::day_count(fixed_day_count)?) },
+            spread,
+            fixed_frequency: fixed_frequency as u32,
+            overnight_frequency: overnight_frequency as u32,
+            payment_lag: payment_lag as u32,
+        })
+    };
+    match build() {
+        Ok(swap) => list!(value = ExternalPtr::new(swap)),
+        Err(e) => failure(e),
+    }
+}
+
+/// Fixings cross the border as two columns of equal length.
+fn fixings_of(dates: &[i32], rates: &[f64]) -> Core<Fixings> {
+    dates.iter().zip(rates).map(|(&d, &r)| Ok((date(d)?, r))).collect()
+}
+
+/// The forecasting curve must be of the swap's index. Any curve can discount.
+fn check_forecast(swap: &OisSwap, curve: &OisCurve) -> Core<()> {
+    if swap.spec.index == curve.spec.index {
+        Ok(())
+    } else {
+        Err(riemann::Error::InvalidInput { reason: "the curve is not of the swap's overnight index".into() })
+    }
+}
+
+#[extendr]
+fn ois_swap_value(
+    swap: ExternalPtr<OisSwap>,
+    curve: ExternalPtr<OisCurve>,
+    discount_curve: ExternalPtr<OisCurve>,
+    evaluation_date: i32,
+    fixing_dates: Vec<i32>,
+    fixing_rates: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        check_forecast(&swap, &curve)?;
+        let fixings = fixings_of(&fixing_dates, &fixing_rates)?;
+        let v = ois_swap::ois_swap_value(&*swap, &curve.curve, &discount_curve.curve, date(evaluation_date)?, &fixings)?;
+        Ok(list!(
+            npv = v.npv,
+            fixed_leg_npv = v.fixed_leg_npv,
+            overnight_leg_npv = v.overnight_leg_npv,
+            fixed_leg_bps = v.fixed_leg_bps,
+            overnight_leg_bps = v.overnight_leg_bps,
+            fair_rate = v.fair_rate.unwrap_or_else(na_real),
+            fair_spread = v.fair_spread.unwrap_or_else(na_real)
+        ))
+    };
+    outcome(run())
+}
+
+/// The coupons of both legs. A coupon that cannot be computed has NA and its message.
+#[extendr]
+fn ois_swap_cashflows(
+    swap: ExternalPtr<OisSwap>,
+    curve: ExternalPtr<OisCurve>,
+    evaluation_date: i32,
+    fixing_dates: Vec<i32>,
+    fixing_rates: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        check_forecast(&swap, &curve)?;
+        let fixings = fixings_of(&fixing_dates, &fixing_rates)?;
+        let evaluation = date(evaluation_date)?;
+        let n = swap.fixed_leg.len() + swap.overnight_leg.len();
+        let (mut leg, mut payment_date) = (Vec::with_capacity(n), Vec::with_capacity(n));
+        let (mut accrual_start, mut accrual_end) = (Vec::with_capacity(n), Vec::with_capacity(n));
+        let mut amounts = Vec::with_capacity(n);
+        for c in &swap.fixed_leg {
+            leg.push("fixed".to_string());
+            payment_date.push(c.payment_date.serial());
+            accrual_start.push(c.accrual_start.serial());
+            accrual_end.push(c.accrual_end.serial());
+            amounts.push(c.amount());
+        }
+        for c in &swap.overnight_leg {
+            leg.push("overnight".to_string());
+            payment_date.push(c.payment_date.serial());
+            accrual_start.push(c.accrual_start.serial());
+            accrual_end.push(c.accrual_end.serial());
+            amounts.push(ois_swap::overnight_coupon_amount(&*swap, c, &curve.curve, evaluation, &fixings));
+        }
+        let (amount, error) = split_rows(amounts);
+        Ok(list!(
+            leg = leg,
+            payment_date = payment_date,
+            accrual_start = accrual_start,
+            accrual_end = accrual_end,
+            amount = amount,
+            error = error
+        ))
+    };
+    outcome(run())
+}
+
+#[extendr]
+fn ois_swap_daily_rates(
+    swap: ExternalPtr<OisSwap>,
+    curve: ExternalPtr<OisCurve>,
+    coupon: i32,
+    evaluation_date: i32,
+    fixing_dates: Vec<i32>,
+    fixing_rates: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        check_forecast(&swap, &curve)?;
+        let fixings = fixings_of(&fixing_dates, &fixing_rates)?;
+        let Some(c) = (coupon as usize).checked_sub(1).and_then(|i| swap.overnight_leg.get(i)) else {
+            return Err(riemann::Error::InvalidInput {
+                reason: format!("coupon {coupon} is outside the {} overnight coupons", swap.overnight_leg.len()),
+            });
+        };
+        let days = ois_swap::overnight_days(c, &curve.curve, date(evaluation_date)?, &fixings)?;
+        Ok(list!(
+            fixing_date = days.iter().map(|d| d.fixing_date.serial()).collect::<Vec<i32>>(),
+            next_date = days.iter().map(|d| d.next_date.serial()).collect::<Vec<i32>>(),
+            day_fraction = days.iter().map(|d| d.day_fraction).collect::<Vec<f64>>(),
+            fixing = days.iter().map(|d| d.fixing.unwrap_or_else(na_real)).collect::<Vec<f64>>(),
+            forward_rate = days.iter().map(|d| d.forward_rate).collect::<Vec<f64>>(),
+            applied_rate = days.iter().map(|d| d.applied_rate).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
+
+#[extendr]
+fn ois_swap_quote_sensitivity(
+    swap: ExternalPtr<OisSwap>,
+    curve: ExternalPtr<OisCurve>,
+    evaluation_date: i32,
+    fixing_dates: Vec<i32>,
+    fixing_rates: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        check_forecast(&swap, &curve)?;
+        let fixings = fixings_of(&fixing_dates, &fixing_rates)?;
+        let rows = ois_swap::ois_swap_quote_sensitivity(&swap, &curve, date(evaluation_date)?, &fixings)?;
+        Ok(list!(
+            instrument = rows.iter().map(|r| r.instrument as i32 + 1).collect::<Vec<i32>>(),
+            pillar_date = rows.iter().map(|r| r.pillar_date.serial()).collect::<Vec<i32>>(),
+            rate = rows.iter().map(|r| r.quote).collect::<Vec<f64>>(),
+            d_npv = rows.iter().map(|r| r.d_npv).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
 }
 
 /// The cash flows of a bond in date order, coupons before a redemption on the same date.
@@ -1989,6 +2162,11 @@ extendr_module! {
     fn bond_values;
     fn duration;
     fn yield_from_price;
+    fn ois_swap;
+    fn ois_swap_value;
+    fn ois_swap_cashflows;
+    fn ois_swap_daily_rates;
+    fn ois_swap_quote_sensitivity;
     fn bond_cashflows;
     fn value_with_zero_spread;
     fn z_spread_from_price;
