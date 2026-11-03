@@ -79,7 +79,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 34 | Assessing duration risk | 債券ヘルパーで米国債カーブ、平行・ツイスト・ストレス | 未対応 | 債券ヘルパー、線形ゼロ補間、区分的スプレッド |
 | 36 | Inflation indexes and curves | HICP、ゼロインフレカーブ、季節性、ZCIIS | 未対応 | インフレ全般 |
 | 37 | Inflation bonds | CPI 債 | 未対応 | インフレ全般 |
-| 39 | Default-probability curves | Upfront・Spread の CDS ヘルパー、MidPoint・ISDA、生存確率カーブ | 一部対応 | Upfront ヘルパー、生存確率・密度のカーブ。Spread ヘルパー、MidPoint、ISDA は対応済み |
+| 39 | Default-probability curves | Upfront・Spread の CDS ヘルパー、MidPoint・ISDA、生存確率カーブ | 一部対応 | Upfront ヘルパー、生存確率・密度のカーブ。Spread ヘルパーの曲線は再現した（`cds.R`。QuantLib 1.42 と一致、Guide のデフォルト確率の表示とは約 0.007 ポイント差） |
 | 40 | Bonds and CDS curves | 信用リスクを含む債券評価、スプレッド換算 | 未対応 | リスキー債券エンジン、Upfront ヘルパー |
 
 章の導入（3、15、30、35、38）、表紙、Feedback には例がない。
