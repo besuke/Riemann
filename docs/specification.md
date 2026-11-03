@@ -191,6 +191,10 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
   - こうした決まりで、1 スレッドでも 32 スレッドでも同じ数値になることを目標とする。実際にそうなっているかは 5.2 のテストで確かめる。結果には、使った乱数の種と並列の設定を記録する。
 - **言語の側の制約と分ける**：R の API は一つのスレッドからしか呼べない。Python には GIL がある。Node.js の JavaScript は一つのスレッドで動く。そこで、並列化は中核の中だけで行い、言語の入口は計算の前後でデータを変換するだけにする。Python では計算中に GIL を解放し、Node.js では重い計算を非同期のタスクとして実行して、JavaScript のスレッドを止めない。ブラウザーの WebAssembly では、標準では1スレッドで計算する（R15）。
 
+### 3.3 分散計算基盤との関係
+
+Azure 上の Linux マシン群と Slurm による分散実行、R のプロセス並列と Rust のスレッド並列の区別、「入口は厳格に、計算コアは単純に」の開発方針、GPU（CUDA）実行の構想は `docs/design_distributed.md` にまとめた【設計案】。
+
 ## 4. 言語の入口
 
 ### 4.1 構成

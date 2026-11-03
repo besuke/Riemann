@@ -111,6 +111,11 @@ option_rows <- bind_rows(
   row("black.implied_volatility_pct", "II-4.2.2", 100 * metric(ch4$analytic_european_tbl, "implied_volatility")),
   row(paste0("tree.european.", ch4$european_comparison_tbl$method), "II-4.3.2", ch4$european_comparison_tbl$npv),
   row(paste0("tree.american.", ch4$american_comparison_tbl$method), "II-4.5", ch4$american_comparison_tbl$npv),
+  row("lsm.npv", "II-4.6.2", metric(ch4$lsm_result$summary, "lsm_npv")),
+  row("lsm.standard_error", "II-4.6.2", metric(ch4$lsm_result$summary, "standard_error")),
+  row(paste0("lsm.exercise_paths.", ch4$exercise_summary_tbl$exercise_step), "II-4.6.2", ch4$exercise_summary_tbl$paths),
+  row(paste0("lsm.exercised_in_regression.", ch4$lsm_result$diagnostics$step), "II-4.6.2", ch4$lsm_result$diagnostics$exercised_paths),
+  row("sobol.first_paths_sum", "II-4.6.1", sum(ch4$sobol_display_tbl$price)),
   row("mc.npv", "II-4.4.1", ch4$mc_result$summary$npv),
   row("mc.standard_error", "II-4.4.1", ch4$mc_result$summary$standard_error),
   row(paste0("greeks.", option_greeks$tbl_gaussquant_greeks$metric), "III-5.2", option_greeks$tbl_gaussquant_greeks$value)

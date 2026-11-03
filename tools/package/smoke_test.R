@@ -87,6 +87,7 @@ check("P9 SABR calibration recovers its own smile", calibrate_sabr("normal", k, 
 hw_options <- tibble::tibble(option_type = "call", strike = c(0.98, 0.95, 0.9), maturity = c(0.5, 1, 2), bond_maturity = c(2, 3, 5))
 hw_options$price <- compute_hull_white_bond_option_value(hw_options$option_type, hw_options$strike, hw_options$maturity, hw_options$bond_maturity, 0.08, 0.012, jpy)
 check("P11 Hull-White calibration recovers its own prices", abs(calibrate_hull_white(jpy, bond_options = hw_options)$mean_reversion - 0.08) < 1e-7)
+check("P11 Longstaff-Schwartz reproduces the legacy value", abs(compute_longstaff_schwartz_value("put", 100, 100, 0.05, 0, 0.2, 367 / 365, 12, 2048)$value - 6.2924853437827819) < 1e-12)
 
 # P8: credit default swaps, with both engines
 maturity <- as.Date(c("2027-12-20", "2029-12-20", "2031-12-20"))

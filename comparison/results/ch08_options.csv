@@ -43,6 +43,37 @@ ch08_options,"Gamma, smoothed payoff",per unit of spot squared,QuantLib C++,0.01
 ch08_options,Vega,per unit of volatility,QuantLib C++,38.66681168028492,38.63594407549712,-0.03086760478780093,NA,N/C,Sampling error
 ch08_options,Theta,per year,QuantLib C++,-5.380398043561679,-5.376570815681124,0.0038272278805555615,NA,N/C,Sampling error
 ch08_options,Value on 1 and on 4 threads,price,RiemannFinMath itself,9.411077962658092,9.411077962658092,0,NA,REF,NA
+ch08_options,"Sobol points, 256 x 12",unit interval,QuantLib C++,NA,NA,0,NA,REF,NA
+ch08_options,"Sobol paths, 256 x 13",price,QuantLib C++,NA,NA,1.7053025658242404e-13,NA,REF,NA
+ch08_options,"American put, degree 0 plus payoff, 2048 calibration and 4096 paths",price,QuantLib C++,6.16828428144466,6.16828428144466,0,NA,REF,Dates with too few paths in the money: 0
+ch08_options,"American put, degree 1 plus payoff, 2048 calibration and 4096 paths",price,QuantLib C++,6.16828428144466,6.16828428144466,0,NA,REF,Dates with too few paths in the money: 0
+ch08_options,"American put, degree 2 plus payoff, 2048 calibration and 4096 paths",price,QuantLib C++,6.193973526190789,6.19397352619079,8.881784197001252e-16,NA,REF,Dates with too few paths in the money: 0
+ch08_options,"American put, degree 3 plus payoff, 4096 calibration and 8192 paths",price,QuantLib C++,6.122022925187184,6.122022925187185,8.881784197001252e-16,NA,REF,Dates with too few paths in the money: 0
+ch08_options,Sum of the 64 Sobol paths of II-4.6.1,price,LagrangeFinance II-4.6.1,84981.45508592845,84981.45508592845,0,1e-4,PASS,NA
+ch08_options,Longstaff-Schwartz value,price,LagrangeFinance II-4.6.2,6.292485343782782,6.292485343782779,-2.6645352591003757e-15,1e-4,PASS,NA
+ch08_options,"Standard error, sd / sqrt(paths)",price,LagrangeFinance II-4.6.2,0.1665305753731754,0.16653057537317534,-5.551115123125783e-17,1e-4,PASS,NA
+ch08_options,Paths stopping at step 2,paths,LagrangeFinance II-4.6.2,28,28,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 3,paths,LagrangeFinance II-4.6.2,52,52,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 4,paths,LagrangeFinance II-4.6.2,57,57,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 5,paths,LagrangeFinance II-4.6.2,109,109,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 6,paths,LagrangeFinance II-4.6.2,107,107,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 7,paths,LagrangeFinance II-4.6.2,100,100,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 8,paths,LagrangeFinance II-4.6.2,87,87,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 9,paths,LagrangeFinance II-4.6.2,38,38,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 10,paths,LagrangeFinance II-4.6.2,78,78,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 11,paths,LagrangeFinance II-4.6.2,96,96,0,1e-4,PASS,NA
+ch08_options,Paths stopping at step 12,paths,LagrangeFinance II-4.6.2,1296,1296,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 11,paths,LagrangeFinance II-4.6.2,575,575,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 10,paths,LagrangeFinance II-4.6.2,459,459,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 9,paths,LagrangeFinance II-4.6.2,355,355,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 8,paths,LagrangeFinance II-4.6.2,392,392,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 7,paths,LagrangeFinance II-4.6.2,338,338,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 6,paths,LagrangeFinance II-4.6.2,282,282,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 5,paths,LagrangeFinance II-4.6.2,193,193,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 4,paths,LagrangeFinance II-4.6.2,105,105,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 3,paths,LagrangeFinance II-4.6.2,69,69,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 2,paths,LagrangeFinance II-4.6.2,28,28,0,1e-4,PASS,NA
+ch08_options,Exercised in the regression at step 1,paths,LagrangeFinance II-4.6.2,0,0,0,1e-4,PASS,NA
 ch08_options,Black 76 value,price,LagrangeFinance II-4.2.1,0.5615965733453677,0.5615965733453677,0,1e-4,PASS,NA
 ch08_options,Black 76 delta,per unit of forward,LagrangeFinance II-4.2.1,0.4355827517855987,0.4355827517855963,-2.3869795029440866e-15,1e-4,PASS,NA
 ch08_options,Black 76 gamma,per unit of forward squared,LagrangeFinance II-4.2.1,0.22396918989345416,0.22396918989345382,-3.3306690738754696e-16,1e-4,PASS,NA

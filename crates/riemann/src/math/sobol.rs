@@ -185,6 +185,8 @@ impl BrownianBridge {
     }
 
     /// Writes to `out` the unit-variance increments that the variates `input` build.
+    // the loop follows QuantLib: the index picks a row of several tables at once
+    #[allow(clippy::needless_range_loop)]
     pub fn transform(&self, input: &[f64], out: &mut [f64]) {
         let size = self.sqrt_dt.len();
         out[size - 1] = self.std_dev[0] * input[0];

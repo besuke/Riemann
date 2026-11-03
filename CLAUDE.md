@@ -18,6 +18,8 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_cds.md` | P8 の CDS |
 | `docs/spec_prdc.md` | P10 の PRDC（簡略モデルの範囲は 1 章、未対応は 4 章） |
 | `docs/spec_ois_swap.md` | P11-2 の OIS スワップ本体（QuantLib の仕様は 2 章、旧版について気づいた点は 5 章） |
+| `docs/spec_longstaff_schwartz.md` | P11-4 の Sobol 列と Longstaff–Schwartz（比較条件と seed は 1・2 章、関数の形の比較は 7 章） |
+| `docs/design_distributed.md` | 分散計算基盤（Azure・Slurm・R と Rust の並列の区別）、開発方針（入口は厳格に、計算コアは単純に）、GPU の構想 |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
 
 ## 決定事項
@@ -87,8 +89,8 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P11-1 | Z スプレッド、債券キャッシュフロー表 | **完了**（`docs/spec_bonds.md` 4.4 節）。QuantLib v1.42 のソースを読み、探索を同じ手順に直した。境界ケース 25 件も一致 |
 | P11-2 | OIS スワップ本体（レグ、NPV、日次複利、Fixing。LagrangeFinance II-3.2〜II-3.4） | **完了**（`docs/spec_ois_swap.md`）。QuantLib と 300 件照合。旧版について気づいた点は同 5 章 |
 | P11-3 | Hull-White の校正（II-6.4） | **完了**（`docs/spec_hull_white.md` 1.1 節）。QuantLib の校正 60 件と照合。`ln(a)`、`ln(sigma)` などの独自の選択と、比較元との違いを同節に明記 |
-| P11-4 | Longstaff–Schwartz、Sobol 列（II-4.6） | **次にやる** |
-| P11-5 | MBS のプリペイメントと OAS（II-8.8） | 未着手 |
+| P11-4 | Longstaff–Schwartz、Sobol 列（II-4.6） | **完了**（`docs/spec_longstaff_schwartz.md`）。Sobol・パス・価格を QuantLib と照合、LagrangeFinance II-4.6.2 を再現。基底・パス共有・パス数の比較は `tools/experiments/p11_ls_function_shape.R` |
+| P11-5 | MBS のプリペイメントと OAS（II-8.8） | **次にやる** |
 | P11-6 | LMM。**当面は LagrangeFinance の Caplet と相関の例（II-7.4）を再現する範囲**（ユーザーの指示）。本格的なモデルへの拡張は別途判断 | 未着手 |
 
 **配布ファイルの更新が未了（機能追加の後）**：`dist/` は 0.2.0 のままで、P11-1 と CDS の新しい引数が入っていない。機能追加が一区切りついた後にまとめて更新する。版の番号は未決（新しい関数があるので 0.3.0 を想定）。変える場所は `Cargo.toml`、`crates/riemann-r/src/rust/Cargo.toml`、`DESCRIPTION`、`README.md`、`docs/spec_r.md` 8 章、`tools/package/smoke_test.R`。手順は `crates/riemann-r/README.md`。

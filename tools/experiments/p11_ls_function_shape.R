@@ -94,14 +94,17 @@ table_b <- map_dfr(c(8L, 10L, 12L, 14L), \(k) {
   shared <- map_dbl(many_seeds, \(s) value_put(2L, n, seed = s)$value - reference)
   separate <- map_dbl(many_seeds, \(s) value_put(2L, evaluation_paths, seed = s, calibration = "separate", calibration_paths = n)$value - reference)
   sobol <- \(calibration, paths) value_put(2L, paths, sequence = "sobol", calibration = calibration, calibration_paths = n)$value - reference
-  tibble(regression_paths = sprintf("2^%d", k), shared = mean(shared), shared_error_of_mean = sd(shared) / sqrt(length(shared)),
-         separate = mean(separate), separate_error_of_mean = sd(separate) / sqrt(length(separate)),
+  error_of_mean <- \(x) sd(x) / sqrt(length(x))
+  shared_error <- error_of_mean(shared)
+  separate_error <- error_of_mean(separate)
+  tibble(regression_paths = sprintf("2^%d", k), shared = mean(shared), shared_error_of_mean = shared_error,
+         separate = mean(separate), separate_error_of_mean = separate_error,
          sobol_shared = sobol("in_sample", n), sobol_overlapping = sobol("overlapping", evaluation_paths),
          sobol_separate = sobol("separate", evaluation_paths))
 })
 
 # ---- C. the number of regression paths -----------------------------------------------------------------------------
-table_c <- expand_grid(degree = c(0L, 2L, 4L), k = c(6L, 8L, 10L, 12L, 14L, 16L)) |>
+table_c <- tidyr::expand_grid(degree = c(0L, 2L, 4L), k = c(6L, 8L, 10L, 12L, 14L, 16L)) |>
   pmap_dfr(\(degree, k) {
     runs <- map_dfr(seeds, \(s) summarise_run(value_put(degree, evaluation_paths, seed = s, calibration = "separate", calibration_paths = 2^k), evaluation_paths))
     finite <- runs$boundary_6[is.finite(runs$boundary_6)]
@@ -140,14 +143,14 @@ crossings <- curves |>
 
 figure <- ggplot(curves, aes(spot, difference, colour = factor(basis, levels = bases$basis))) +
   geom_hline(yintercept = 0, colour = "grey40") +
-  geom_rect(data = tree_boundary |> filter(step %in% c(6L, 11L)), inherit.aes = FALSE,
-            aes(xmin = low, xmax = high, ymin = -Inf, ymax = Inf), fill = "grey80", alpha = 0.6) +
+  geom_vline(data = tree_boundary |> filter(step %in% c(6L, 11L)) |> mutate(step = step),
+             aes(xintercept = (low + high) / 2), linetype = "dashed", colour = "grey30") +
   geom_line(linewidth = 0.6) +
-  facet_wrap(~ paste("step", step), scales = "free_y") +
-  coord_cartesian(xlim = c(70, strike)) +
+  facet_wrap(~ factor(paste("step", step), levels = c("step 6", "step 11"))) +
+  coord_cartesian(xlim = c(60, strike), ylim = c(-3, 3)) +
   labs(x = "Spot S (in the money: S < K = 100)", y = "(K - S) - C_t(S)", colour = "Basis",
        title = "Exercise where the curve is above zero",
-       subtitle = "Regression on 2^14 pseudo-random paths, seed 1. Grey band: the boundary of the binomial tree") +
+       subtitle = "Regression on 2^14 pseudo-random paths, seed 1. Dashed line: the boundary of the binomial tree") +
   theme_minimal()
 ggsave(file.path(out_dir, "p11_ls_continuation.png"), figure, width = 9, height = 4.5, dpi = 120)
 

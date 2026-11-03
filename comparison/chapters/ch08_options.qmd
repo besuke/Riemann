@@ -239,6 +239,103 @@ compare_values("Value on 1 and on 4 threads", "price", one_thread$value, four_th
   show_results()
 ```
 
+## Sobol paths and Longstaff-Schwartz
+
+The three layers are compared in order, so that a difference can be placed: the Sobol points, the paths built from them, and the value. QuantLib's `SobolRsg` uses its seed only for the direction integers beyond 32 dimensions, so at 12 dimensions the seed changes nothing and RiemannFinMath has none. QuantLib's `MCAmericanEngine` regresses on the powers of S / K plus the payoff, starts its calibration and its valuation from the same first point of the sequence, exercises every path in the money at a date with too few of them, and passes no Brownian bridge. These are set explicitly on the RiemannFinMath side.
+
+```{r}
+#| label: lsm-inputs
+lsm <- list(today = "2026-11-02", days = 367L, spot = 100, strike = 100, rate = 0.05, dividend = 0, volatility = 0.2, steps = 12L)
+lsm$time <- lsm$days / 365
+show_inputs(c(lsm, list(type = "put", exercise = "American on the 12 dates of the grid")))
+```
+
+```{r}
+#| label: lsm-quantlib
+ql_set_evaluation_date(lsm$today)
+lsm_today <- ql_date(lsm$today)
+lsm_dc <- QuantLib::Actual365Fixed()
+lsm_flat <- function(r) QuantLib::YieldTermStructureHandle(QuantLib::FlatForward(lsm_today, r, lsm_dc, "Continuous"))
+lsm_process <- QuantLib::BlackScholesMertonProcess(
+  QuantLib::QuoteHandle(QuantLib::SimpleQuote(lsm$spot)), lsm_flat(lsm$dividend), lsm_flat(lsm$rate),
+  QuantLib::BlackVolTermStructureHandle(QuantLib::BlackConstantVol(lsm_today, QuantLib::NullCalendar(), lsm$volatility, lsm_dc))
+)
+ql_sobol <- QuantLib::SobolRsg(lsm$steps, 1L)
+ql_points <- t(vapply(1:256, \(i) QuantLib::SampleRealVector_value(QuantLib::SobolRsg_nextSequence(ql_sobol)), numeric(lsm$steps)))
+ql_generator <- QuantLib::GaussianSobolPathGenerator(
+  lsm_process, lsm$time, lsm$steps,
+  QuantLib::GaussianLowDiscrepancySequenceGenerator(QuantLib::UniformLowDiscrepancySequenceGenerator(lsm$steps, 1L)), FALSE
+)
+ql_paths <- t(vapply(1:256, \(i) {
+  sample <- ql_generator$`next`()$value()
+  vapply(0:lsm$steps, \(j) as.numeric(sample$value(j)), 1)
+}, numeric(lsm$steps + 1L)))
+ql_american <- function(order, calibration, samples) {
+  option <- QuantLib::VanillaOption(QuantLib::PlainVanillaPayoff("Put", lsm$strike), QuantLib::AmericanExercise(lsm_today, ql_date(as.Date(lsm$today) + lsm$days)))
+  # NA reaches QuantLib as Null in this binding; NULL crashes R
+  engine <- QuantLib::MCLDAmericanEngine(lsm_process, lsm$steps, NA_integer_, FALSE, FALSE, samples, NA_real_, NA_integer_, 0L,
+                                         order, QuantLib::LsmBasisSystem_Monomial_get(), calibration)
+  QuantLib::Instrument_setPricingEngine(option, engine)
+  option$NPV()
+}
+lsm_cases <- tibble(order = c(0L, 1L, 2L, 3L), calibration = c(2048L, 2048L, 2048L, 4096L), samples = c(4096L, 4096L, 4096L, 8192L))
+```
+
+```{r}
+#| label: lsm-riemann
+riemann_points <- RiemannFinMath::generate_sobol_sequence(lsm$steps, 256)
+riemann_paths <- RiemannFinMath::generate_black_scholes_paths(lsm$spot, lsm$rate, lsm$dividend, lsm$volatility, lsm$time, lsm$steps, 256)
+riemann_path_matrix <- matrix(riemann_paths$price, nrow = 256, byrow = TRUE)
+riemann_american <- function(order, calibration, samples) {
+  RiemannFinMath::compute_longstaff_schwartz_value(
+    "put", lsm$spot, lsm$strike, lsm$rate, lsm$dividend, lsm$volatility, lsm$time, lsm$steps, samples, basis_degree = order,
+    include_payoff = TRUE, calibration = "overlapping", calibration_paths = calibration, few_in_the_money = "exercise"
+  )
+}
+riemann_lsm <- pmap(lsm_cases, riemann_american)
+# the legacy text: quadratic, no payoff, the same 2048 paths for regression and valuation, hold when too few paths
+legacy_conditions <- RiemannFinMath::compute_longstaff_schwartz_value(
+  "put", lsm$spot, lsm$strike, lsm$rate, lsm$dividend, lsm$volatility, lsm$time, lsm$steps, 2048
+)
+```
+
+```{r}
+#| label: lsm-results
+bind_rows(
+  compare_max("Sobol points, 256 x 12", "unit interval", ql_points, riemann_points),
+  compare_max("Sobol paths, 256 x 13", "price", ql_paths, riemann_path_matrix),
+  compare_values(
+    sprintf("American put, degree %d plus payoff, %d calibration and %d paths", lsm_cases$order, lsm_cases$calibration, lsm_cases$samples), "price",
+    pmap_dbl(lsm_cases, ql_american), map_dbl(riemann_lsm, "value"), "QuantLib C++",
+    sprintf("Dates with too few paths in the money: %d", map_int(riemann_lsm, "dates_with_too_few_paths"))
+  )
+) |>
+  show_results()
+```
+
+Against the legacy text, under its own conditions:
+
+```{r}
+#| label: lsm-lagrange
+legacy_exercise <- legacy_conditions$exercise[[1]]
+# the legacy table counts the paths that never pay at maturity, with those that pay there
+legacy_counts <- legacy_exercise$paths + ifelse(legacy_exercise$step == lsm$steps, legacy_conditions$unexercised_paths, 0L)
+shown <- legacy_exercise$step >= 2L
+regression <- legacy_conditions$regressions[[1]]
+bind_rows(
+  against_lagrange("Sum of the 64 Sobol paths of II-4.6.1", "price", "sobol.first_paths_sum", sum(riemann_path_matrix[1:64, ])),
+  against_lagrange("Longstaff-Schwartz value", "price", "lsm.npv", legacy_conditions$value),
+  against_lagrange("Standard error, sd / sqrt(paths)", "price", "lsm.standard_error", legacy_conditions$standard_error),
+  against_lagrange(sprintf("Paths stopping at step %d", legacy_exercise$step[shown]), "paths",
+                   sprintf("lsm.exercise_paths.%d", legacy_exercise$step[shown]), legacy_counts[shown]),
+  against_lagrange(sprintf("Exercised in the regression at step %d", regression$step), "paths",
+                   sprintf("lsm.exercised_in_regression.%d", regression$step), regression$exercised_paths)
+) |>
+  show_results()
+```
+
+The legacy value is in-sample: the regression and the valuation use the same paths, which biases it upward. The same put exercisable on the same 12 dates is worth about 6.0547 on a fine binomial tree, 0.238 below. `docs/spec_longstaff_schwartz.md` compares the bases, the sharing of paths and the number of paths, and `tools/experiments/p11_ls_function_shape.R` reproduces it.
+
 ## Against LagrangeFinance
 
 The legacy text values the Black 76 option through a process whose spot is the forward and whose dividend yield equals the rate, so the same form is used here. Its implied volatility uses QuantLib's default accuracy of 1e-4 and is not judged, because `compute_implied_volatility` here uses 1e-10.
@@ -280,7 +377,7 @@ bind_rows(
 
 ## Not available
 
-Approximation engines (Barone-Adesi-Whaley, Bjerksund-Stensland), Sobol sequences and Longstaff-Schwartz are in the legacy text and not in RiemannFinMath. See @sec-gaps.
+Approximation engines (Barone-Adesi-Whaley, Bjerksund-Stensland) are in the legacy text and not in RiemannFinMath. Sobol sequences stop at 32 dimensions and are not scrambled. See @sec-gaps.
 
 ## Differences of wrapper and core
 
@@ -294,7 +391,10 @@ tribble(
   "Wrapper", "Failure",           "An R error from SWIG",                                       "`on_error`: an error, or `NA` with a message per row",
   "Core",    "Greeks",            "Formulas written for each engine",                           "Automatic differentiation of the price",
   "Core",    "Tree delta and gamma", "From the first steps of the tree",                        "The same; other sensitivities are derivatives of the tree",
-  "Core",    "Monte Carlo",       "Generators, path objects and statistics classes",            "Pathwise derivatives on path vectors; results depend on the seed and not on the threads"
+  "Core",    "Monte Carlo",       "Generators, path objects and statistics classes",            "Pathwise derivatives on path vectors; results depend on the seed and not on the threads",
+  "Core",    "Sobol",             "Jaeckel's table to 32 dimensions by default, random beyond it; other tables (Joe-Kuo and others) as options", "Jaeckel's table only, 32 dimensions",
+  "Core",    "Longstaff-Schwartz", "Basis plus payoff; calibration and valuation from the same start; exercise when too few paths", "Each of these is an argument",
+  "Core",    "Regression",        "SVD",                                                      "QR with column pivoting"
 ) |>
   show_design()
 ```
