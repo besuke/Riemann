@@ -35,7 +35,7 @@ pub enum OptionType {
 }
 
 impl OptionType {
-    fn sign(self) -> f64 {
+    pub(crate) fn sign(self) -> f64 {
         match self {
             OptionType::Call => 1.0,
             OptionType::Put => -1.0,
@@ -73,7 +73,7 @@ fn invalid<T>(reason: String) -> Result<T, Error> {
 }
 
 impl<T: Operand> OptionInputs<T> {
-    fn check(&self) -> Result<(), Error> {
+    pub(crate) fn check(&self) -> Result<(), Error> {
         for (name, x) in [
             ("spot", self.spot),
             ("strike", self.strike),

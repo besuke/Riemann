@@ -19,6 +19,10 @@ use riemann::hull_white::{
     SwaptionFlows,
 };
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
+use riemann::longstaff_schwartz::{
+    self, CalibrationPaths, FewInTheMoney, LongstaffSchwartzSettings, PathSequence,
+};
+use riemann::math::sobol::SobolSequence;
 use riemann::interest_rate::Compounding;
 use riemann::curves::CurveInput;
 use riemann::names;
@@ -1947,6 +1951,137 @@ fn compute_implied_volatility(
     value_list(rows)
 }
 
+fn path_sequence(sequence: &str, brownian_bridge: bool, seed: f64) -> Core<PathSequence> {
+    match sequence {
+        "sobol" => Ok(PathSequence::Sobol { brownian_bridge }),
+        "pseudo" if !brownian_bridge => Ok(PathSequence::Pseudo { seed: seed as u64 }),
+        "pseudo" => Err(riemann::Error::InvalidInput { reason: "the Brownian bridge is only for the Sobol sequence".into() }),
+        other => Err(riemann::Error::InvalidInput { reason: format!("sequence must be sobol or pseudo, not {other}") }),
+    }
+}
+
+#[extendr]
+fn generate_sobol_sequence(dimension: i32, points: f64) -> List {
+    let run = || -> Core<List> {
+        if !(points >= 1.0) || points > 1e8 {
+            return Err(riemann::Error::InvalidInput { reason: format!("points must be from 1 to 1e8, not {points}") });
+        }
+        let dimension = dimension.max(0) as usize;
+        let mut sobol = SobolSequence::new(dimension)?;
+        let mut point = vec![0.0; dimension];
+        let mut values = Vec::with_capacity(points as usize * dimension);
+        for _ in 0..points as usize {
+            sobol.next_point(&mut point);
+            values.extend_from_slice(&point);
+        }
+        Ok(list!(values = values))
+    };
+    outcome(run())
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn generate_black_scholes_paths(
+    spot: f64,
+    rate: f64,
+    dividend_yield: f64,
+    volatility: f64,
+    time: f64,
+    steps: i32,
+    paths: f64,
+    sequence: &str,
+    brownian_bridge: bool,
+    seed: f64,
+) -> List {
+    let run = || -> Core<List> {
+        let inputs = option_inputs([spot, spot, rate, dividend_yield, volatility, time]);
+        let sequence = path_sequence(sequence, brownian_bridge, seed)?;
+        let prices = longstaff_schwartz::generate_black_scholes_paths(&inputs, steps.max(0) as usize, paths.max(0.0) as usize, sequence)?;
+        Ok(list!(prices = prices))
+    };
+    outcome(run())
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_longstaff_schwartz_value(
+    option_type: &str,
+    spot: f64,
+    strike: f64,
+    rate: f64,
+    dividend_yield: f64,
+    volatility: f64,
+    time: f64,
+    steps: i32,
+    paths: f64,
+    sequence: &str,
+    brownian_bridge: bool,
+    seed: f64,
+    basis_degree: i32,
+    include_payoff: bool,
+    calibration: &str,
+    calibration_paths: f64,
+    few_in_the_money: &str,
+    exercise_steps: Vec<i32>,
+) -> List {
+    let run = || -> Core<List> {
+        let invalid = |reason: String| riemann::Error::InvalidInput { reason };
+        let count = calibration_paths.max(0.0) as usize;
+        let calibration = match calibration {
+            "in_sample" => CalibrationPaths::InSample,
+            "overlapping" => CalibrationPaths::Overlapping(count),
+            "separate" => CalibrationPaths::Separate(count),
+            other => return Err(invalid(format!("calibration must be in_sample, overlapping or separate, not {other}"))),
+        };
+        let few_in_the_money = match few_in_the_money {
+            "hold" => FewInTheMoney::Hold,
+            "exercise" => FewInTheMoney::Exercise,
+            other => return Err(invalid(format!("few_in_the_money must be hold or exercise, not {other}"))),
+        };
+        if exercise_steps.iter().any(|&s| s < 1) {
+            return Err(invalid("exercise steps must be positive".into()));
+        }
+        let settings = LongstaffSchwartzSettings {
+            steps: steps.max(0) as usize,
+            paths: paths.max(0.0) as usize,
+            sequence: path_sequence(sequence, brownian_bridge, seed)?,
+            basis_degree: basis_degree.max(0) as usize,
+            include_payoff,
+            calibration,
+            few_in_the_money,
+            exercise_steps: (!exercise_steps.is_empty()).then(|| exercise_steps.iter().map(|&s| s as usize).collect()),
+        };
+        let r = longstaff_schwartz::compute_longstaff_schwartz(
+            names::parse_option_type(option_type)?,
+            &option_inputs([spot, strike, rate, dividend_yield, volatility, time]),
+            &settings,
+        )?;
+        let g = &r.regressions;
+        Ok(list!(
+            value = r.value,
+            standard_error = r.standard_error,
+            european_value = r.european_value,
+            exercise_probability = r.exercise_probability,
+            unexercised_paths = r.unexercised_paths as i32,
+            dates_with_too_few_paths = r.dates_with_too_few_paths as i32,
+            exercise_step = r.exercise.iter().map(|e| e.step as i32).collect::<Vec<_>>(),
+            exercise_time = r.exercise.iter().map(|e| e.time).collect::<Vec<_>>(),
+            exercise_paths = r.exercise.iter().map(|e| e.paths as i32).collect::<Vec<_>>(),
+            step = g.iter().map(|d| d.step as i32).collect::<Vec<_>>(),
+            time = g.iter().map(|d| d.time).collect::<Vec<_>>(),
+            in_the_money_paths = g.iter().map(|d| d.in_the_money_paths as i32).collect::<Vec<_>>(),
+            exercised_paths = g.iter().map(|d| d.exercised_paths as i32).collect::<Vec<_>>(),
+            mean_immediate_value = g.iter().map(|d| d.mean_immediate_value).collect::<Vec<_>>(),
+            mean_realized_continuation = g.iter().map(|d| d.mean_realized_continuation).collect::<Vec<_>>(),
+            exercise_boundary = g.iter().map(|d| d.exercise_boundary.unwrap_or_else(na_real)).collect::<Vec<_>>(),
+            too_few_paths = g.iter().map(|d| d.too_few_paths).collect::<Vec<_>>(),
+            coefficient_counts = g.iter().map(|d| d.coefficients.as_ref().map_or(0, |c| c.len() as i32)).collect::<Vec<_>>(),
+            coefficients = g.iter().flat_map(|d| d.coefficients.clone().unwrap_or_default()).collect::<Vec<_>>()
+        ))
+    };
+    outcome(run())
+}
+
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_monte_carlo_european_value(
@@ -2277,6 +2412,9 @@ extendr_module! {
     fn compute_forward_option_value;
     fn compute_implied_volatility;
     fn compute_monte_carlo_european_value;
+    fn generate_sobol_sequence;
+    fn generate_black_scholes_paths;
+    fn compute_longstaff_schwartz_value;
     fn compute_remaining_years;
     fn compute_price_from_simple_rate;
     fn compute_simple_rate_from_price;
