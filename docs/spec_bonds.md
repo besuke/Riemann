@@ -1,5 +1,7 @@
 # 債券の仕様（P2、草案）
 
+> **関数名について**：公開関数の名前は 2026-11-03 に変更した（`docs/naming_migration.md`、方針は `docs/specification.md` 4.4 節）。この文書の使い方と API の説明は新名である。照合結果の節は当時の記録なので、旧名のまま残している場合がある。旧名は対応表で読み替える。Rust のメソッド（`bond.clean_price(...)` など）は改名していない。
+
 P2 では、固定利付債のキャッシュフロー、経過利子、価格と利回り、割引を作る。QuantLib の仕様に依拠し、QuantLib R バインディング 1.42 の実行結果と照合する。進め方は、仕様書（[specification.md](specification.md)）の 10 章と同じく、小さく分けて照合しながら広げる。
 
 記述の区分（【ソース確認】【実行照合済み】【設計案】）は仕様書と同じである。
@@ -30,7 +32,7 @@ P2 では、固定利付債のキャッシュフロー、経過利子、価格�
 
 ### 2.1 実装
 
-- `cashflows.rs`：`FixedRateCoupon`（支払日、額面、利率、日数計算、計算期間、参照期間）、`CashFlow`（クーポン・償還）、レグを作る `fixed_rate_leg`、経過利子 `accrued_amount`。クーポンの額は QuantLib と同じ計算順（`N * ((1 + r t) - 1)`）で求める。
+- `cashflows.rs`：`FixedRateCoupon`（支払日、額面、利率、日数計算、計算期間、参照期間）、`CashFlow`（クーポン・償還）、レグを作る `create_fixed_rate_leg`、経過利子 `accrued_amount`。クーポンの額は QuantLib と同じ計算順（`N * ((1 + r t) - 1)`）で求める。
 - `instruments/fixed_rate_bond.rs`：`FixedRateBondSpec` から `FixedRateBond::new` で債券（スケジュールとキャッシュフロー）を作る。`settlement_date(評価日)`、`notional(日付)`、`accrued_amount(受渡日)`。
 - QuantLib との違い：
   - 評価日は引数で渡す（グローバル設定を使わない）。
@@ -157,9 +159,9 @@ P2-1 の 1,500 本の債券それぞれに、乱数（種を固定）で評価�
 
 **実装**
 
-- `math::solver1d::brent_with_step`：`solve(f, accuracy, guess, step)` を手順どおりに移した。前の版は `guess` の両側から探索を始めていて、経路が違っていた。Brent の本体は `brent` と共有する。
+- `math::solver1d::brent_with_step`：`solve(f, accuracy, guess, step)` を手順どおりに移した。前の版は `guess` の両側から探索を始めていて、経路が違っていた。Brent の本体は `solve_brent` と共有する。
 - `YieldCurve::zero_spreaded`：外挿の設定を元のカーブから引き継ぐ（前の版は常に外挿なし）。
-- `FixedRateBond::value_with_zero_spread`、`z_spread_from_price`。R は `bond_cashflows`、`value_with_zero_spread`、`z_spread_from_price`。
+- `FixedRateBond::value_with_zero_spread`、`compute_z_spread_from_price`。R は `get_bond_cashflows`、`compute_bond_value_with_zero_spread`、`compute_z_spread_from_price`。
 
 **QuantLib との差**：エラーの文面の日付の書式（QuantLib は `March 20th, 2031`、Riemann は ISO の形式）。スプレッドは Quote ではなく数値で、観測の仕組みはない。計算の手順に差はない。
 
@@ -197,7 +199,7 @@ P2-1 の 1,500 本の債券それぞれに、乱数（種を固定）で評価�
 
 ### 5.2 実装
 
-- `yen_bond.rs`：`remaining_years`、`price_from_simple_rate`、`simple_rate_from_price`、`price_from_compound_yield`、`compound_yield_from_price`、`risk_from_simple_rate`、`risk_from_compound_yield`（`YenBondRisk`）、`truncate_decimal`。式は残存年数 T を引数に取り、日付からの T は `remaining_years` で求める。
+- `yen_bond.rs`：`compute_remaining_years`、`compute_price_from_simple_rate`、`compute_simple_rate_from_price`、`compute_price_from_compound_yield`、`compute_compound_yield_from_price`、`compute_risk_from_simple_rate`、`compute_risk_from_compound_yield`（`YenBondRisk`）、`truncate_decimal`。式は残存年数 T を引数に取り、日付からの T は `compute_remaining_years` で求める。
 - 計算の順序、切り捨て、ニュートン法の止め方、R の `^`（底が 1 か指数が 0 なら 1、指数 2 は `x * x`）を GaussQuant と同じにした。
 - 利払い回数・複利回数は正の整数（GaussQuant は正の実数を受け付ける）。
 

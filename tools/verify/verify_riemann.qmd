@@ -580,7 +580,7 @@ bind_rows(
   mutate(results$direct_vs_csv, target = "Bonds", .before = 1),
   mutate(ois_results$direct_vs_csv, target = "OIS curves", .before = 1)
 ) |>
-  mutate(max_abs_diff = sprintf("%.2e", max_abs_diff)) |>
+  mutate(max_abs_diff = if_else(compared == 0L, "not run", sprintf("%.2e", max_abs_diff))) |>
   knitr::kable(col.names = c("Target", "Values compared", "Exactly equal", "Both error", "One-sided error", "Max abs. diff."))
 
 calendar_results$direct_vs_csv |>

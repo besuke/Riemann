@@ -123,6 +123,7 @@ LagrangeFinance の入力と計算例で、RiemannFinMath（Rust）を基準と�
 - R は PATH にないので、フルパスで実行する：`"C:/Program Files/R/R-4.6.0/bin/Rscript.exe"`。R の中のパスは `C:/...` の形で書く（`/c/...` は使えない）。
 - 照合用の値は Riemann のルートから `tools/golden/*.R` を実行し、`tests/golden/` に書き出す。仕様が変わらなければ作り直さない。
 - 検証レポート：`tools/verify/verify_riemann.qmd`（`quarto render`）と `verify_common.R`、`verify_bonds.R`、`verify_ois.R`、`verify_calendars.R`。R の入口（P4）ができるまで、`crates/riemann/examples/` の `verify_bonds.rs`、`verify_ois.rs`、`verify_calendars.rs` と CSV で受け渡す。OIS は 4 指標の `MonotonicLogCubic` と対数線形を比べる。
+- **アプリ制御**：Smart App Control が有効で、新しくビルドした未署名の実行ファイルを止めることがある（`os error 4551`、`Permission denied`）。起動元によらず、同じファイルでも判定が変わる。イベントログは `Microsoft-Windows-CodeIntegrity/Operational`（ID 3033、3077）。回避しない。レポートで止まった例だけ、環境変数 `RIEMANN_VERIFY_SKIP_EXAMPLES`（例：`verify_bonds`）で飛ばす。その CSV 経路は「not run」と表示される。
 - `Rscript -e` は引用符で失敗しやすいので、スクリプトファイルにする。パッケージのインストールは `devtools::install` ではなく `R CMD INSTALL`（pak の DLL がアプリ制御で止められる）。
 - `rustfmt` にファイルを渡すと `mod` 先まで整形する。テストのファイルでは `tests/common/mod.rs` まで変わるので、`--config skip_children=true` を付けて確かめる。
 - CRLF のファイルは MSYS の sed で CR が消える。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。

@@ -1,5 +1,7 @@
 # OIS カーブの仕様（P3）
 
+> **関数名について**：公開関数の名前は 2026-11-03 に変更した（`docs/naming_migration.md`、方針は `docs/specification.md` 4.4 節）。この文書の使い方と API の説明は新名である。照合結果の節は当時の記録なので、旧名のまま残している場合がある。旧名は対応表で読み替える。Rust のメソッド（`bond.clean_price(...)` など）は改名していない。
+
 P3 では、O/N 預金と OIS の気配から割引カーブを作る。TONAR の対数線形（P3-1）、`MonotonicLogCubic`（P3-3）、€STR・SOFR・SONIA（P3-2）を実装済みである。OIS の指標はこの 4 つに限定する。計算の方式は QuantLib C++ で定める。R バインディングは照合に使うだけで、Rust の設計を R バインディングに合わせることはしない。
 
 記述の区分（【ソース確認】【実行確認】【実行照合済み】【設計案】）は仕様書と同じ考え方である。【実行確認】は R バインディングで動作を確かめた少数の例で、Riemann との数値照合である【実行照合済み】とは区別する。
@@ -254,7 +256,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 
 - 評価日、基準日、カレンダー、日数計算、受渡日数、支払頻度、支払ラグは既定値を持たず、すべて明示する。QuantLib の既定を市場の規約として扱わないためである。4 通貨の規約は、`tonar()` のように指標の値を返す関数で用意する。返すのは普通の値なので、項目を変えて使える。
 - 指標は `OvernightIndex` の値であり、4 通貨の違いはデータだけにする。継承は使わない。
-- 再現した気配（`quote_repricing`）をカーブと一緒に返す。これは GaussQuant と同じ情報で、「入力レートの再現」の確認に使う。
+- 再現した気配（`get_quote_repricing`）をカーブと一緒に返す。これは GaussQuant と同じ情報で、「入力レートの再現」の確認に使う。
 - P3 の範囲外（渡されたらエラー）：過去のフィキシング、lookback、lockout、算術平均、スプレッド、forward start、割引用の別カーブ、3 次以外の補間の追加。市場の規約の値は、一次資料で確認できた項目だけ `tonar()` などの値に入れ、未確認の項目は呼び出す側に明示させる。
 
 ## 5. 段階と照合の案【設計案】
@@ -292,8 +294,8 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 
 ### 8.1 実装
 
-- `ois.rs`：`OvernightIndex`、`tonar()`、`OisCurveInstrument`、`OisInterpolation`、`OisCurveSpec`、`build_ois_curve`（`OisCurve`、`QuoteRepricing`）。評価日、基準日、カレンダー、日数計算、受渡日数、支払頻度、支払ラグはすべて引数で渡し、グローバルな状態を使わない。
-- `math/solver1d.rs`：`brent`（QuantLib と同じ手順）。`curves.rs`：`YieldCurve::discount_nodes`。
+- `ois.rs`：`OvernightIndex`、`tonar()`、`OisCurveInstrument`、`OisInterpolation`、`OisCurveSpec`、`bootstrap_ois_curve`（`OisCurve`、`QuoteRepricing`）。評価日、基準日、カレンダー、日数計算、受渡日数、支払頻度、支払ラグはすべて引数で渡し、グローバルな状態を使わない。
+- `math/solver1d.rs`：`solve_brent`（QuantLib と同じ手順）。`curves.rs`：`YieldCurve::discount_nodes`。
 - 計算順は 2.4 節のとおり QuantLib に合わせ、固定レグの支払日も QuantLib と同じく ModifiedFollowing で調整する（`FixedVsFloatingSwap`）。
 - この段階の補間は対数線形である。仕様の `MonotonicLogCubic` は 9 章で実装した。
 
@@ -328,7 +330,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 ### 9.1 実装
 
 - `math/interpolation.rs`：`MonotonicCubicSpline`（Spline、Hyman の単調化、両端の 2 階微分 0）。三重対角の解き方（`TridiagonalOperator::solveFor`）と係数の計算順は QuantLib と同じ。v1.42 の `cubicinterpolation.hpp`、`tridiagonaloperator.cpp` を行単位で読んだ。
-- `math/solver1d.rs`：`finite_difference_newton_safe`、`close_with`。`brent` は収束時に根で目的関数を呼ぶようにした（2.6 節）。
+- `math/solver1d.rs`：`solve_finite_difference_newton_safe`、`close_with`。`solve_brent` は収束時に根で目的関数を呼ぶようにした（2.6 節）。
 - `curves.rs`：`LogDiscountInterpolation`、`YieldCurve::interpolated_discounts`、`zero_rate`、`forward_rate`。
 - `ois.rs`：`OisInterpolation::MonotonicLogCubic` と反復ループ。解法の戻り値ではなく、目的関数に最後に渡した値を節点に残す（2.6 節）。
 - 再試行はしない（QuantLib の既定 `maxAttempts = 1`）。

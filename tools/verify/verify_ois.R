@@ -509,7 +509,11 @@ verify_ois <- function(root = find_riemann_root()) {
   message("Bootstrapping the same curves with Riemann, called directly ...")
   riemann <- riemann_ois_values(runs)
   message("Comparing the direct call with the CSV path ...")
-  via_csv <- compare_direct_with_csv(riemann, riemann_ois_values_csv(runs, root), c("case", "interpolation", "kind", "key"))
+  via_csv <- if (example_is_skipped("verify_ois")) {
+    csv_path_not_run()
+  } else {
+    compare_direct_with_csv(riemann, riemann_ois_values_csv(runs, root), c("case", "interpolation", "kind", "key"))
+  }
   comparison <- compare_ois_values(quantlib, riemann)
   results <- list(scenarios = scenarios, comparison = comparison, method_check = method_check, direct_vs_csv = via_csv,
                   quotes = ois_quote_reproduction(scenarios, comparison))

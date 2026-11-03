@@ -6,12 +6,12 @@
 
 | 計算 | 関数（R） | 手法 | QuantLib での対応 |
 |---|---|---|---|
-| ヨーロピアン | `european_option` | Black–Scholes–Merton | `AnalyticEuropeanEngine` |
-| ヨーロピアン、アメリカン | `binomial_option` | Cox–Ross–Rubinstein の二項木 | `BinomialCRRVanillaEngine` |
-| バリア（連続監視） | `barrier_option` | Reiner–Rubinstein の解析解 | `AnalyticBarrierEngine` |
-| フォワードのオプション | `forward_option` | Black、Bachelier | `blackFormula`、`bachelierBlackFormula` |
-| インプライド・ボラティリティ | `implied_volatility` | Brent（1e-7〜4） | `impliedVolatility` |
-| モンテカルロ | `monte_carlo_european` | 満期まで 1 ステップ、対称変数 | なし（解析値と比べる） |
+| ヨーロピアン | `compute_european_option_value` | Black–Scholes–Merton | `AnalyticEuropeanEngine` |
+| ヨーロピアン、アメリカン | `compute_binomial_option_value` | Cox–Ross–Rubinstein の二項木 | `BinomialCRRVanillaEngine` |
+| バリア（連続監視） | `compute_barrier_option_value` | Reiner–Rubinstein の解析解 | `AnalyticBarrierEngine` |
+| フォワードのオプション | `compute_forward_option_value` | Black、Bachelier | `blackFormula`、`bachelierBlackFormula` |
+| インプライド・ボラティリティ | `compute_implied_volatility` | Brent（1e-7〜4） | `impliedVolatility` |
+| モンテカルロ | `compute_monte_carlo_european_value` | 満期まで 1 ステップ、対称変数 | なし（解析値と比べる） |
 
 入力は数値である。金利と配当利回りは一定の連続複利で、時間は年である。カーブと日付で与えた場合の QuantLib の計算と同じ値になるのは、`時間 = 日数 / 365` のフラットなカーブの場合である。ボラティリティ 0 と時間 0 は、QuantLib では計算できるが、ここではエラーとする。
 

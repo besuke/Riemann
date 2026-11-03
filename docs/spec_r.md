@@ -1,5 +1,7 @@
 # R の入口の仕様（P4）
 
+> **関数名について**：公開関数の名前は 2026-11-03 に変更した（`docs/naming_migration.md`、方針は `docs/specification.md` 4.4 節）。この文書の使い方と API の説明は新名である。照合結果の節は当時の記録なので、旧名のまま残している場合がある。旧名は対応表で読み替える。Rust のメソッド（`bond.clean_price(...)` など）は改名していない。
+
 R から RiemannFinMath を直接呼ぶ入口である。場所は `crates/riemann-r`。リポジトリ名と Rust の crate 名（`riemann`、`riemann-r`）は変えていない。金融の計算はすべて Rust の `riemann` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
 
 | 区分 | 状態 |
@@ -81,7 +83,7 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 
 【実行確認】不明なカレンダーでは `panicked` の表示なしで R のエラーになる。確認用の `panic_for_test` では `src\lib.rs` の行とメッセージが表示され、R のエラーになり、その後も計算を続けられる（`tests/testthat/test-direct.R`）。
 
-`bond_values` の `duration_macaulay` は、複利の利回りでないときは NA で、行のエラーにしない。Macaulay デュレーションは複利でしか定義されないからである。`duration(..., "macaulay")` を直接呼ぶと、エラーになる。
+`compute_bond_values` の `duration_macaulay` は、複利の利回りでないときは NA で、行のエラーにしない。Macaulay デュレーションは複利でしか定義されないからである。`duration(..., "macaulay")` を直接呼ぶと、エラーになる。
 
 ## 5. 並列バッチ
 
@@ -112,6 +114,12 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 **ビルドによる差**：R パッケージは Rtools の GNU ツールチェーン、CSV 経由と `cargo test` は MSVC でビルドする。GNU ビルドでは、OIS の照合用データ全件（TONAR・€STR・SOFR・SONIA の 1,700 通りのうち、作成できた 1,515 カーブ）で、節点、任意の日付の割引係数、再現した気配の QuantLib R パッケージとの差が**ちょうど 0** だった。債券（180 シナリオ）も、QuantLib 側を和で求めるダーティ価格を除いて完全に一致した。同じ入力で MSVC では最下位ビットの差が出るので、これまで「未確認の推定」としてきた微小な差の主な原因は、数学ライブラリーの違いと判断できる（`docs/spec_ois.md` 10.6 節）。ただし、関数ごとに個別には確かめていない。5 章のとおり、x87 の精度もこの差に関わる。
 
 **入力気配の再現は別の判定である**：GNU ビルドでも、€STR の 2 カーブ（3 商品）と SOFR の 1 カーブ（2 商品）は基準未達のままである（`docs/spec_ois.md` 10.3 節）。
+
+### 6.1 改名後の検証レポート【実行確認】
+
+2026-11-03、公開関数の改名の後に `tools/verify/verify_riemann.qmd` を描画した（`RIEMANN_VERIFY_SKIP_EXAMPLES=verify_bonds`）。QuantLib との照合は改名後の公開 API で動き、表の判定はすべて PASS である。
+
+`verify_bonds` の CSV 経路（直接呼び出しとの一致の確認）だけ未実行である。`target/release/examples/verify_bonds.exe` を Windows のアプリ制御が止めた（`os error 4551`、イベント ID 3033、3077、`pwsh.exe` からの直接実行でも同じ）。同時に動く別のエージェントやプロセスはなかった。債券の値そのものは QuantLib と照合している。
 
 ## 7. 未対応
 

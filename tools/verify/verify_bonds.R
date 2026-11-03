@@ -255,9 +255,12 @@ verify_bonds <- function(n_bonds = 60L, scenarios_per_bond = 3L, seed = 20261110
   message("Valuing the same scenarios with Riemann, called directly ...")
   riemann <- riemann_bond_values(inputs)
   message("Comparing the direct call with the CSV path ...")
-  riemann_csv <- riemann_bond_values_csv(inputs, root)
   long <- function(values) pivot_longer(select(values, -settlement_date), -row, names_to = "measure", values_to = "value")
-  via_csv <- compare_direct_with_csv(long(riemann), long(riemann_csv), c("row", "measure"))
+  via_csv <- if (example_is_skipped("verify_bonds")) {
+    csv_path_not_run()
+  } else {
+    compare_direct_with_csv(long(riemann), long(riemann_bond_values_csv(inputs, root)), c("row", "measure"))
+  }
   results <- c(list(inputs = inputs, quantlib = quantlib, riemann = riemann, direct_vs_csv = via_csv), compare_bond_values(inputs, quantlib, riemann))
   summary <- summarise_verification(results)
   walk(seq_len(nrow(summary)), \(i) {

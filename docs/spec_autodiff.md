@@ -1,5 +1,7 @@
 # 自動微分の仕様（草案）
 
+> **関数名について**：公開関数の名前は 2026-11-03 に変更した（`docs/naming_migration.md`、方針は `docs/specification.md` 4.4 節）。この文書の使い方と API の説明は新名である。照合結果の節は当時の記録なので、旧名のまま残している場合がある。旧名は対応表で読み替える。Rust のメソッド（`bond.clean_price(...)` など）は改名していない。
+
 自動微分は **finmath-lib の方式を参考にする**。特に、確率変数（`RandomVariable`）、AAD の計算グラフと逆伝播、モンテカルロの条件付き期待値の扱いを調べ、Riemann の関数型の設計にどう取り込むかを示す。
 
 参照したソース：finmath-lib `9bd054ff694026760e46371ef61b96a4dbd7b8b0`（2026-08-29、6.1.10-SNAPSHOT）。以下のパスは `src/main/java/net/finmath/` からの相対パスである。

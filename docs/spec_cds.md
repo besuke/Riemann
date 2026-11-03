@@ -6,12 +6,12 @@
 
 | 計算 | 関数（R） | QuantLib での対応 |
 |---|---|---|
-| CDS の契約 | `credit_default_swap` | `CreditDefaultSwap` |
-| 評価（MidPoint、ISDA） | `cds_value` | `MidPointCdsEngine`、`IsdaCdsEngine` |
-| 生存確率 | `hazard_curve`、`survival_probability` | `FlatHazardRate`、`InterpolatedHazardRateCurve<BackwardFlat>` |
+| CDS の契約 | `create_credit_default_swap` | `CreditDefaultSwap` |
+| 評価（MidPoint、ISDA） | `compute_cds_value` | `MidPointCdsEngine`、`IsdaCdsEngine` |
+| 生存確率 | `create_hazard_curve`、`compute_survival_probability` | `FlatHazardRate`、`InterpolatedHazardRateCurve<BackwardFlat>` |
 | ハザードのブートストラップ | `bootstrap_hazard_curve` | `PiecewiseFlatHazardRate`、`SpreadCdsHelper` |
-| 標準 CDS の満期 | `cds_maturity` | `cdsMaturity` |
-| スプレッドと回収率の感応度 | `cds_quote_sensitivity` | なし（自動微分） |
+| 標準 CDS の満期 | `compute_cds_maturity` | `cdsMaturity` |
+| スプレッドと回収率の感応度 | `compute_cds_quote_sensitivity` | なし（自動微分） |
 
 スケジュールの規則 `cds` と `cds2015` を、この段階で実装した（`time/schedule.rs`）。
 

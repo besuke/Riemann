@@ -31,11 +31,23 @@ run_riemann_example <- function(example, input_path, output_path, root, attempts
   owd <- setwd(root)
   on.exit(setwd(owd), add = TRUE)
   log <- map(seq_len(attempts), \(i) {
-    if (file.exists(output_path)) return(0L)
-    suppressWarnings(system2(cargo_path(), arguments, stdout = FALSE, stderr = FALSE))
+    if (file.exists(output_path)) return(character())
+    suppressWarnings(system2(cargo_path(), arguments, stdout = TRUE, stderr = TRUE))
   })
-  if (!file.exists(output_path)) stop(example, " example failed after ", attempts, " attempts.", call. = FALSE)
+  if (!file.exists(output_path)) {
+    stop(example, " example failed after ", attempts, " attempts:\n", paste(tail(unlist(log), 5L), collapse = "\n"), call. = FALSE)
+  }
   invisible(log)
+}
+
+# The examples that this machine does not let run, comma separated in RIEMANN_VERIFY_SKIP_EXAMPLES. Windows's
+# application control can block a newly built executable. The report then says that the CSV path was not run.
+example_is_skipped <- function(example) {
+  example %in% strsplit(Sys.getenv("RIEMANN_VERIFY_SKIP_EXAMPLES"), ",", fixed = TRUE)[[1]]
+}
+
+csv_path_not_run <- function() {
+  tibble(compared = 0L, exact = 0L, both_error = 0L, one_sided = 0L, max_abs_diff = NA_real_)
 }
 
 # The R package of Riemann, RiemannFinMath, called directly. Install it with: R CMD INSTALL crates/riemann-r

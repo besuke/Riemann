@@ -10,10 +10,10 @@
 
 | 計算 | 関数（R） | 手法 |
 |---|---|---|
-| 割引債オプション | `hull_white_bond_option` | QuantLib `HullWhite::discountBondOption` |
-| European スワップション | `hull_white_swaption` | Jamshidian の分解 |
-| Bermudan スワップション | `hull_white_bermudan_swaption` | 状態格子の後退計算 |
-| コール債 | `hull_white_callable_bond` | 状態格子の後退計算（LagrangeFinance II-8.4） |
+| 割引債オプション | `compute_hull_white_bond_option_value` | QuantLib `HullWhite::discountBondOption` |
+| European スワップション | `compute_hull_white_swaption_value` | Jamshidian の分解 |
+| Bermudan スワップション | `compute_hull_white_bermudan_swaption_value` | 状態格子の後退計算 |
+| コール債 | `compute_hull_white_callable_bond_value` | 状態格子の後退計算（LagrangeFinance II-8.4） |
 
 **感応度**：European スワップションの `a` と `sigma` についての微分は自動微分である。臨界金利 `r*` は数値で解いたうえで、記録した値の上で Newton 法を 1 回行い、陰関数定理の微分を伝える。1 階の微分が正確になる。格子の計算（Bermudan、コール債）の自動微分は未対応である。ノード数が多く、確保するメモリーが大きいためである。
 
@@ -21,7 +21,7 @@
 
 ## 2. SABR
 
-Hagan らの展開式で、対数正規と正規の両方を返す（`sabr_volatility`）。フォワードと行使価格は正でなければならない。シフト付きは未実装である。
+Hagan らの展開式で、対数正規と正規の両方を返す（`compute_sabr_volatility`）。フォワードと行使価格は正でなければならない。シフト付きは未実装である。
 
 `calibrate_sabr` は、`beta` を固定して `alpha`、`nu`、`rho` を合わせる。Levenberg–Marquardt 法で、ヤコビアンは自動微分である。内部の変数は `(ln alpha, ln nu, atanh rho)` なので、値が範囲を外れない。
 
@@ -50,7 +50,7 @@ Hagan らの展開式で、対数正規と正規の両方を返す（`sabr_volat
 
 ## 5. LagrangeFinance に関する所見
 
-LagrangeFinance II-8 と同じ Gauss–Hermite 法（24 点）は、行使の折れ目があるときに精度が落ちる。Riemann の単体テストでは、1 回行使のスワップションで Jamshidian と 1.3e-4 の差が出た（48 点、状態 1201 点）。台形則（幅 0.02）に変えると 1e-5 以内に入った。`hull_white_bermudan_swaption` の既定を台形則にしたのは、このためである。コール債の既定は、LagrangeFinance と同じ値を再現するために Gauss–Hermite 24 点のままとする。方法ごとの差は検証 QMD に示す。LagrangeFinance は変更していない。
+LagrangeFinance II-8 と同じ Gauss–Hermite 法（24 点）は、行使の折れ目があるときに精度が落ちる。Riemann の単体テストでは、1 回行使のスワップションで Jamshidian と 1.3e-4 の差が出た（48 点、状態 1201 点）。台形則（幅 0.02）に変えると 1e-5 以内に入った。`compute_hull_white_bermudan_swaption_value` の既定を台形則にしたのは、このためである。コール債の既定は、LagrangeFinance と同じ値を再現するために Gauss–Hermite 24 点のままとする。方法ごとの差は検証 QMD に示す。LagrangeFinance は変更していない。
 
 ## 6. 未対応
 
