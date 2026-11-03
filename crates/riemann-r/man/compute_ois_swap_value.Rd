@@ -2,7 +2,7 @@
 % Please edit documentation in R/ois_swaps.R
 \name{compute_ois_swap_value}
 \alias{compute_ois_swap_value}
-\alias{get_ois_swap_cashflows}
+\alias{compute_ois_swap_cashflows}
 \alias{compute_ois_swap_daily_rates}
 \alias{compute_ois_swap_quote_sensitivity}
 \title{Value of an overnight indexed swap}
@@ -15,7 +15,7 @@ compute_ois_swap_value(
   discount_curve = curve
 )
 
-get_ois_swap_cashflows(
+compute_ois_swap_cashflows(
   swap,
   curve,
   evaluation_date,
@@ -41,7 +41,7 @@ compute_ois_swap_quote_sensitivity(
 \arguments{
 \item{swap}{A swap from \code{\link[=create_ois_swap]{create_ois_swap()}}.}
 
-\item{curve}{A curve from \code{\link[=build_ois_curve]{build_ois_curve()}} of the swap's index, which forecasts the overnight rates.}
+\item{curve}{A curve from \code{\link[=bootstrap_ois_curve]{bootstrap_ois_curve()}} of the swap's index, which forecasts the overnight rates.}
 
 \item{evaluation_date}{One date.}
 
@@ -57,7 +57,7 @@ compute_ois_swap_quote_sensitivity(
 \code{compute_ois_swap_value()} returns a one-row tibble with \code{npv}, \code{fixed_leg_npv}, \code{overnight_leg_npv},
 \code{fixed_leg_bps}, \code{overnight_leg_bps} (the change for 1bp, with the leg's sign), \code{fair_rate} and
 \code{fair_spread}. These two are \code{NA} when no coupon of that leg is left to pay.
-\code{get_ois_swap_cashflows()} returns a tibble with \code{leg}, \code{payment_date}, \code{accrual_start}, \code{accrual_end},
+\code{compute_ois_swap_cashflows()} returns a tibble with \code{leg}, \code{payment_date}, \code{accrual_start}, \code{accrual_end},
 \code{amount} (unsigned) and \code{error}. \code{compute_ois_swap_daily_rates()} returns a tibble with \code{fixing_date},
 \code{next_date}, \code{days}, \code{day_fraction}, \code{fixing}, \code{forward_rate} and \code{applied_rate}.
 \code{compute_ois_swap_quote_sensitivity()} returns a tibble with \code{tenor}, \code{rate}, \code{pillar_date} and \code{npv_per_bp},
@@ -72,11 +72,11 @@ reference date, and flows paid on or before that date have occurred. A swap whos
 been paid by the evaluation date is worth 0, as in QuantLib.
 }
 \examples{
-instruments <- ois_instruments(c("ON", "1Y", "5Y", "10Y"), c(0.002, 0.004, 0.009, 0.014), 2L, 1L, 0L)
-curve <- build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", instruments)
+instruments <- create_ois_instruments(c("ON", "1Y", "5Y", "10Y"), c(0.002, 0.004, 0.009, 0.014), 2L, 1L, 0L)
+curve <- bootstrap_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", instruments)
 swap <- create_ois_swap("payer", 1e7, "2026-11-04", "2031-11-04", "tonar", 0.012)
 compute_ois_swap_value(swap, curve, "2026-11-02")
-get_ois_swap_cashflows(swap, curve, "2026-11-02")
+compute_ois_swap_cashflows(swap, curve, "2026-11-02")
 head(compute_ois_swap_daily_rates(swap, curve, "2026-11-02"))
 compute_ois_swap_quote_sensitivity(swap, curve, "2026-11-02")
 started <- tibble::tibble(date = as.Date(c("2026-11-04", "2026-11-05")), rate = c(0.002, 0.0021))

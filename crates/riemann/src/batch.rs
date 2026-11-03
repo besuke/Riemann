@@ -7,7 +7,7 @@
 use crate::cashflow_analysis::{DurationType, YieldConvention};
 use crate::instruments::{FixedRateBond, FixedRateBondSpec};
 use crate::interest_rate::Compounding;
-use crate::ois::{build_ois_curve, OisCurveSpec, QuoteRepricing};
+use crate::ois::{bootstrap_ois_curve, OisCurveSpec, QuoteRepricing};
 use crate::time::{Date, DayCount};
 use crate::Error;
 use rayon::prelude::*;
@@ -74,7 +74,7 @@ fn evaluate_bond(unit: &BondEvaluation) -> Result<BondValues, Error> {
 
 /// Values every bond. The outer error is only about starting the threads; a unit that fails has
 /// its own error, and the others are not affected.
-pub fn bond_values_batch(
+pub fn compute_bond_values_batch(
     units: &[BondEvaluation],
     threads: usize,
 ) -> Result<Vec<Result<BondValues, Error>>, Error> {
@@ -107,7 +107,7 @@ pub struct CurveValues {
 }
 
 fn evaluate_curve(unit: &CurveEvaluation) -> Result<CurveValues, Error> {
-    let built = build_ois_curve(&unit.spec)?;
+    let built = bootstrap_ois_curve(&unit.spec)?;
     let curve = &built.curve;
     let points = unit
         .dates
@@ -133,7 +133,7 @@ fn evaluate_curve(unit: &CurveEvaluation) -> Result<CurveValues, Error> {
 
 /// Builds and reads every curve. The outer error is only about starting the threads; a curve
 /// that fails has its own error, and the others are not affected.
-pub fn curve_values_batch(
+pub fn compute_curve_values_batch(
     units: &[CurveEvaluation],
     threads: usize,
 ) -> Result<Vec<Result<CurveValues, Error>>, Error> {

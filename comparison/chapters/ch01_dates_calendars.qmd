@@ -97,7 +97,7 @@ RiemannFinMath:
 
 ```{r}
 #| label: calendar-riemann
-riemann_lists <- map(pairs$riemann_name, \(name) RiemannFinMath::holidays(name, from, to))
+riemann_lists <- map(pairs$riemann_name, \(name) RiemannFinMath::generate_holidays(name, from, to))
 ```
 
 ```{r}

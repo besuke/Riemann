@@ -150,8 +150,8 @@ lagrange_objects <- function(chapter_file, names, ...) {
 # given continuous zero rate at each node. A constant rate makes the curve flat between nodes as well.
 fitted_curve <- function(date, zero, tenors, curve_day_count = "actual_365_fixed", index = "tonar", iterations = 12L) {
   build <- function(quotes) {
-    RiemannFinMath::build_ois_curve(
-      date, date, index, curve_day_count, RiemannFinMath::ois_instruments(tenors, quotes, 0L, 1L, 0L),
+    RiemannFinMath::bootstrap_ois_curve(
+      date, date, index, curve_day_count, RiemannFinMath::create_ois_instruments(tenors, quotes, 0L, 1L, 0L),
       interpolation = "log_linear", accuracy = 1e-15
     )
   }
@@ -159,8 +159,8 @@ fitted_curve <- function(date, zero, tenors, curve_day_count = "actual_365_fixed
   # so the error is scaled by the time and the discount factor over the annuity of a flat curve.
   step <- function(quotes) {
     curve <- build(quotes)
-    nodes <- RiemannFinMath::discount_nodes(curve) |> slice(-1)
-    error <- RiemannFinMath::zero_rate(curve, nodes$date, curve_day_count, "continuous") - zero
+    nodes <- RiemannFinMath::get_discount_nodes(curve) |> slice(-1)
+    error <- RiemannFinMath::compute_zero_rate(curve, nodes$date, curve_day_count, "continuous") - zero
     time <- as.numeric(nodes$date - as.Date(date)) / 365
     scale <- if_else(abs(zero) < 1e-10, 1, time * exp(-zero * time) * expm1(zero) / -expm1(-zero * time))
     quotes - error * scale

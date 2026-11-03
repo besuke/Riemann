@@ -2,11 +2,11 @@
 % Please edit documentation in R/bonds.R
 \name{yen_bond_risk}
 \alias{yen_bond_risk}
-\alias{risk_from_simple_rate}
-\alias{risk_from_compound_yield}
+\alias{compute_risk_from_simple_rate}
+\alias{compute_risk_from_compound_yield}
 \title{Risk measures of Japanese yields}
 \usage{
-risk_from_simple_rate(
+compute_risk_from_simple_rate(
   t,
   coupon_rate,
   simple_rate,
@@ -15,7 +15,7 @@ risk_from_simple_rate(
   on_error = "stop"
 )
 
-risk_from_compound_yield(
+compute_risk_from_compound_yield(
   t,
   coupon_rate,
   compound_yield,
@@ -27,7 +27,7 @@ risk_from_compound_yield(
 )
 }
 \arguments{
-\item{t}{Remaining years; see \code{\link[=remaining_years]{remaining_years()}}.}
+\item{t}{Remaining years; see \code{\link[=compute_remaining_years]{compute_remaining_years()}}.}
 
 \item{coupon_rate}{Coupon rate in percent per year.}
 
@@ -49,6 +49,6 @@ A tibble with the columns \code{price}, \code{accrued_interest}, \code{dirty_pri
 Risk measures of Japanese yields
 }
 \examples{
-risk_from_simple_rate(5, 1.5, 1.2, 100, 0.3)
-risk_from_compound_yield(5, 1.5, 1.2, 100, 0.3)
+compute_risk_from_simple_rate(5, 1.5, 1.2, 100, 0.3)
+compute_risk_from_compound_yield(5, 1.5, 1.2, 100, 0.3)
 }

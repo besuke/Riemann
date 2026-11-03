@@ -2,8 +2,8 @@
 # Synthetic inputs.
 
 swap_curve <- function(quotes = c(0.008, 0.01, 0.012, 0.014), interpolation = "log_linear") {
-  build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed",
-                  ois_instruments(c("1Y", "3Y", "5Y", "7Y"), quotes, 0L, 1L, 0L), interpolation = interpolation)
+  bootstrap_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed",
+                  create_ois_instruments(c("1Y", "3Y", "5Y", "7Y"), quotes, 0L, 1L, 0L), interpolation = interpolation)
 }
 payer_swap <- function(rate = 0.012) create_ois_swap("payer", 1e7, "2026-11-04", "2031-11-04", "tonar", rate)
 
@@ -18,7 +18,7 @@ test_that("the sides are opposite, and the fair rate gives a value of 0", {
 })
 
 test_that("cash flows list both legs", {
-  flows <- get_ois_swap_cashflows(payer_swap(), swap_curve(), "2026-11-02")
+  flows <- compute_ois_swap_cashflows(payer_swap(), swap_curve(), "2026-11-02")
   expect_equal(sum(flows$leg == "fixed"), 5)
   expect_equal(sum(flows$leg == "overnight"), 5)
   expect_true(all(is.na(flows$error)))
@@ -28,10 +28,10 @@ test_that("cash flows list both legs", {
 test_that("fixings before the evaluation date are required, and paid coupons need none", {
   curve <- swap_curve()
   expect_error(compute_ois_swap_value(payer_swap(), curve, "2026-11-06"), "Missing")
-  flows <- get_ois_swap_cashflows(payer_swap(), curve, "2026-11-06", on_error = "na")
+  flows <- compute_ois_swap_cashflows(payer_swap(), curve, "2026-11-06", on_error = "na")
   expect_true(any(!is.na(flows$error)))
   expect_true(all(is.na(flows$amount[!is.na(flows$error)])))
-  expect_error(get_ois_swap_cashflows(payer_swap(), curve, "2026-11-06"), "Missing")
+  expect_error(compute_ois_swap_cashflows(payer_swap(), curve, "2026-11-06"), "Missing")
   fixings <- tibble::tibble(date = as.Date(c("2026-11-04", "2026-11-05")), rate = c(0.05, 0.05))
   with_fixings <- compute_ois_swap_value(payer_swap(), curve, "2026-11-06", fixings)
   without_past_rates <- compute_ois_swap_value(payer_swap(), curve, "2026-11-02")
@@ -45,7 +45,7 @@ test_that("fixings before the evaluation date are required, and paid coupons nee
 })
 
 test_that("the forecasting curve must be of the swap's index, and bad terms fail", {
-  sofr <- build_ois_curve("2026-11-02", "2026-11-02", "sofr", "actual_360", ois_instruments(c("1Y", "5Y", "10Y"), c(0.04, 0.038, 0.036), 2L, 1L, 0L))
+  sofr <- bootstrap_ois_curve("2026-11-02", "2026-11-02", "sofr", "actual_360", create_ois_instruments(c("1Y", "5Y", "10Y"), c(0.04, 0.038, 0.036), 2L, 1L, 0L))
   expect_error(compute_ois_swap_value(payer_swap(), sofr, "2026-11-02"), "index")
   expect_silent(compute_ois_swap_value(payer_swap(), swap_curve(), "2026-11-02", discount_curve = sofr))
   expect_error(create_ois_swap("broker", 1e7, "2026-11-04", "2031-11-04", "tonar", 0.01), "swap side")
@@ -69,7 +69,7 @@ test_that("values agree with the QuantLib R package", {
   skip_if_not_installed("QuantLib")
   date_of <- function(x) QuantLib::Date(as.integer(as.Date(x)) + 25569L)
   curve <- swap_curve()
-  nodes <- discount_nodes(curve)
+  nodes <- get_discount_nodes(curve)
   QuantLib::Settings_instance()$setEvaluationDate(date_of("2026-11-02"))
   dates <- do.call(QuantLib::DateVector, list())
   for (d in as.character(nodes$date)) QuantLib::DateVector_push_back(dates, date_of(d))

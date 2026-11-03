@@ -238,7 +238,7 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 | 型・構造体・enum・trait | PascalCase | `YieldCurve`、`DayCount` |
 | 定数 | SCREAMING_SNAKE_CASE | `MAX_SERIAL` |
 
-**公開関数の名前は、動詞から始まる snake_case とする**（2026-11-03 のユーザーの指示）。
+**R と Rust の公開トップレベル関数の名前は、動詞から始まる snake_case とする**（2026-11-03 のユーザーの指示で確定）。
 
 | 接頭辞 | 用途 |
 |---|---|
@@ -247,11 +247,13 @@ pub fn price(ctx: &ValuationContext, market: &MarketSnapshot, instrument: &Instr
 | `get_` | 既存のオブジェクトからデータを取得する |
 | `compute_` | 価格・利回り・フェアレート・感応度などを計算する |
 
-- 使わない接頭辞：`make_`（`create_` か `generate_` にする）、`calculate_`（`compute_` にする）、`value_`（`compute_<商品名>_value` などにする）。
-- 名詞だけの公開関数名を避け、処理内容を表す動詞を付ける。
+- 上の 4 つは基本方針で、限定列挙ではない。意味が明確な `bootstrap_`、`calibrate_`、`is_`、`has_`、`with_` も認める。
+- `bootstrap_` は実際にブートストラップする場合に使う。`with_` は元の値を変更せず、設定を変えた新しい値を返す場合に使う。
+- `make_`、`calculate_`、`value_` で始まる独自の公開関数は採用しない。公開トップレベル関数では名詞だけの名前も避ける。
 - 取得か計算かは実際の処理で判断する。保存済みの値を取り出すだけなら `get_`、新たに算出するなら `compute_`。
-- 比較先のライブラリーの関数名は変えない。
-- 適用状況と既存の公開 API の改名案は `docs/naming_migration.md` にある。新しい関数はこの方針で作る。
+- Rust のメソッドは慣用的な名前のままとする（`curve.discount(d)`、`bond.clean_price(...)` など）。
+- 比較先のライブラリーの名前は変えない。
+- 旧名と新名の対応は `docs/naming_migration.md` にある。
 
 - R から自然に使えるよう、Rust と R で公開関数名・引数名をできるだけ揃える。
 - 言語の境界で変換が必要な場合も、不要な改名は避ける。

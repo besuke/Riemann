@@ -172,7 +172,7 @@ split_probes <- function(probes) {
 
 ois_instruments_of <- function(run) {
   items <- str_split(run$instruments, " ")[[1]]
-  RiemannFinMath::ois_instruments(
+  RiemannFinMath::create_ois_instruments(
     tenor = str_remove(items, ":.*$"), rate = as.numeric(str_remove(items, "^.*:")),
     settlement_days = as.integer(run$settlement_days), payment_frequency = as.integer(run$payment_frequency),
     payment_lag = as.integer(run$payment_lag)
@@ -184,7 +184,7 @@ riemann_ois_run <- function(run) {
     tibble(case = as.character(run$case), interpolation = run$interpolation, kind = kind, key = as.integer(key), value = value)
   }
   built <- tryCatch(
-    RiemannFinMath::build_ois_curve(
+    RiemannFinMath::bootstrap_ois_curve(
       serial_to_date(as.integer(run$evaluation)), serial_to_date(as.integer(run$reference)), tolower(run$index), run$day_counter,
       ois_instruments_of(run), interpolation = snake_name(run$interpolation)
     ),
@@ -194,14 +194,14 @@ riemann_ois_run <- function(run) {
   curve <- RiemannFinMath::with_extrapolation(built, as.integer(run$extrapolate) == 1L)
   probes <- split_probes(run$probes[[1]])
   dates <- serial_to_date(probes)
-  repricing <- RiemannFinMath::quote_repricing(curve)
-  nodes <- RiemannFinMath::discount_nodes(curve)
+  repricing <- RiemannFinMath::get_quote_repricing(curve)
+  nodes <- RiemannFinMath::get_discount_nodes(curve)
   positions <- seq_len(nrow(repricing)) - 1L
   values <- suppressWarnings(list(
-    discount = RiemannFinMath::discount(curve, dates, on_error = "na"),
-    zero_continuous = RiemannFinMath::zero_rate(curve, dates, run$day_counter, "continuous", 1L, on_error = "na"),
-    forward_1d_simple = RiemannFinMath::forward_rate(curve, dates, dates + 1L, run$day_counter, "simple", 1L, on_error = "na"),
-    forward_instantaneous = RiemannFinMath::forward_rate(curve, dates, dates, run$day_counter, "continuous", 1L, on_error = "na")
+    discount = RiemannFinMath::compute_discount(curve, dates, on_error = "na"),
+    zero_continuous = RiemannFinMath::compute_zero_rate(curve, dates, run$day_counter, "continuous", 1L, on_error = "na"),
+    forward_1d_simple = RiemannFinMath::compute_forward_rate(curve, dates, dates + 1L, run$day_counter, "simple", 1L, on_error = "na"),
+    forward_instantaneous = RiemannFinMath::compute_forward_rate(curve, dates, dates, run$day_counter, "continuous", 1L, on_error = "na")
   ))
   bind_rows(
     row("implied_rate", positions, repricing$implied_rate),
@@ -440,7 +440,7 @@ golden_batch_input <- function(root) {
         index = tolower(index), curve_day_count = day_counter, dates,
         instruments = pmap(list(instruments, settlement_days, payment_frequency, payment_lag), \(text, days, frequency, lag) {
           items <- str_split(text, " ")[[1]]
-          RiemannFinMath::ois_instruments(str_remove(items, ":.*$"), as.numeric(str_remove(items, "^.*:")), as.integer(days), as.integer(frequency), as.integer(lag))
+          RiemannFinMath::create_ois_instruments(str_remove(items, ":.*$"), as.numeric(str_remove(items, "^.*:")), as.integer(days), as.integer(frequency), as.integer(lag))
         })
       )
   }) |>
@@ -452,7 +452,7 @@ verify_parallel_batch <- function(root = find_riemann_root(), threads = c(1L, 2L
   message("Evaluating the golden curves in parallel ...")
   curves <- golden_batch_input(root)
   runs <- map(threads, \(n) {
-    elapsed <- system.time(values <- RiemannFinMath::curve_values_batch(curves, threads = n))[["elapsed"]]
+    elapsed <- system.time(values <- RiemannFinMath::compute_curve_values_batch(curves, threads = n))[["elapsed"]]
     list(threads = n, elapsed = elapsed, values = values)
   })
   reference <- runs[[1]]$values
@@ -466,12 +466,12 @@ verify_parallel_batch <- function(root = find_riemann_root(), threads = c(1L, 2L
   # direct calls run on R's main thread, batches on worker threads
   direct <- map(seq_len(nrow(curves)), \(i) {
     curve <- tryCatch(
-      RiemannFinMath::build_ois_curve(curves$evaluation_date[i], curves$reference_date[i], curves$index[i], curves$curve_day_count[i], curves$instruments[[i]]),
+      RiemannFinMath::bootstrap_ois_curve(curves$evaluation_date[i], curves$reference_date[i], curves$index[i], curves$curve_day_count[i], curves$instruments[[i]]),
       error = function(e) NULL
     )
     if (is.null(curve)) return(NULL)
     tibble(curve_number = i, date = curves$dates[[i]],
-           direct = suppressWarnings(RiemannFinMath::discount(curve, curves$dates[[i]], on_error = "na")))
+           direct = suppressWarnings(RiemannFinMath::compute_discount(curve, curves$dates[[i]], on_error = "na")))
   }) |> list_rbind()
   against_direct <- reference |>
     filter(!is.na(date)) |>

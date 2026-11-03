@@ -590,7 +590,7 @@ calendar_results$direct_vs_csv |>
 
 # 並列バッチ
 
-`curve_values_batch()` で、照合用データの `r format(parallel_results$curves, big.mark = ",")` カーブを作り、合計 `r format(parallel_results$rows, big.mark = ",")` 行を読み取りました。並列の計算は Rust の中核（`riemann::batch`）で行います。入力は R のメインスレッドで Rust の値に変換し、スレッドはその値だけで計算し、結果は R のメインスレッドで表に戻します。中核の crate は extendr に依存しないので、計算中のスレッドから R の API は呼べません。
+`compute_curve_values_batch()` で、照合用データの `r format(parallel_results$curves, big.mark = ",")` カーブを作り、合計 `r format(parallel_results$rows, big.mark = ",")` 行を読み取りました。並列の計算は Rust の中核（`riemann::batch`）で行います。入力は R のメインスレッドで Rust の値に変換し、スレッドはその値だけで計算し、結果は R のメインスレッドで表に戻します。中核の crate は extendr に依存しないので、計算中のスレッドから R の API は呼べません。
 
 スレッド数を変えても、すべての値、エラー、入力順が完全に一致する必要があります。時間は参考値で、実行のたびに変わります。
 

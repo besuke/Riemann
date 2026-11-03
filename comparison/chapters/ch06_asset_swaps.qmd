@@ -75,14 +75,14 @@ RiemannFinMath:
 #| label: riemann-native
 riemann_curve <- function(currency, rates = quotes[[currency]]$rate) {
   row <- terms |> filter(currency == .env$currency)
-  RiemannFinMath::build_ois_curve(
+  RiemannFinMath::bootstrap_ois_curve(
     market_date, market_date, row$index, row$curve_day_count,
-    RiemannFinMath::ois_instruments(quotes[[currency]]$tenor, rates, row$settlement_days, 1L, 0L)
+    RiemannFinMath::create_ois_instruments(quotes[[currency]]$tenor, rates, row$settlement_days, 1L, 0L)
   )
 }
 riemann_bond <- function(currency) {
   row <- terms |> filter(currency == .env$currency)
-  RiemannFinMath::fixed_rate_bond(
+  RiemannFinMath::create_fixed_rate_bond(
     settlement_days = 2L, face_amount = 100, effective_date = "2026-09-30", termination_date = "2036-09-30", tenor = "6M",
     calendar = row$calendar, convention = "unadjusted", termination_convention = "unadjusted", rule = "backward",
     end_of_month = FALSE, coupon_rate = row$coupon_rate, day_count = row$bond_day_count, payment_convention = "following",
@@ -92,7 +92,7 @@ riemann_bond <- function(currency) {
 riemann_curves <- map(set_names(terms$currency), riemann_curve)
 riemann_bonds <- map(set_names(terms$currency), riemann_bond)
 riemann_native <- map(terms$currency, \(ccy) {
-  RiemannFinMath::ois_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], market_date)
+  RiemannFinMath::compute_ois_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], market_date)
 }) |>
   set_names(terms$currency)
 ```
@@ -129,7 +129,7 @@ baseline_yen_call <- function(ccy, fx_spot, basis_bp) {
   )$valuation
 }
 riemann_yen_call <- function(ccy, fx_spot, basis_bp) {
-  RiemannFinMath::yen_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], riemann_curves[["JPY"]], fx_spot, basis_bp, market_date)
+  RiemannFinMath::compute_yen_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], riemann_curves[["JPY"]], fx_spot, basis_bp, market_date)
 }
 yen_terms <- terms |> filter(currency %in% foreign)
 baseline_yen <- pmap(list(yen_terms$currency, yen_terms$fx_spot, yen_terms$basis_bp), baseline_yen_call) |> set_names(yen_terms$currency)
@@ -193,7 +193,7 @@ baseline_sensitivity <- map_dbl(seq_along(base_rates), \(i) {
   }
   (move(1) - move(-1)) / (2 * h) * 1e-4
 })
-riemann_sensitivity <- RiemannFinMath::asset_swap_quote_sensitivity(riemann_bonds[["JPY"]], 99.5, riemann_curves[["JPY"]], market_date)
+riemann_sensitivity <- RiemannFinMath::compute_asset_swap_quote_sensitivity(riemann_bonds[["JPY"]], 99.5, riemann_curves[["JPY"]], market_date)
 compare_values(
   paste("Quote", quotes[["JPY"]]$tenor), "bp of spread per bp of quote",
   baseline_sensitivity, riemann_sensitivity$spread_bp_per_quote_bp, "GaussQuant R, finite difference"

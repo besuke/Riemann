@@ -12,7 +12,7 @@
 
 use crate::autodiff::{Operand, Recorder};
 use crate::math::linear::solve;
-use crate::math::solver1d::close;
+use crate::math::solver1d::is_close;
 use crate::Error;
 
 /// The parameters of SABR.
@@ -59,7 +59,7 @@ fn check<T: Operand>(p: &SabrParameters<T>, strike: f64, forward: f64, expiry: f
 }
 
 /// The implied volatility of SABR at `strike`.
-pub fn sabr_volatility<T: Operand>(
+pub fn compute_sabr_volatility<T: Operand>(
     kind: SabrVolatilityType,
     strike: f64,
     forward: f64,
@@ -73,7 +73,7 @@ pub fn sabr_volatility<T: Operand>(
     let log_fk = (forward * strike).ln();
     let a = (one_minus_beta * log_fk).exp();
     let sqrt_a = a.sqrt();
-    let log_m = if close(forward, strike) {
+    let log_m = if is_close(forward, strike) {
         let epsilon = (forward - strike) / strike;
         epsilon - 0.5 * epsilon * epsilon
     } else {
@@ -147,7 +147,7 @@ pub fn calibrate_sabr(
             let we = w.exp();
             let rho = (we - we.recip()) / (we + we.recip());
             let p = SabrParameters { alpha: u.exp(), beta: rec.constant(beta), nu: v.exp(), rho };
-            let value = sabr_volatility(kind, strike, forward, expiry, &p)?;
+            let value = compute_sabr_volatility(kind, strike, forward, expiry, &p)?;
             let g = rec.gradient(value, &[u, v, w])?;
             r.push(value.primal() - volatility);
             j.push([g[0].mean(), g[1].mean(), g[2].mean()]);
@@ -217,8 +217,8 @@ mod tests {
     #[test]
     fn at_the_money_is_continuous() {
         for kind in [SabrVolatilityType::Lognormal, SabrVolatilityType::Normal] {
-            let at = sabr_volatility(kind, 0.03, 0.03, 2.0, &P).unwrap();
-            let near = sabr_volatility(kind, 0.03 * (1.0 + 1e-6), 0.03, 2.0, &P).unwrap();
+            let at = compute_sabr_volatility(kind, 0.03, 0.03, 2.0, &P).unwrap();
+            let near = compute_sabr_volatility(kind, 0.03 * (1.0 + 1e-6), 0.03, 2.0, &P).unwrap();
             assert!((at - near).abs() < 1e-6, "{at} {near}");
         }
     }
@@ -228,7 +228,7 @@ mod tests {
         let forward = 0.03;
         let strikes: Vec<f64> = [0.6, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5].iter().map(|m| m * forward).collect();
         for kind in [SabrVolatilityType::Lognormal, SabrVolatilityType::Normal] {
-            let vols: Vec<f64> = strikes.iter().map(|&k| sabr_volatility(kind, k, forward, 2.0, &P).unwrap()).collect();
+            let vols: Vec<f64> = strikes.iter().map(|&k| compute_sabr_volatility(kind, k, forward, 2.0, &P).unwrap()).collect();
             let c = calibrate_sabr(kind, &strikes, &vols, forward, 2.0, P.beta).unwrap();
             assert!(c.root_mean_square_error < 1e-9, "{kind:?} {}", c.root_mean_square_error);
             assert!((c.parameters.alpha - P.alpha).abs() < 1e-5, "{:?}", c.parameters);
@@ -240,8 +240,8 @@ mod tests {
     #[test]
     fn invalid_inputs_are_errors() {
         let bad = SabrParameters { rho: 1.0, ..P };
-        assert!(sabr_volatility(SabrVolatilityType::Normal, 0.03, 0.03, 1.0, &bad).is_err());
-        assert!(sabr_volatility(SabrVolatilityType::Normal, -0.01, 0.03, 1.0, &P).is_err());
+        assert!(compute_sabr_volatility(SabrVolatilityType::Normal, 0.03, 0.03, 1.0, &bad).is_err());
+        assert!(compute_sabr_volatility(SabrVolatilityType::Normal, -0.01, 0.03, 1.0, &P).is_err());
         assert!(calibrate_sabr(SabrVolatilityType::Normal, &[0.03], &[0.01], 0.03, 1.0, 0.5).is_err());
     }
 }

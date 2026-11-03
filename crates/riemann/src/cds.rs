@@ -15,8 +15,8 @@
 use crate::autodiff::{Operand, Recorder};
 use crate::cashflows::FixedRateCoupon;
 use crate::curves::YieldCurve;
-use crate::math::linear::inverse;
-use crate::math::solver1d::brent;
+use crate::math::linear::compute_inverse;
+use crate::math::solver1d::solve_brent;
 use crate::time::{
     generate_schedule, BusinessDayConvention, Date, DateGenerationRule, DayCount, HolidayCalendar,
     Period, ScheduleSpec, TimeUnit,
@@ -290,7 +290,7 @@ fn finish<T: Operand>(
 /// The MidPoint engine: default in the middle of each coupon period, with accrual and the claim
 /// paid at default. `today` is the evaluation date. Flows on or before the curve's reference date
 /// have occurred.
-pub fn midpoint_value<T: Operand>(
+pub fn compute_midpoint_value<T: Operand>(
     cds: &Cds,
     hazard: &HazardCurve<T>,
     recovery: T,
@@ -337,7 +337,7 @@ pub fn midpoint_value<T: Operand>(
 /// The ISDA engine, with QuantLib's defaults: Taylor expansion for small rates, half-day bias on
 /// accrual and piecewise forwards in coupon periods. Both curves must be Actual/365 (Fixed), with
 /// the reference date on `today`, and the discount curve must be flat or log-linear on discounts.
-pub fn isda_value<T: Operand>(
+pub fn compute_isda_value<T: Operand>(
     cds: &Cds,
     hazard: &HazardCurve<T>,
     recovery: T,
@@ -464,7 +464,7 @@ pub enum CdsEngine {
 }
 
 /// A value with either engine.
-pub fn cds_value<T: Operand>(
+pub fn compute_cds_value<T: Operand>(
     engine: CdsEngine,
     cds: &Cds,
     hazard: &HazardCurve<T>,
@@ -473,8 +473,8 @@ pub fn cds_value<T: Operand>(
     today: Date,
 ) -> Result<CdsValue<T>, Error> {
     match engine {
-        CdsEngine::MidPoint => midpoint_value(cds, hazard, recovery, curve, today),
-        CdsEngine::Isda => isda_value(cds, hazard, recovery, curve, today),
+        CdsEngine::MidPoint => compute_midpoint_value(cds, hazard, recovery, curve, today),
+        CdsEngine::Isda => compute_isda_value(cds, hazard, recovery, curve, today),
     }
 }
 
@@ -561,7 +561,7 @@ const MAX_HAZARD: f64 = 1.0;
 
 /// Bootstraps piecewise flat hazard rates from running spreads, one Brent search per node from the
 /// shortest quote (QuantLib `PiecewiseFlatHazardRate`, whose interpolation needs a single pass).
-pub fn bootstrap_hazard(spec: &CdsCurveSpec, curve: &YieldCurve) -> Result<CdsCurve, Error> {
+pub fn bootstrap_hazard_curve(spec: &CdsCurveSpec, curve: &YieldCurve) -> Result<CdsCurve, Error> {
     if spec.quotes.is_empty() {
         return invalid("no spreads given".into());
     }
@@ -585,10 +585,10 @@ pub fn bootstrap_hazard(spec: &CdsCurveSpec, curve: &YieldCurve) -> Result<CdsCu
             let mut trial = hazards.clone();
             trial[at] = h;
             let curve_h = HazardCurve::new(today, spec.curve_day_count.clone(), dates.clone(), trial)?;
-            let v = cds_value(spec.engine, &cds, &curve_h, spec.recovery, curve, today)?;
+            let v = compute_cds_value(spec.engine, &cds, &curve_h, spec.recovery, curve, today)?;
             Ok(quote.spread - v.fair_spread)
         };
-        let root = brent(objective, spec.accuracy, guess, f64::EPSILON, MAX_HAZARD, 100).map_err(|e| {
+        let root = solve_brent(objective, spec.accuracy, guess, f64::EPSILON, MAX_HAZARD, 100).map_err(|e| {
             Error::NoConvergence { reason: format!("spread at {}: {e}", quote.maturity) }
         })?;
         hazards[position] = root;
@@ -619,7 +619,7 @@ pub struct CdsSensitivity {
 }
 
 /// The sensitivities of a swap valued on a bootstrapped curve.
-pub fn cds_sensitivity(
+pub fn compute_cds_sensitivity(
     engine: CdsEngine,
     cds: &Cds,
     curve_h: &CdsCurve,
@@ -635,16 +635,16 @@ pub fn cds_sensitivity(
     let lifted_hazard = HazardCurve::new(today, spec.curve_day_count.clone(), curve_h.hazard.dates().to_vec(), inputs.clone())?;
     let lifted_curve = curve.lift(&rec)?;
     let recovery = rec.input(spec.recovery);
-    let value = cds_value(engine, cds, &lifted_hazard, recovery, &lifted_curve.curve, today)?;
+    let value = compute_cds_value(engine, cds, &lifted_hazard, recovery, &lifted_curve.curve, today)?;
 
     // d implied spread / d hazard: lower triangular
     let mut rows = Vec::with_capacity(n);
     for &i in &order {
         let helper = spec.helper(spec.quotes[i].maturity)?;
-        let v = cds_value(spec.engine, &helper, &lifted_hazard, rec.constant(spec.recovery), &lifted_curve.curve, today)?;
+        let v = compute_cds_value(spec.engine, &helper, &lifted_hazard, rec.constant(spec.recovery), &lifted_curve.curve, today)?;
         rows.push(rec.gradient(v.fair_spread, &inputs)?.iter().map(|g| g.mean()).collect::<Vec<f64>>());
     }
-    let inverse_rows = inverse(&rows)?;
+    let inverse_rows = compute_inverse(&rows)?;
     let g = rec.gradient(value.npv, &inputs)?;
     let quotes = (0..n)
         .map(|k| CdsQuoteSensitivity {
@@ -726,8 +726,8 @@ mod tests {
         let h = HazardCurve::flat(d(2026, 11, 2), act365(), 0.02).unwrap();
         let today = d(2026, 11, 2);
         for engine in [CdsEngine::MidPoint, CdsEngine::Isda] {
-            let buyer = cds_value(engine, &Cds::new(spec(0.01, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
-            let seller = cds_value(engine, &Cds::new(spec(0.01, ProtectionSide::Seller)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
+            let buyer = compute_cds_value(engine, &Cds::new(spec(0.01, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
+            let seller = compute_cds_value(engine, &Cds::new(spec(0.01, ProtectionSide::Seller)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
             assert!((buyer.npv + seller.npv).abs() < 1e-8, "{engine:?}");
             assert!((buyer.fair_spread - seller.fair_spread).abs() < 1e-14);
         }
@@ -738,8 +738,8 @@ mod tests {
         let h = HazardCurve::flat(d(2026, 11, 2), act365(), 0.02).unwrap();
         let today = d(2026, 11, 2);
         for engine in [CdsEngine::MidPoint, CdsEngine::Isda] {
-            let first = cds_value(engine, &Cds::new(spec(0.01, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
-            let at_fair = cds_value(engine, &Cds::new(spec(first.fair_spread, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
+            let first = compute_cds_value(engine, &Cds::new(spec(0.01, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
+            let at_fair = compute_cds_value(engine, &Cds::new(spec(first.fair_spread, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), today).unwrap();
             assert!(at_fair.npv.abs() < 1e-6, "{engine:?}: {}", at_fair.npv);
         }
     }
@@ -748,7 +748,7 @@ mod tests {
     fn the_credit_triangle_holds_approximately() {
         // fair spread is close to hazard * (1 - recovery)
         let h = HazardCurve::flat(d(2026, 11, 2), act365(), 0.02).unwrap();
-        let v = midpoint_value(&Cds::new(spec(0.01, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), d(2026, 11, 2)).unwrap();
+        let v = compute_midpoint_value(&Cds::new(spec(0.01, ProtectionSide::Buyer)).unwrap(), &h, 0.4, &curve(0.02), d(2026, 11, 2)).unwrap();
         assert!((v.fair_spread - 0.012).abs() < 5e-4, "{}", v.fair_spread);
     }
 
@@ -781,21 +781,21 @@ mod tests {
         let today = d(2026, 11, 2);
         for engine in [CdsEngine::MidPoint, CdsEngine::Isda] {
             let s = curve_spec(engine, &spreads);
-            let built = bootstrap_hazard(&s, &rates).unwrap();
+            let built = bootstrap_hazard_curve(&s, &rates).unwrap();
             for q in &s.quotes {
                 let helper = s.helper(q.maturity).unwrap();
-                let v = cds_value(engine, &helper, &built.hazard, 0.4, &rates, today).unwrap();
+                let v = compute_cds_value(engine, &helper, &built.hazard, 0.4, &rates, today).unwrap();
                 assert!((v.fair_spread - q.spread).abs() < 1e-9, "{engine:?}: {} {}", v.fair_spread, q.spread);
             }
             let swap = Cds::new(CdsSpec { upfront: Some(0.0), ..spec(0.01, ProtectionSide::Buyer) }).unwrap();
-            let sens = cds_sensitivity(engine, &swap, &built, &rates, today).unwrap();
+            let sens = compute_cds_sensitivity(engine, &swap, &built, &rates, today).unwrap();
             assert_eq!(sens.quotes.len(), 4);
             for row in &sens.quotes {
                 let value_with = |bump: f64| {
                     let mut bumped = spreads;
                     bumped[row.quote].1 += bump;
-                    let b = bootstrap_hazard(&curve_spec(engine, &bumped), &rates).unwrap();
-                    cds_value(engine, &swap, &b.hazard, 0.4, &rates, today).unwrap().npv
+                    let b = bootstrap_hazard_curve(&curve_spec(engine, &bumped), &rates).unwrap();
+                    compute_cds_value(engine, &swap, &b.hazard, 0.4, &rates, today).unwrap().npv
                 };
                 let h = 1e-6;
                 let numeric = (value_with(h) - value_with(-h)) / (2.0 * h);
@@ -806,7 +806,7 @@ mod tests {
                     row.d_npv
                 );
             }
-            let with_recovery = |r: f64| cds_value(engine, &swap, &built.hazard, r, &rates, today).unwrap().npv;
+            let with_recovery = |r: f64| compute_cds_value(engine, &swap, &built.hazard, r, &rates, today).unwrap().npv;
             let numeric = (with_recovery(0.4 + 1e-6) - with_recovery(0.4 - 1e-6)) / 2e-6;
             assert!((sens.d_npv_d_recovery - numeric).abs() < 1e-5 * numeric.abs().max(1.0));
         }
@@ -815,6 +815,6 @@ mod tests {
     #[test]
     fn invalid_inputs_are_errors() {
         assert!(HazardCurve::new(d(2026, 11, 2), act365(), vec![], Vec::<f64>::new()).is_err());
-        assert!(bootstrap_hazard(&curve_spec(CdsEngine::MidPoint, &[]), &curve(0.02)).is_err());
+        assert!(bootstrap_hazard_curve(&curve_spec(CdsEngine::MidPoint, &[]), &curve(0.02)).is_err());
     }
 }

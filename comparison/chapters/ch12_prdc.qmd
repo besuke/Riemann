@@ -23,7 +23,7 @@ terms <- list(
 show_inputs(c(list(valuation = valuation_date), terms, list(schedule = "6M, TARGET, modified following, backward", day_count = "Actual/360")))
 ```
 
-The note is discounted at 0.5%, while the FX drift is 1% - 3%. `prdc_value` takes one domestic curve for both purposes. The same model is reached with a domestic curve at 0.5% and a foreign curve at 2.5%, which keep the drift at -2%. This is a change of inputs, and not a separate discount curve; see @sec-gaps.
+The note is discounted at 0.5%, while the FX drift is 1% - 3%. `compute_prdc_value` takes one domestic curve for both purposes. The same model is reached with a domestic curve at 0.5% and a foreign curve at 2.5%, which keep the drift at -2%. This is a change of inputs, and not a separate discount curve; see @sec-gaps.
 
 ```{r}
 #| label: dates
@@ -80,7 +80,7 @@ RiemannFinMath:
 domestic <- flat_curve(valuation_date, domestic_curve_rate, "actual_360", "tonar")
 foreign <- flat_curve(valuation_date, foreign_curve_rate, "actual_360", "sofr")
 riemann_note <- function(spot = terms$spot, volatility = terms$volatility, ...) {
-  RiemannFinMath::prdc_value(
+  RiemannFinMath::compute_prdc_value(
     spot, volatility, domestic, foreign, times, accruals, terms$fx_base, terms$leverage, terms$subtraction,
     terms$floor, terms$cap, notional = terms$notional, ...
   )
@@ -183,8 +183,8 @@ foreign_zero <- cumsum(curve_table$foreign_rate) / curve_table$year
 jpy_curve <- fitted_curve("2026-01-05", jpy_zero, tenors, index = "tonar")
 foreign_five <- fitted_curve("2026-01-05", foreign_zero, tenors, index = "sofr")
 subtraction <- note$leverage - note$fixed_coupon
-five_closed <- RiemannFinMath::prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional)
-five_mc <- RiemannFinMath::prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional, paths = note$paths, seed = note$seed)
+five_closed <- RiemannFinMath::compute_prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional)
+five_mc <- RiemannFinMath::compute_prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional, paths = note$paths, seed = note$seed)
 ```
 
 ```{r}

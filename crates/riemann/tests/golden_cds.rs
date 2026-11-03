@@ -5,7 +5,7 @@ mod common;
 
 use common::golden_rows;
 use riemann::cds::{
-    bootstrap_hazard, cds_value, Cds, CdsCurveSpec, CdsEngine, CdsSpec, HazardCurve, ProtectionSide, SpreadQuote,
+    bootstrap_hazard_curve, compute_cds_value, Cds, CdsCurveSpec, CdsEngine, CdsSpec, HazardCurve, ProtectionSide, SpreadQuote,
 };
 use riemann::curves::YieldCurve;
 use riemann::interest_rate::{Compounding, InterestRate};
@@ -76,7 +76,7 @@ fn builder_settings_against_quantlib() {
         })
         .unwrap();
         let hazard = HazardCurve::flat(today(), act365(), n(6)).unwrap();
-        let v = cds_value(engine_of(&r[0]), &cds, &hazard, n(7), &flat_rate(n(5)), today()).unwrap();
+        let v = compute_cds_value(engine_of(&r[0]), &cds, &hazard, n(7), &flat_rate(n(5)), today()).unwrap();
         let upfront = v.fair_upfront.expect("the builder's swap has a cash settlement date ahead");
         for (ours, column, scale) in [
             (v.npv, 8, n(3)),
@@ -134,7 +134,7 @@ fn values_against_quantlib() {
         };
         let cds = Cds::new(spec).unwrap();
         let hazard = HazardCurve::flat(today(), act365(), n(9)).unwrap();
-        let v = cds_value(engine_of(&r[0]), &cds, &hazard, n(10), &flat_rate(n(8)), today()).unwrap();
+        let v = compute_cds_value(engine_of(&r[0]), &cds, &hazard, n(10), &flat_rate(n(8)), today()).unwrap();
         let mut check = |name: &str, got: f64, expected: f64, relative: f64| {
             let diff = (got - expected).abs() / (1.0 + expected.abs());
             worst = worst.max(diff);
@@ -183,7 +183,7 @@ fn bootstrapped_hazards_against_quantlib() {
                 })
                 .collect(),
         };
-        let built = bootstrap_hazard(&spec, &flat_rate(number(&first[2]))).unwrap();
+        let built = bootstrap_hazard_curve(&spec, &flat_rate(number(&first[2]))).unwrap();
         for (i, r) in case.iter().enumerate() {
             assert_eq!(built.hazard.dates()[i].serial() as i64, number(&r[6]) as i64, "pillar {i} of {r:?}");
             let survival = built.hazard.survival(built.hazard.dates()[i]).unwrap();

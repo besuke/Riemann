@@ -10,7 +10,7 @@
 use crate::autodiff::{Operand, Recorder};
 use crate::curves::YieldCurve;
 use crate::instruments::FixedRateBond;
-use crate::math::solver1d::brent;
+use crate::math::solver1d::solve_brent;
 use crate::ois::{overnight_leg, OisCurve, OvernightIndex};
 use crate::time::Date;
 use crate::Error;
@@ -128,7 +128,7 @@ fn fair_spread_of<T: Operand>(l: &Legs<T>) -> T {
 
 /// Values an OIS asset swap: pay the bond, receive the overnight leg plus the spread, and exchange
 /// the difference between the dirty price and par at the start. The curve forecasts and discounts.
-pub fn ois_asset_swap(
+pub fn compute_ois_asset_swap(
     bond: &FixedRateBond,
     curve: &YieldCurve,
     index: &OvernightIndex,
@@ -167,7 +167,7 @@ pub struct AssetSwapQuoteSensitivity {
 
 /// How the fair spread moves with each quote of the curve, by automatic differentiation on the
 /// nodes and the implicit function theorem at the solved curve (see [`OisCurve::quote_jacobian`]).
-pub fn asset_swap_quote_sensitivity(
+pub fn compute_asset_swap_quote_sensitivity(
     bond: &FixedRateBond,
     ois: &OisCurve,
     terms: &OisAssetSwapTerms,
@@ -227,7 +227,7 @@ pub struct YenAssetSwapValue {
 /// `S [Pf(t)/Pf(t0)] / [Pj(t)/Pj(t0)] exp(-z (t - t0))`, where `z` makes the maturity swap par.
 /// There is no basis term structure, no notional reset, and no credit or funding adjustment.
 #[allow(clippy::too_many_arguments)]
-pub fn yen_asset_swap(
+pub fn compute_yen_asset_swap(
     bond: &FixedRateBond,
     foreign_curve: &YieldCurve,
     foreign_index: &OvernightIndex,
@@ -242,8 +242,8 @@ pub fn yen_asset_swap(
     if fx_spot <= 0.0 || fx_spot.is_nan() {
         return invalid("the FX spot must be positive");
     }
-    let foreign = ois_asset_swap(bond, foreign_curve, foreign_index, foreign_terms, evaluation_date)?;
-    let yen = ois_asset_swap(bond, yen_curve, yen_index, yen_terms, evaluation_date)?;
+    let foreign = compute_ois_asset_swap(bond, foreign_curve, foreign_index, foreign_terms, evaluation_date)?;
+    let yen = compute_ois_asset_swap(bond, yen_curve, yen_index, yen_terms, evaluation_date)?;
     let start = foreign.effective_date;
     if start < evaluation_date {
         return invalid("the effective date precedes the evaluation date");
@@ -282,7 +282,7 @@ pub fn yen_asset_swap(
         }
         Ok((fx_spot * yen_start * sum - base_jpy_pv - basis * jpy_annuity) / (fx_spot * foreign.nominal))
     };
-    let z = brent(objective, 1e-12, 0.0, -1.0, 1.0, 200)?;
+    let z = solve_brent(objective, 1e-12, 0.0, -1.0, 1.0, 200)?;
 
     let mut bond_pv = 0.0;
     for cf in bond.cashflows.iter().filter(|cf| cf.date() > start) {
@@ -335,7 +335,7 @@ pub struct FutureBasisTerms {
 
 /// Gross basis, carry, net basis and implied repo of one bond. Among the bonds of a basket, the
 /// cheapest to deliver has the smallest net basis under the same inputs.
-pub fn future_basis(bond: &FixedRateBond, terms: &FutureBasisTerms) -> Result<FutureBasis, Error> {
+pub fn compute_future_basis(bond: &FixedRateBond, terms: &FutureBasisTerms) -> Result<FutureBasis, Error> {
     let FutureBasisTerms { clean_price, futures_price, conversion_factor, funding_rate, valuation_date, delivery_date } = *terms;
     if delivery_date <= valuation_date {
         return invalid("the delivery date must follow the valuation date");

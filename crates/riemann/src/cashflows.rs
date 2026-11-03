@@ -99,7 +99,7 @@ pub struct FixedRateLegSpec {
 ///
 /// Irregular first and last periods get a notional reference period of one tenor,
 /// computed with the schedule's calendar, convention and end-of-month rule.
-pub fn fixed_rate_leg(
+pub fn create_fixed_rate_leg(
     schedule_spec: &ScheduleSpec,
     schedule: &Schedule,
     leg: &FixedRateLegSpec,
@@ -154,7 +154,7 @@ pub fn fixed_rate_leg(
 
 /// Interest accrued at `settlement` on the next payment date of the leg
 /// (QuantLib `CashFlows::accruedAmount`).
-pub fn accrued_amount(leg: &[CashFlow], settlement: Date, include_settlement_date_flows: bool) -> Result<f64, Error> {
+pub fn compute_accrued_amount(leg: &[CashFlow], settlement: Date, include_settlement_date_flows: bool) -> Result<f64, Error> {
     let Some(first) = leg.iter().position(|cf| !cf.has_occurred(settlement, include_settlement_date_flows)) else {
         return Ok(0.0);
     };

@@ -45,7 +45,7 @@ RiemannFinMath, one call for all rows:
 ```{r}
 #| label: bond-riemann
 times_by_threads <- map(c(1L, 4L), \(threads) {
-  elapsed <- system.time(result <- RiemannFinMath::bond_values_batch(bonds, threads = threads))[["elapsed"]]
+  elapsed <- system.time(result <- RiemannFinMath::compute_bond_values_batch(bonds, threads = threads))[["elapsed"]]
   list(result = result, elapsed = elapsed)
 })
 ```
@@ -75,7 +75,7 @@ sofr <- as_quotes(lagrange_object(chapter, "sofr_quotes", trade_date_sofr = "202
 curves <- tibble(
   evaluation_date = c(tona_date, sofr_date), reference_date = c(tona_date, sofr_date), index = c("tonar", "sofr"),
   curve_day_count = c("actual_365_fixed", "actual_360"),
-  instruments = list(RiemannFinMath::ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), RiemannFinMath::ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L)),
+  instruments = list(RiemannFinMath::create_ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), RiemannFinMath::create_ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L)),
   dates = list(tona_date + c(30L, 365L, 1000L), sofr_date + c(30L, 365L, 1000L))
 )
 show_inputs(list(curves = "the TONAR and SOFR curves of the OIS chapter", reading_dates = "30, 365 and 1000 days ahead"))
@@ -87,8 +87,8 @@ ql_tona <- ql_ois_curve(tona_date, "tonar", QuantLib::Actual365Fixed(), tona$ten
 quantlib_tona <- ql_discount(ql_tona, curves$dates[[1]])
 ql_sofr <- ql_ois_curve(sofr_date, "sofr", QuantLib::Actual360(), sofr$tenor, sofr$rate, 2L)
 quantlib_sofr <- ql_discount(ql_sofr, curves$dates[[2]])
-batch_one <- RiemannFinMath::curve_values_batch(curves, threads = 1L)
-batch_four <- RiemannFinMath::curve_values_batch(curves, threads = 4L)
+batch_one <- RiemannFinMath::compute_curve_values_batch(curves, threads = 1L)
+batch_four <- RiemannFinMath::compute_curve_values_batch(curves, threads = 4L)
 ```
 
 ```{r}

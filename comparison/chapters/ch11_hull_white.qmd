@@ -30,7 +30,7 @@ baseline_options <- pmap_dbl(options_table, \(option_maturity, bond_maturity, st
   legacy$compute_hw_bond_option_price_LRL(option_maturity, bond_maturity, strike, legacy$hw_reference_a, legacy$hw_reference_sigma, legacy$hw_initial_zero_rate)
 })
 option_curve <- flat_curve(curve_date, legacy$hw_initial_zero_rate)
-riemann_options <- RiemannFinMath::hull_white_bond_option(
+riemann_options <- RiemannFinMath::compute_hull_white_bond_option_value(
   "call", options_table$strike, options_table$option_maturity, options_table$bond_maturity,
   legacy$hw_reference_a, legacy$hw_reference_sigma, option_curve
 )
@@ -94,8 +94,8 @@ times <- days / 365
 payment_times <- times[-1]
 coupons <- swaption$nominal * swaption$fixed_rate * diff(times) # amounts, not rates
 riemann_curve <- flat_curve(swaption$today, swaption$rate)
-riemann_european <- RiemannFinMath::hull_white_swaption(TRUE, times[1], payment_times, coupons, swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
-riemann_bermudan <- RiemannFinMath::hull_white_bermudan_swaption(TRUE, times[1], payment_times, coupons, head(times, -1), swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
+riemann_european <- RiemannFinMath::compute_hull_white_swaption_value(TRUE, times[1], payment_times, coupons, swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
+riemann_bermudan <- RiemannFinMath::compute_hull_white_bermudan_swaption_value(TRUE, times[1], payment_times, coupons, head(times, -1), swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
 ```
 
 ```{r}
@@ -153,7 +153,7 @@ baseline_callable <- function(volatility, points = 321L, nodes = 24L) {
 }
 callable_curve <- flat_curve(curve_date, callable$flat_zero_rate)
 riemann_callable <- function(volatility, points = 321L, nodes = 24L) {
-  RiemannFinMath::hull_white_callable_bond(
+  RiemannFinMath::compute_hull_white_callable_bond_value(
     flows$payment_time, flows$coupon, flows$principal_at_maturity, flows$call_principal,
     0.15, volatility, callable_curve, points = points, limit = 0.13, nodes = nodes
   )

@@ -17,7 +17,7 @@ use crate::cashflow_analysis::{self as analysis, DurationType, YieldConvention, 
 use crate::cashflows::{self, CashFlow, FixedRateLegSpec};
 use crate::curves::YieldCurve;
 use crate::interest_rate::{Compounding, InterestRate};
-use crate::math::solver1d::brent_with_step;
+use crate::math::solver1d::solve_brent_with_step;
 use crate::time::{
     generate_schedule, BusinessDayConvention, Date, DayCount, HolidayCalendar, Period, Schedule,
     ScheduleSpec, TimeUnit,
@@ -62,7 +62,7 @@ impl FixedRateBond {
             payment_calendar,
             payment_convention: spec.payment_convention,
         };
-        let mut cashflows = cashflows::fixed_rate_leg(&spec.schedule, &schedule, &leg)?;
+        let mut cashflows = cashflows::create_fixed_rate_leg(&spec.schedule, &schedule, &leg)?;
         // the notional is repaid on the payment date of the last coupon
         let maturity_payment_date = cashflows.last().expect("at least one coupon").date();
         cashflows.push(CashFlow::Redemption {
@@ -111,7 +111,7 @@ impl FixedRateBond {
         if notional == 0.0 {
             return Ok(0.0);
         }
-        Ok(cashflows::accrued_amount(&self.cashflows, settlement, false)? * 100.0 / notional)
+        Ok(cashflows::compute_accrued_amount(&self.cashflows, settlement, false)? * 100.0 / notional)
     }
 
     fn tradable_notional(&self, settlement: Date) -> Result<f64, Error> {
@@ -127,7 +127,7 @@ impl FixedRateBond {
     /// Dirty price per 100 at yield `y` (QuantLib `BondFunctions::dirtyPrice`).
     pub fn dirty_price(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
         let notional = self.tradable_notional(settlement)?;
-        Ok(analysis::npv(&self.cashflows, y, false, settlement, settlement)? * 100.0 / notional)
+        Ok(analysis::compute_npv(&self.cashflows, y, false, settlement, settlement)? * 100.0 / notional)
     }
 
     /// Clean price per 100 at yield `y` (QuantLib `BondFunctions::cleanPrice`).
@@ -150,31 +150,31 @@ impl FixedRateBond {
             amount += self.accrued_amount(settlement)?;
         }
         amount /= 100.0 / notional;
-        analysis::irr(&self.cashflows, amount, convention, false, settlement, settlement, solver)
+        analysis::compute_irr(&self.cashflows, amount, convention, false, settlement, settlement, solver)
     }
 
     /// Duration at yield `y` (QuantLib `BondFunctions::duration`).
     pub fn duration(&self, y: &InterestRate, kind: DurationType, settlement: Date) -> Result<f64, Error> {
         self.tradable_notional(settlement)?;
-        analysis::duration(&self.cashflows, y, kind, false, settlement, settlement)
+        analysis::compute_duration(&self.cashflows, y, kind, false, settlement, settlement)
     }
 
     /// Convexity at yield `y` (QuantLib `BondFunctions::convexity`).
     pub fn convexity(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
         self.tradable_notional(settlement)?;
-        analysis::convexity(&self.cashflows, y, false, settlement, settlement)
+        analysis::compute_convexity(&self.cashflows, y, false, settlement, settlement)
     }
 
     /// Basis point value at yield `y`, for the whole notional (QuantLib `BondFunctions::basisPointValue`).
     pub fn basis_point_value(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
         self.tradable_notional(settlement)?;
-        analysis::basis_point_value(&self.cashflows, y, false, settlement, settlement)
+        analysis::compute_basis_point_value(&self.cashflows, y, false, settlement, settlement)
     }
 
     /// Yield value of a basis point at yield `y` (QuantLib `BondFunctions::yieldValueBasisPoint`).
     pub fn yield_value_basis_point(&self, y: &InterestRate, settlement: Date) -> Result<f64, Error> {
         self.tradable_notional(settlement)?;
-        analysis::yield_value_basis_point(&self.cashflows, y, false, settlement, settlement)
+        analysis::compute_yield_value_basis_point(&self.cashflows, y, false, settlement, settlement)
     }
 
     /// Value on a discount curve for trades on `evaluation_date` (QuantLib v1.42
@@ -201,7 +201,7 @@ impl FixedRateBond {
             });
         }
         let valuation_date = curve.reference_date();
-        let npv = analysis::npv_on_curve(
+        let npv = analysis::compute_npv_on_curve(
             &self.cashflows,
             curve,
             false,
@@ -211,7 +211,7 @@ impl FixedRateBond {
         let settlement_value = if valuation_date == settlement {
             npv
         } else {
-            analysis::npv_on_curve(&self.cashflows, curve, false, settlement, settlement)?
+            analysis::compute_npv_on_curve(&self.cashflows, curve, false, settlement, settlement)?
         };
         let notional = self.notional(settlement);
         let dirty_price = if notional == 0.0 {
@@ -274,9 +274,9 @@ impl FixedRateBond {
         let target = dirty / (100.0 / notional);
         let objective = |spread: f64| -> Result<f64, Error> {
             let spreaded = YieldCurve::zero_spreaded(curve.clone(), spread, compounding, frequency)?;
-            Ok(target - analysis::npv_on_curve(&self.cashflows, &spreaded, false, settlement, settlement)?)
+            Ok(target - analysis::compute_npv_on_curve(&self.cashflows, &spreaded, false, settlement, settlement)?)
         };
-        brent_with_step(objective, accuracy, guess, 0.01, max_evaluations)
+        solve_brent_with_step(objective, accuracy, guess, 0.01, max_evaluations)
     }
 }
 

@@ -61,7 +61,7 @@ pub fn solve(a: &[Vec<f64>], b: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, Error> {
 }
 
 /// The inverse of a square matrix.
-pub fn inverse(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, Error> {
+pub fn compute_inverse(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, Error> {
     let identity: Vec<Vec<f64>> = (0..a.len())
         .map(|i| (0..a.len()).map(|j| if i == j { 1.0 } else { 0.0 }).collect())
         .collect();
@@ -80,7 +80,7 @@ mod tests {
             vec![1.0, -2.0, -3.0],
             vec![-1.0, 1.0, 2.0],
         ];
-        let inv = inverse(&a).unwrap();
+        let inv = compute_inverse(&a).unwrap();
         for i in 0..3 {
             for j in 0..3 {
                 let product: f64 = (0..3).map(|k| a[i][k] * inv[k][j]).sum();
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn a_singular_matrix_is_an_error() {
-        assert!(inverse(&[vec![1.0, 2.0], vec![2.0, 4.0]]).is_err());
-        assert!(inverse(&[vec![1.0, 2.0]]).is_err());
+        assert!(compute_inverse(&[vec![1.0, 2.0], vec![2.0, 4.0]]).is_err());
+        assert!(compute_inverse(&[vec![1.0, 2.0]]).is_err());
     }
 }

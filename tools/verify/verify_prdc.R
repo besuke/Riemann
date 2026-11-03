@@ -6,8 +6,8 @@ verify_prdc <- function() {
   tenors <- c("1Y", "2Y", "3Y", "5Y", "7Y")
   jpy_q <- c(0.01, 0.012, 0.014, 0.016, 0.018)
   usd_q <- c(0.04, 0.038, 0.036, 0.034, 0.032)
-  jpy <- RiemannFinMath::build_ois_curve(evaluation, evaluation, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(tenors, jpy_q, 2L, 1L, 0L))
-  usd <- RiemannFinMath::build_ois_curve(evaluation, evaluation, "sofr", "actual_365_fixed", RiemannFinMath::ois_instruments(tenors, usd_q, 2L, 1L, 0L))
+  jpy <- RiemannFinMath::bootstrap_ois_curve(evaluation, evaluation, "tonar", "actual_365_fixed", RiemannFinMath::create_ois_instruments(tenors, jpy_q, 2L, 1L, 0L))
+  usd <- RiemannFinMath::bootstrap_ois_curve(evaluation, evaluation, "sofr", "actual_365_fixed", RiemannFinMath::create_ois_instruments(tenors, usd_q, 2L, 1L, 0L))
   gq <- function(currency, q) {
     GaussQuant::ir_build_ois_curve_GQH(curve_data = tibble(kind = "ois", tenor = tenors, rate = q), trade_date = evaluation, currency = currency, verbose = FALSE,
                                        curve_type = "log_cubic_discount", reference = "evaluation", payment_frequency = "Annual", payment_lag = 0L,
@@ -27,9 +27,9 @@ verify_prdc <- function() {
   gaussquant <- GaussQuant::prdc_npv_GQL(evaluation, schedule, process, jpy_g$curve, 1e8, 150, 0.8, 0.78, floor_rate = 0, cap_rate = 0.08,
                                          day_counter = QuantLib::Actual365Fixed(), n_paths = paths, seed = 42L)
   terms <- list(150, 0.12, jpy, usd, times, accruals, 150, 0.8, 0.78, 0, 0.08, notional = 1e8)
-  analytic <- do.call(RiemannFinMath::prdc_value, terms)
-  monte_carlo <- do.call(RiemannFinMath::prdc_value, c(terms, list(paths = 400000, seed = 20261101)))
-  plain <- do.call(RiemannFinMath::prdc_value, c(terms, list(paths = paths, seed = 20261101, antithetic = FALSE)))
+  analytic <- do.call(RiemannFinMath::compute_prdc_value, terms)
+  monte_carlo <- do.call(RiemannFinMath::compute_prdc_value, c(terms, list(paths = 400000, seed = 20261101)))
+  plain <- do.call(RiemannFinMath::compute_prdc_value, c(terms, list(paths = paths, seed = 20261101, antithetic = FALSE)))
   tolerance <- 5 * plain$summary$standard_error
   list(
     values = tibble(

@@ -31,10 +31,10 @@
 #' @param include_weekends `TRUE` or `FALSE`. `NA` is an error.
 #' @param on_error `"stop"` or `"na"`. With `"na"`, `NA` means the calendar failed on that date, not
 #'   that it is a holiday.
-#' @return `is_business_day()` returns a logical vector. `holidays()` returns a `Date` vector.
+#' @return `is_business_day()` returns a logical vector. `generate_holidays()` returns a `Date` vector.
 #' @examples
 #' is_business_day("turkey", c("2026-05-19", "2026-05-20"))
-#' holidays("brazil_settlement", "2026-01-01", "2026-12-31")
+#' generate_holidays("brazil_settlement", "2026-01-01", "2026-12-31")
 #' @export
 is_business_day <- function(calendar, date, on_error = "stop") {
   as.logical(finish_values(checked(.Call(wrap__is_business_day, calendar, as_serial(date))), on_error))
@@ -42,6 +42,6 @@ is_business_day <- function(calendar, date, on_error = "stop") {
 
 #' @rdname is_business_day
 #' @export
-holidays <- function(calendar, from, to, include_weekends = FALSE) {
-  as_date(checked(.Call(wrap__holidays, calendar, as_serial(from), as_serial(to), as_flag(include_weekends)))$value)
+generate_holidays <- function(calendar, from, to, include_weekends = FALSE) {
+  as_date(checked(.Call(wrap__generate_holidays, calendar, as_serial(from), as_serial(to), as_flag(include_weekends)))$value)
 }

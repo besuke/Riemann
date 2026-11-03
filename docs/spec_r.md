@@ -45,12 +45,12 @@ R CMD INSTALL crates/riemann-r
 
 | 分類 | R の関数 |
 |---|---|
-| 債券 | `fixed_rate_bond`、`settlement_date`、`bond_values`、`clean_price`、`dirty_price`、`accrued_amount`、`duration`、`convexity`、`basis_point_value`、`yield_value_basis_point`、`yield_from_price`、`value_on_curve`、`bond_cashflows`、`value_with_zero_spread`、`z_spread_from_price` |
-| 日本式の債券計算 | `remaining_years`、`price_from_simple_rate`、`simple_rate_from_price`、`price_from_compound_yield`、`compound_yield_from_price`、`risk_from_simple_rate`、`risk_from_compound_yield` |
-| OIS カーブ | `ois_instruments`、`build_ois_curve`（`tonar`・`estr`・`sofr`・`sonia`）、`with_extrapolation`、`discount`、`zero_rate`、`forward_rate`、`quote_repricing`、`discount_nodes`、`curve_values` |
-| OIS スワップ | `create_ois_swap`、`compute_ois_swap_value`、`get_ois_swap_cashflows`、`compute_ois_swap_daily_rates`、`compute_ois_swap_quote_sensitivity`（`docs/spec_ois_swap.md`） |
-| カレンダー | `is_business_day`、`holidays` |
-| 並列バッチ | `bond_values_batch`、`curve_values_batch` |
+| 債券 | `create_fixed_rate_bond`、`compute_settlement_date`、`compute_bond_values`、`compute_clean_price`、`compute_dirty_price`、`compute_accrued_amount`、`compute_duration`、`compute_convexity`、`compute_basis_point_value`、`compute_yield_value_basis_point`、`compute_yield_from_price`、`compute_bond_value_on_curve`、`get_bond_cashflows`、`compute_bond_value_with_zero_spread`、`compute_z_spread_from_price` |
+| 日本式の債券計算 | `compute_remaining_years`、`compute_price_from_simple_rate`、`compute_simple_rate_from_price`、`compute_price_from_compound_yield`、`compute_compound_yield_from_price`、`compute_risk_from_simple_rate`、`compute_risk_from_compound_yield` |
+| OIS カーブ | `create_ois_instruments`、`bootstrap_ois_curve`（`tonar`・`estr`・`sofr`・`sonia`）、`with_extrapolation`、`compute_discount`、`compute_zero_rate`、`compute_forward_rate`、`get_quote_repricing`、`get_discount_nodes`、`compute_curve_values` |
+| OIS スワップ | `create_ois_swap`、`compute_ois_swap_value`、`compute_ois_swap_cashflows`、`compute_ois_swap_daily_rates`、`compute_ois_swap_quote_sensitivity`（`docs/spec_ois_swap.md`） |
+| カレンダー | `is_business_day`、`generate_holidays` |
+| 並列バッチ | `compute_bond_values_batch`、`compute_curve_values_batch` |
 
 - **日付**：R の `Date` または ISO 文字列（`YYYY-MM-DD`）を受け取り、`Date` で返す。それ以外と欠損はエラーにする。
 - **結果**：複数の項目を返す関数は tibble で返す。

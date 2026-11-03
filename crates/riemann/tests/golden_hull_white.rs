@@ -5,10 +5,10 @@ mod common;
 
 use common::golden_rows;
 use riemann::curves::{LogDiscountInterpolation, YieldCurve};
-use riemann::hull_white::{bermudan_swaption, callable_bond, jamshidian_swaption, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
+use riemann::hull_white::{compute_bermudan_swaption, compute_callable_bond, compute_jamshidian_swaption, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
 use riemann::interest_rate::{Compounding, InterestRate};
 use riemann::names;
-use riemann::sabr::{sabr_volatility, SabrParameters, SabrVolatilityType};
+use riemann::sabr::{compute_sabr_volatility, SabrParameters, SabrVolatilityType};
 use riemann::time::Date;
 
 fn number(s: &str) -> f64 {
@@ -21,7 +21,7 @@ fn curve() -> YieldCurve {
     YieldCurve::interpolated_discounts(
         rows.iter().map(|r| Date::from_serial(today.serial() as i64 + number(&r[0]) as i64).unwrap()).collect(),
         rows.iter().map(|r| number(&r[1])).collect(),
-        names::day_count("actual_365_fixed").unwrap(),
+        names::parse_day_count("actual_365_fixed").unwrap(),
         LogDiscountInterpolation::LogLinear,
     )
     .unwrap()
@@ -50,7 +50,7 @@ fn european_swaptions_against_quantlib() {
         let n = |i: usize| number(&r[i]);
         let flows = swaption_flows(n(0) == 1.0, &r[1], n(2));
         let model = HullWhite { mean_reversion: n(3), volatility: n(4), curve: &curve };
-        let v = jamshidian_swaption(&model, &flows).unwrap();
+        let v = compute_jamshidian_swaption(&model, &flows).unwrap();
         worst = worst.max((v - n(5)).abs());
         // QuantLib finds the critical rate to 1e-8 only; repeating its search gives 5.4e-15
         assert!((v - n(5)).abs() < 1e-8, "{v} against {} ({r:?})", n(5));
@@ -70,7 +70,7 @@ fn bermudan_swaptions_against_the_quantlib_tree() {
         let flows = swaption_flows(n(0) == 1.0, &r[1], n(2));
         let mut exercise = vec![flows.maturity];
         exercise.extend(&flows.payment_times[..flows.payment_times.len() - 1]);
-        let v = bermudan_swaption(&flows, &exercise, n(3), n(4), &curve, &settings).unwrap();
+        let v = compute_bermudan_swaption(&flows, &exercise, n(3), n(4), &curve, &settings).unwrap();
         worst = worst.max((v - n(6)).abs());
         tree_change = tree_change.max((n(6) - n(5)).abs());
         assert!((v - n(6)).abs() < 3e-4, "{v} against {} ({r:?})", n(6));
@@ -81,7 +81,7 @@ fn bermudan_swaptions_against_the_quantlib_tree() {
 #[test]
 fn callable_bonds_against_lagrangefinance() {
     let today = Date::from_ymd(2026, 11, 2).unwrap();
-    let dc = names::day_count("actual_365_fixed").unwrap();
+    let dc = names::parse_day_count("actual_365_fixed").unwrap();
     let rows = golden_rows("hw_callable.csv");
     assert_eq!(rows.len(), 20);
     let mut worst = 0.0f64;
@@ -102,7 +102,7 @@ fn callable_bonds_against_lagrangefinance() {
             })
             .collect();
         let settings = GridSettings { points: n(7) as usize, limit: n(8), quadrature: Quadrature::GaussHermite(n(9) as usize) };
-        let v = callable_bond(&flows, n(5), n(6), &curve, &settings).unwrap();
+        let v = compute_callable_bond(&flows, n(5), n(6), &curve, &settings).unwrap();
         worst = worst.max((v.bullet - n(10)).abs()).max((v.callable - n(11)).abs());
         assert!((v.bullet - n(10)).abs() < 1e-10, "bullet {} against {}", v.bullet, n(10));
         assert!((v.callable - n(11)).abs() < 1e-10, "callable {} against {}", v.callable, n(11));
@@ -118,7 +118,7 @@ fn sabr_volatilities_against_quantlib() {
     for r in &rows {
         let n = |i: usize| number(&r[i]);
         let p = SabrParameters { alpha: n(4), beta: n(5), nu: n(6), rho: n(7) };
-        let v = sabr_volatility(SabrVolatilityType::Lognormal, n(1), n(2), n(3), &p).unwrap();
+        let v = compute_sabr_volatility(SabrVolatilityType::Lognormal, n(1), n(2), n(3), &p).unwrap();
         let diff = (v - n(8)).abs() / (1.0 + n(8).abs());
         worst = worst.max(diff);
         assert!(diff < 1e-12, "{v} against {} ({r:?})", n(8));

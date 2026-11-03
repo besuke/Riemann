@@ -116,7 +116,7 @@ pub fn calendar_by_key(key: &str) -> Calendar {
         "joint_japan_moex_holidays" => Joint(japan_moex(), JointRule::JoinHolidays),
         "joint_japan_moex_business_days" => Joint(japan_moex(), JointRule::JoinBusinessDays),
 
-        other => riemann::names::calendar(other)
+        other => riemann::names::parse_calendar(other)
             .unwrap_or_else(|e| panic!("no Riemann calendar for the QuantLib key {other}: {e}")),
     }
 }

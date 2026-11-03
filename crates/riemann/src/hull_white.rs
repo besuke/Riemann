@@ -17,8 +17,8 @@
 use crate::autodiff::{Operand, Recorder};
 use crate::curves::YieldCurve;
 use crate::interest_rate::Compounding;
-use crate::math::solver1d::brent;
-use crate::options::{forward_value, ForwardInputs, ForwardModel, OptionType};
+use crate::math::solver1d::solve_brent;
+use crate::options::{compute_forward_value, ForwardInputs, ForwardModel, OptionType};
 use crate::Error;
 
 fn invalid<T>(reason: String) -> Result<T, Error> {
@@ -109,7 +109,7 @@ impl<T: Operand> HullWhite<'_, T> {
         let k = self.discount(bond_start)? * strike;
         // the standard deviation is the Black volatility over a time of 1
         let one = forward.like(1.0);
-        forward_value(
+        compute_forward_value(
             ForwardModel::Black,
             kind,
             &ForwardInputs { forward, strike: k, volatility: v, time: one, discount: one },
@@ -145,7 +145,7 @@ impl SwaptionFlows {
 /// The value of a European swaption by Jamshidian's decomposition. The critical rate is found on
 /// plain numbers; one Newton step on the recorded values carries its derivatives, so that the first
 /// derivatives of the result are exact (implicit function theorem).
-pub fn jamshidian_swaption<T: Operand>(
+pub fn compute_jamshidian_swaption<T: Operand>(
     model: &HullWhite<T>,
     flows: &SwaptionFlows,
 ) -> Result<T, Error> {
@@ -161,7 +161,7 @@ pub fn jamshidian_swaption<T: Operand>(
     };
     let zero = model.mean_reversion.like(0.0);
     let plain = |x: f64| Ok(objective_at(zero.like(x))?.primal());
-    let root = brent(plain, 1e-12, 0.05, -10.0, 10.0, 10_000)?;
+    let root = solve_brent(plain, 1e-12, 0.05, -10.0, 10.0, 10_000)?;
 
     let slope = {
         let b_value = model.b(flows.maturity, flows.value_time).primal();
@@ -195,7 +195,7 @@ pub struct SwaptionSensitivity {
 }
 
 /// A European swaption with its derivatives by automatic differentiation.
-pub fn jamshidian_swaption_sensitivity(
+pub fn compute_jamshidian_swaption_sensitivity(
     mean_reversion: f64,
     volatility: f64,
     curve: &YieldCurve,
@@ -205,7 +205,7 @@ pub fn jamshidian_swaption_sensitivity(
     let lifted = curve.lift(&recorder)?;
     let (a, sigma) = (recorder.input(mean_reversion), recorder.input(volatility));
     let model = HullWhite { mean_reversion: a, volatility: sigma, curve: &lifted.curve };
-    let value = jamshidian_swaption(&model, flows)?;
+    let value = compute_jamshidian_swaption(&model, flows)?;
     let g = recorder.gradient(value, &[a, sigma])?;
     Ok(SwaptionSensitivity {
         value: value.primal(),
@@ -216,7 +216,7 @@ pub fn jamshidian_swaption_sensitivity(
 
 /// The nodes and weights of Gauss-Hermite quadrature for the standard normal distribution, in
 /// increasing order. They are the roots of the normalized Hermite polynomials.
-pub fn normal_quadrature(n: usize) -> Result<(Vec<f64>, Vec<f64>), Error> {
+pub fn generate_normal_quadrature(n: usize) -> Result<(Vec<f64>, Vec<f64>), Error> {
     if !(2..=128).contains(&n) {
         return invalid(format!("quadrature needs 2 to 128 nodes, not {n}"));
     }
@@ -303,7 +303,7 @@ impl Default for GridSettings {
 /// Nodes and weights for the standard normal distribution.
 fn quadrature_rule(rule: Quadrature) -> Result<(Vec<f64>, Vec<f64>), Error> {
     match rule {
-        Quadrature::GaussHermite(n) => normal_quadrature(n),
+        Quadrature::GaussHermite(n) => generate_normal_quadrature(n),
         Quadrature::Trapezoid(spacing) => {
             if !(spacing > 0.0 && spacing <= 1.0) {
                 return invalid(format!("the trapezoid spacing must be in (0, 1], not {spacing}"));
@@ -312,7 +312,7 @@ fn quadrature_rule(rule: Quadrature) -> Result<(Vec<f64>, Vec<f64>), Error> {
             let nodes: Vec<f64> = (-n..=n).map(|i| i as f64 * spacing).collect();
             let weights = nodes
                 .iter()
-                .map(|&z| spacing * crate::math::normal::normal_pdf(z))
+                .map(|&z| spacing * crate::math::normal::compute_normal_pdf(z))
                 .collect();
             Ok((nodes, weights))
         }
@@ -428,7 +428,7 @@ pub struct CallableBondValue {
 
 /// A bond callable by the issuer on its coupon dates, by backward induction (LagrangeFinance II-8.4).
 /// No default, spread or cost is included.
-pub fn callable_bond(
+pub fn compute_callable_bond(
     flows: &[CallableFlow],
     mean_reversion: f64,
     volatility: f64,
@@ -464,7 +464,7 @@ pub fn callable_bond(
 /// A Bermudan swaption, exercisable into the remaining payments on each of `exercise_times`, which
 /// must be among the period starts. The value comes from the same backward induction as
 /// [`callable_bond`].
-pub fn bermudan_swaption(
+pub fn compute_bermudan_swaption(
     flows: &SwaptionFlows,
     exercise_times: &[f64],
     mean_reversion: f64,
@@ -531,7 +531,7 @@ mod tests {
 
     #[test]
     fn quadrature_integrates_the_moments_of_the_normal() {
-        let (x, w) = normal_quadrature(24).unwrap();
+        let (x, w) = generate_normal_quadrature(24).unwrap();
         assert_eq!(x.len(), 24);
         let moment = |p: i32| x.iter().zip(&w).map(|(x, w)| w * x.powi(p)).sum::<f64>();
         assert!((moment(0) - 1.0).abs() < 1e-13);
@@ -539,7 +539,7 @@ mod tests {
         assert!((moment(2) - 1.0).abs() < 1e-12);
         assert!((moment(4) - 3.0).abs() < 1e-11);
         assert!((moment(6) - 15.0).abs() < 1e-10);
-        assert!(normal_quadrature(1).is_err());
+        assert!(generate_normal_quadrature(1).is_err());
     }
 
     #[test]
@@ -554,7 +554,7 @@ mod tests {
                 call_price: None,
             })
             .collect();
-        let v = callable_bond(&flows, 0.15, 0.012, &curve, &GridSettings::default()).unwrap();
+        let v = compute_callable_bond(&flows, 0.15, 0.012, &curve, &GridSettings::default()).unwrap();
         let exact: f64 = flows
             .iter()
             .map(|f| (f.coupon + f.principal) * (-0.02 * f.time).exp())
@@ -574,7 +574,7 @@ mod tests {
                 call_price: if (2..10).contains(&i) { Some(100.0) } else { None },
             })
             .collect();
-        let v = callable_bond(&flows, 0.15, 0.012, &curve, &GridSettings::default()).unwrap();
+        let v = compute_callable_bond(&flows, 0.15, 0.012, &curve, &GridSettings::default()).unwrap();
         assert!(v.issuer_call_value > 0.0);
     }
 
@@ -595,9 +595,9 @@ mod tests {
         for payer in [true, false] {
             let f = swaption(payer);
             let model = HullWhite { mean_reversion: 0.1, volatility: 0.01, curve: &curve };
-            let analytic = jamshidian_swaption(&model, &f).unwrap();
+            let analytic = compute_jamshidian_swaption(&model, &f).unwrap();
             let settings = GridSettings { points: 1201, limit: 0.2, quadrature: Quadrature::Trapezoid(0.02) };
-            let grid = bermudan_swaption(&f, &[2.0], 0.1, 0.01, &curve, &settings).unwrap();
+            let grid = compute_bermudan_swaption(&f, &[2.0], 0.1, 0.01, &curve, &settings).unwrap();
             assert!((analytic - grid).abs() < 1e-5, "{analytic} {grid}");
         }
     }
@@ -607,8 +607,8 @@ mod tests {
         // payer - receiver = the forward swap's value on the curve
         let curve = flat(0.02);
         let model = HullWhite { mean_reversion: 0.1, volatility: 0.01, curve: &curve };
-        let payer = jamshidian_swaption(&model, &swaption(true)).unwrap();
-        let receiver = jamshidian_swaption(&model, &swaption(false)).unwrap();
+        let payer = compute_jamshidian_swaption(&model, &swaption(true)).unwrap();
+        let receiver = compute_jamshidian_swaption(&model, &swaption(false)).unwrap();
         let f = swaption(true);
         let fixed: f64 = f.payment_times.iter().zip(&f.coupons).map(|(t, c)| c * (-0.02 * t).exp()).sum();
         let swap = (-0.02f64 * 2.0).exp() - (-0.02f64 * 7.0).exp() - fixed;
@@ -621,8 +621,8 @@ mod tests {
         let f = swaption(true);
         let settings = GridSettings { points: 641, limit: 0.2, quadrature: Quadrature::Trapezoid(0.05) };
         let model = HullWhite { mean_reversion: 0.1, volatility: 0.01, curve: &curve };
-        let european = jamshidian_swaption(&model, &f).unwrap();
-        let bermudan = bermudan_swaption(&f, &[2.0, 3.0, 4.0, 5.0, 6.0], 0.1, 0.01, &curve, &settings).unwrap();
+        let european = compute_jamshidian_swaption(&model, &f).unwrap();
+        let bermudan = compute_bermudan_swaption(&f, &[2.0, 3.0, 4.0, 5.0, 6.0], 0.1, 0.01, &curve, &settings).unwrap();
         assert!(bermudan >= european - 1e-5, "{bermudan} {european}");
     }
 
@@ -630,9 +630,9 @@ mod tests {
     fn swaption_derivatives_agree_with_numeric_differences() {
         let curve = flat(0.02);
         let f = swaption(true);
-        let s = jamshidian_swaption_sensitivity(0.1, 0.01, &curve, &f).unwrap();
+        let s = compute_jamshidian_swaption_sensitivity(0.1, 0.01, &curve, &f).unwrap();
         let value = |a: f64, v: f64| {
-            jamshidian_swaption(&HullWhite { mean_reversion: a, volatility: v, curve: &curve }, &f).unwrap()
+            compute_jamshidian_swaption(&HullWhite { mean_reversion: a, volatility: v, curve: &curve }, &f).unwrap()
         };
         assert!((s.value - value(0.1, 0.01)).abs() < 1e-14);
         let h = 1e-6;
@@ -646,7 +646,7 @@ mod tests {
     fn invalid_parameters_are_errors() {
         let curve = flat(0.02);
         let model = HullWhite { mean_reversion: -0.1, volatility: 0.01, curve: &curve };
-        assert!(jamshidian_swaption(&model, &swaption(true)).is_err());
-        assert!(callable_bond(&[], 0.1, 0.01, &curve, &GridSettings::default()).is_err());
+        assert!(compute_jamshidian_swaption(&model, &swaption(true)).is_err());
+        assert!(compute_callable_bond(&[], 0.1, 0.01, &curve, &GridSettings::default()).is_err());
     }
 }

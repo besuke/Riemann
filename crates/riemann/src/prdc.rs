@@ -15,8 +15,8 @@
 use crate::autodiff::{Operand, Recorder, Value, Var};
 use crate::batch::map_parallel;
 use crate::curves::{CurveInput, YieldCurve};
-use crate::math::random::standard_normal;
-use crate::options::{forward_value, standard_error_of, ForwardInputs, ForwardModel, OptionType};
+use crate::math::random::generate_standard_normal;
+use crate::options::{compute_forward_value, standard_error_of, ForwardInputs, ForwardModel, OptionType};
 use crate::Error;
 use rayon::prelude::*;
 
@@ -87,7 +87,7 @@ impl<T: Operand> PrdcMarket<'_, T> {
 }
 
 /// The closed-form value of the note, with the coupon as a floor plus a call spread on the FX rate.
-pub fn prdc_analytic_value<T: Operand>(terms: &PrdcTerms, market: &PrdcMarket<T>) -> Result<T, Error> {
+pub fn compute_prdc_analytic_value<T: Operand>(terms: &PrdcTerms, market: &PrdcMarket<T>) -> Result<T, Error> {
     terms.check()?;
     market.check()?;
     let scale = terms.leverage / terms.fx_base;
@@ -98,7 +98,7 @@ pub fn prdc_analytic_value<T: Operand>(terms: &PrdcTerms, market: &PrdcMarket<T>
             // always in the money
             return Ok(forward - strike);
         }
-        forward_value(
+        compute_forward_value(
             ForwardModel::Black,
             OptionType::Call,
             &ForwardInputs { forward, strike: zero.like(strike), volatility: market.volatility, time: zero.like(t), discount: one },
@@ -148,7 +148,7 @@ pub struct PrdcSensitivity {
 }
 
 /// The closed-form value and its derivatives, by automatic differentiation.
-pub fn prdc_analytic(
+pub fn compute_prdc_analytic(
     terms: &PrdcTerms,
     spot: f64,
     volatility: f64,
@@ -160,7 +160,7 @@ pub fn prdc_analytic(
     let d = domestic.lift(&recorder)?;
     let f = foreign.lift(&recorder)?;
     let market = PrdcMarket { spot: s, volatility: v, domestic: &d.curve, foreign: &f.curve };
-    let npv = prdc_analytic_value(terms, &market)?;
+    let npv = compute_prdc_analytic_value(terms, &market)?;
     sensitivity(&recorder, npv, 0.0, s, v, &d.inputs, &f.inputs)
 }
 
@@ -200,7 +200,7 @@ pub struct PrdcMonteCarlo {
 
 /// Monte Carlo on the coupon dates, with pathwise derivatives on path vectors. The kinks at the floor
 /// and cap are differentiated as the slopes on each side, which is sound for these continuous coupons.
-pub fn prdc_monte_carlo(
+pub fn compute_prdc_monte_carlo(
     terms: &PrdcTerms,
     spot: f64,
     volatility: f64,
@@ -244,7 +244,7 @@ fn on_workers(
         let t = terms.coupon_times[i];
         let mut normals: Vec<f64> = (0..draws)
             .into_par_iter()
-            .map(|p| standard_normal(seed, p, i as u64))
+            .map(|p| generate_standard_normal(seed, p, i as u64))
             .collect();
         if antithetic {
             let opposite: Vec<f64> = normals.iter().map(|z| -z).collect();
@@ -334,8 +334,8 @@ mod tests {
     #[test]
     fn monte_carlo_agrees_with_the_closed_form() {
         let (d, f) = (jpy(), foreign());
-        let a = prdc_analytic(&terms(), 150.0, 0.12, &d, &f).unwrap();
-        let m = prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &settings(4)).unwrap();
+        let a = compute_prdc_analytic(&terms(), 150.0, 0.12, &d, &f).unwrap();
+        let m = compute_prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &settings(4)).unwrap();
         assert!((m.npv - a.npv).abs() < 5.0 * m.standard_error, "{} {} {}", m.npv, a.npv, m.standard_error);
         assert!((m.fx_delta - a.fx_delta).abs() < 0.02 * a.fx_delta.abs(), "{} {}", m.fx_delta, a.fx_delta);
         assert!((m.fx_vega - a.fx_vega).abs() < 0.03 * a.fx_vega.abs(), "{} {}", m.fx_vega, a.fx_vega);
@@ -348,9 +348,9 @@ mod tests {
     #[test]
     fn the_closed_form_derivatives_agree_with_numeric_differences() {
         let (d, f) = (jpy(), foreign());
-        let a = prdc_analytic(&terms(), 150.0, 0.12, &d, &f).unwrap();
+        let a = compute_prdc_analytic(&terms(), 150.0, 0.12, &d, &f).unwrap();
         let value = |s: f64, v: f64| {
-            prdc_analytic_value(&terms(), &PrdcMarket { spot: s, volatility: v, domestic: &d, foreign: &f }).unwrap()
+            compute_prdc_analytic_value(&terms(), &PrdcMarket { spot: s, volatility: v, domestic: &d, foreign: &f }).unwrap()
         };
         let delta = (value(150.0 + 1e-3, 0.12) - value(150.0 - 1e-3, 0.12)) / 2e-3;
         let vega = (value(150.0, 0.12 + 1e-5) - value(150.0, 0.12 - 1e-5)) / 2e-5;
@@ -370,7 +370,7 @@ mod tests {
                 discounts.push((-sum + if i == node { h } else { 0.0 }).exp());
             }
             let bumped = YieldCurve::interpolated_discounts(dates, discounts, dc(), LogDiscountInterpolation::LogLinear).unwrap();
-            prdc_analytic_value(&terms(), &PrdcMarket { spot: 150.0, volatility: 0.12, domestic: &d, foreign: &bumped }).unwrap()
+            compute_prdc_analytic_value(&terms(), &PrdcMarket { spot: 150.0, volatility: 0.12, domestic: &d, foreign: &bumped }).unwrap()
         };
         let numeric = (rebuilt(1e-6) - rebuilt(-1e-6)) / 2e-6;
         let got = a.curves.iter().filter(|c| !c.domestic).nth(node).unwrap().d_npv;
@@ -381,8 +381,8 @@ mod tests {
     fn pathwise_derivatives_are_the_derivatives_of_the_same_paths() {
         let (d, f) = (jpy(), foreign());
         let s = PrdcMonteCarlo { paths: 40_000, ..settings(2) };
-        let m = prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &s).unwrap();
-        let value = |x: f64, v: f64| prdc_monte_carlo(&terms(), x, v, &d, &f, &s).unwrap().npv;
+        let m = compute_prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &s).unwrap();
+        let value = |x: f64, v: f64| compute_prdc_monte_carlo(&terms(), x, v, &d, &f, &s).unwrap().npv;
         let delta = (value(150.0 + 1e-3, 0.12) - value(150.0 - 1e-3, 0.12)) / 2e-3;
         let vega = (value(150.0, 0.12 + 1e-5) - value(150.0, 0.12 - 1e-5)) / 2e-5;
         assert!((m.fx_delta - delta).abs() < 1e-3 * delta.abs(), "{} {delta}", m.fx_delta);
@@ -393,8 +393,8 @@ mod tests {
     fn monte_carlo_does_not_depend_on_the_number_of_threads() {
         let (d, f) = (jpy(), foreign());
         let s = |t| PrdcMonteCarlo { paths: 40_000, ..settings(t) };
-        let one = prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &s(1)).unwrap();
-        assert_eq!(one, prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &s(4)).unwrap());
+        let one = compute_prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &s(1)).unwrap();
+        assert_eq!(one, compute_prdc_monte_carlo(&terms(), 150.0, 0.12, &d, &f, &s(4)).unwrap());
     }
 
     #[test]
@@ -402,7 +402,7 @@ mod tests {
         let (d, f) = (jpy(), foreign());
         let mut fixed = terms();
         fixed.fixed_rates = vec![Some(0.03); 5];
-        let v = prdc_analytic(&fixed, 150.0, 0.12, &d, &f).unwrap();
+        let v = compute_prdc_analytic(&fixed, 150.0, 0.12, &d, &f).unwrap();
         // a note with fixed coupons has no FX risk
         assert_eq!(v.fx_delta, 0.0);
         assert_eq!(v.fx_vega, 0.0);
@@ -411,8 +411,8 @@ mod tests {
         assert!((v.npv - exact).abs() < 1e-6);
         let mut uncapped = terms();
         uncapped.cap = f64::INFINITY;
-        let capped = prdc_analytic(&terms(), 150.0, 0.12, &d, &f).unwrap();
-        assert!(prdc_analytic(&uncapped, 150.0, 0.12, &d, &f).unwrap().npv > capped.npv);
+        let capped = compute_prdc_analytic(&terms(), 150.0, 0.12, &d, &f).unwrap();
+        assert!(compute_prdc_analytic(&uncapped, 150.0, 0.12, &d, &f).unwrap().npv > capped.npv);
     }
 
     #[test]
@@ -420,10 +420,10 @@ mod tests {
         let (d, f) = (jpy(), foreign());
         let mut t = terms();
         t.cap = -1.0;
-        assert!(prdc_analytic(&t, 150.0, 0.12, &d, &f).is_err());
+        assert!(compute_prdc_analytic(&t, 150.0, 0.12, &d, &f).is_err());
         let mut t = terms();
         t.coupon_times = vec![1.0, 1.0, 3.0, 4.0, 5.0];
-        assert!(prdc_analytic(&t, 150.0, 0.12, &d, &f).is_err());
-        assert!(prdc_analytic(&terms(), -1.0, 0.12, &d, &f).is_err());
+        assert!(compute_prdc_analytic(&t, 150.0, 0.12, &d, &f).is_err());
+        assert!(compute_prdc_analytic(&terms(), -1.0, 0.12, &d, &f).is_err());
     }
 }

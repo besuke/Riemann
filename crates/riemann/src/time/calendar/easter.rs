@@ -3,7 +3,7 @@
 //! agreement is checked against QuantLib by the golden calendar tests.
 
 /// Day of the year (January 1st = 1) of Easter Monday.
-pub fn easter_monday_day_of_year(year: i32) -> u32 {
+pub fn compute_easter_monday_day_of_year(year: i32) -> u32 {
     let a = year % 19;
     let b = year / 100;
     let c = year % 100;
@@ -27,7 +27,7 @@ pub fn easter_monday_day_of_year(year: i32) -> u32 {
 /// date comes from Meeus's Julian algorithm; the Julian calendar is 13 days behind until 2099
 /// and 14 days behind from 2100. QuantLib keeps the same dates as a table for 1901-2199;
 /// agreement is checked against QuantLib by the golden calendar tests.
-pub fn orthodox_easter_monday_day_of_year(year: i32) -> u32 {
+pub fn compute_orthodox_easter_monday_day_of_year(year: i32) -> u32 {
     let a = year % 4;
     let b = year % 7;
     let c = year % 19;
@@ -48,17 +48,17 @@ mod tests {
     #[test]
     fn orthodox_matches_quantlib_table_samples() {
         // QuantLib's Orthodox EasterMonday table: 1901 -> 105, 1902 -> 118, 1910 -> 122.
-        assert_eq!(orthodox_easter_monday_day_of_year(1901), 105);
-        assert_eq!(orthodox_easter_monday_day_of_year(1902), 118);
-        assert_eq!(orthodox_easter_monday_day_of_year(1910), 122);
+        assert_eq!(compute_orthodox_easter_monday_day_of_year(1901), 105);
+        assert_eq!(compute_orthodox_easter_monday_day_of_year(1902), 118);
+        assert_eq!(compute_orthodox_easter_monday_day_of_year(1910), 122);
     }
 
     #[test]
     fn matches_quantlib_table_samples() {
         // QuantLib's EasterMonday table: 1901 -> 98, 2000 -> 115, 2024 -> 92, 2199 -> 105.
-        assert_eq!(easter_monday_day_of_year(1901), 98);
-        assert_eq!(easter_monday_day_of_year(2000), 115);
-        assert_eq!(easter_monday_day_of_year(2024), 92);
-        assert_eq!(easter_monday_day_of_year(2199), 105);
+        assert_eq!(compute_easter_monday_day_of_year(1901), 98);
+        assert_eq!(compute_easter_monday_day_of_year(2000), 115);
+        assert_eq!(compute_easter_monday_day_of_year(2024), 92);
+        assert_eq!(compute_easter_monday_day_of_year(2199), 105);
     }
 }

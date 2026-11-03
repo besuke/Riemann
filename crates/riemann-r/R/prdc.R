@@ -13,7 +13,7 @@
 #'
 #' @param spot Domestic per foreign.
 #' @param volatility Lognormal FX volatility.
-#' @param domestic_curve,foreign_curve Curves from [build_ois_curve()], on the same date.
+#' @param domestic_curve,foreign_curve Curves from [bootstrap_ois_curve()], on the same date.
 #' @param coupon_times Coupon dates in years from the curves' reference date.
 #' @param accrual_fractions Year fractions of the coupons.
 #' @param fx_base,leverage,subtraction,floor,cap The coupon's terms. `cap` may be `Inf`.
@@ -28,16 +28,16 @@
 #'   per unit of log discount factor, and `npv_per_bp` for +1bp on the node's continuous zero rate.
 #' @examples
 #' tenors <- c("1Y", "3Y", "5Y", "7Y")
-#' jpy_quotes <- ois_instruments(tenors, c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L)
-#' usd_quotes <- ois_instruments(tenors, c(0.04, 0.038, 0.036, 0.034), 2L, 1L, 0L)
-#' jpy <- build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", jpy_quotes)
-#' usd <- build_ois_curve("2026-11-02", "2026-11-02", "sofr", "actual_365_fixed", usd_quotes)
-#' prdc_value(150, 0.12, jpy, usd, 1:5, rep(1, 5), 150, 0.8, 0.78, 0, 0.08, notional = 1e8)$summary
+#' jpy_quotes <- create_ois_instruments(tenors, c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L)
+#' usd_quotes <- create_ois_instruments(tenors, c(0.04, 0.038, 0.036, 0.034), 2L, 1L, 0L)
+#' jpy <- bootstrap_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", jpy_quotes)
+#' usd <- bootstrap_ois_curve("2026-11-02", "2026-11-02", "sofr", "actual_365_fixed", usd_quotes)
+#' compute_prdc_value(150, 0.12, jpy, usd, 1:5, rep(1, 5), 150, 0.8, 0.78, 0, 0.08, notional = 1e8)$summary
 #' @export
-prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, coupon_times, accrual_fractions, fx_base, leverage, subtraction, floor = 0, cap = Inf,
+compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, coupon_times, accrual_fractions, fx_base, leverage, subtraction, floor = 0, cap = Inf,
                        notional = 1, redemption = notional, fixed_rate = NA_real_, paths = 0, seed = 1, antithetic = TRUE, threads = 0L) {
   i <- tibble(coupon_times = as.numeric(coupon_times), accrual_fractions = as.numeric(accrual_fractions), fixed_rate = as.numeric(fixed_rate))
-  x <- checked(.Call(wrap__prdc_value, as.numeric(spot), as.numeric(volatility), domestic_curve$pointer, foreign_curve$pointer, i$coupon_times, i$accrual_fractions, i$fixed_rate,
+  x <- checked(.Call(wrap__compute_prdc_value, as.numeric(spot), as.numeric(volatility), domestic_curve$pointer, foreign_curve$pointer, i$coupon_times, i$accrual_fractions, i$fixed_rate,
                      as.numeric(fx_base), as.numeric(leverage), as.numeric(subtraction), as.numeric(floor), as.numeric(cap), as.numeric(notional), as.numeric(redemption),
                      as.numeric(paths), as.numeric(seed), as_flag(antithetic), as.integer(threads)))
   list(

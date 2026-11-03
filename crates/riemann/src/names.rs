@@ -6,7 +6,7 @@ use crate::cashflow_analysis::DurationType;
 use crate::cds::{CdsEngine, ProtectionSide};
 use crate::instruments::PriceType;
 use crate::interest_rate::Compounding;
-use crate::ois::{estr, sofr, sonia, tonar, OisInterpolation, OvernightIndex};
+use crate::ois::{create_estr_index, create_sofr_index, create_sonia_index, create_tonar_index, OisInterpolation, OvernightIndex};
 use crate::ois_swap::SwapSide;
 use crate::options::{BarrierType, Exercise, ForwardModel, OptionType};
 use crate::sabr::SabrVolatilityType;
@@ -26,7 +26,7 @@ fn unknown<T>(kind: &str, name: &str) -> Result<T, Error> {
 }
 
 /// Every calendar and market of QuantLib v1.42, without the joint and bespoke calendars.
-pub fn calendar(name: &str) -> Result<Calendar, Error> {
+pub fn parse_calendar(name: &str) -> Result<Calendar, Error> {
     use Calendar::*;
     Ok(match name {
         "null_calendar" => NullCalendar,
@@ -105,9 +105,9 @@ pub fn calendar(name: &str) -> Result<Calendar, Error> {
 }
 
 /// A day count. `business_252:<calendar>` names Business/252 on a calendar.
-pub fn day_count(name: &str) -> Result<DayCount, Error> {
+pub fn parse_day_count(name: &str) -> Result<DayCount, Error> {
     if let Some(calendar_name) = name.strip_prefix("business_252:") {
-        return Ok(DayCount::Business252(HolidayCalendar::from(calendar(
+        return Ok(DayCount::Business252(HolidayCalendar::from(parse_calendar(
             calendar_name,
         )?)));
     }
@@ -150,7 +150,7 @@ pub fn day_count(name: &str) -> Result<DayCount, Error> {
     })
 }
 
-pub fn option_type(name: &str) -> Result<OptionType, Error> {
+pub fn parse_option_type(name: &str) -> Result<OptionType, Error> {
     Ok(match name {
         "call" => OptionType::Call,
         "put" => OptionType::Put,
@@ -158,7 +158,7 @@ pub fn option_type(name: &str) -> Result<OptionType, Error> {
     })
 }
 
-pub fn barrier_type(name: &str) -> Result<BarrierType, Error> {
+pub fn parse_barrier_type(name: &str) -> Result<BarrierType, Error> {
     Ok(match name {
         "down_in" => BarrierType::DownIn,
         "up_in" => BarrierType::UpIn,
@@ -168,7 +168,7 @@ pub fn barrier_type(name: &str) -> Result<BarrierType, Error> {
     })
 }
 
-pub fn exercise(name: &str) -> Result<Exercise, Error> {
+pub fn parse_exercise(name: &str) -> Result<Exercise, Error> {
     Ok(match name {
         "european" => Exercise::European,
         "american" => Exercise::American,
@@ -176,7 +176,7 @@ pub fn exercise(name: &str) -> Result<Exercise, Error> {
     })
 }
 
-pub fn forward_model(name: &str) -> Result<ForwardModel, Error> {
+pub fn parse_forward_model(name: &str) -> Result<ForwardModel, Error> {
     Ok(match name {
         "black" => ForwardModel::Black,
         "bachelier" => ForwardModel::Bachelier,
@@ -184,7 +184,7 @@ pub fn forward_model(name: &str) -> Result<ForwardModel, Error> {
     })
 }
 
-pub fn sabr_volatility_type(name: &str) -> Result<SabrVolatilityType, Error> {
+pub fn parse_sabr_volatility_type(name: &str) -> Result<SabrVolatilityType, Error> {
     Ok(match name {
         "lognormal" => SabrVolatilityType::Lognormal,
         "normal" => SabrVolatilityType::Normal,
@@ -192,7 +192,7 @@ pub fn sabr_volatility_type(name: &str) -> Result<SabrVolatilityType, Error> {
     })
 }
 
-pub fn protection_side(name: &str) -> Result<ProtectionSide, Error> {
+pub fn parse_protection_side(name: &str) -> Result<ProtectionSide, Error> {
     Ok(match name {
         "buyer" => ProtectionSide::Buyer,
         "seller" => ProtectionSide::Seller,
@@ -200,7 +200,7 @@ pub fn protection_side(name: &str) -> Result<ProtectionSide, Error> {
     })
 }
 
-pub fn cds_engine(name: &str) -> Result<CdsEngine, Error> {
+pub fn parse_cds_engine(name: &str) -> Result<CdsEngine, Error> {
     Ok(match name {
         "midpoint" => CdsEngine::MidPoint,
         "isda" => CdsEngine::Isda,
@@ -208,7 +208,7 @@ pub fn cds_engine(name: &str) -> Result<CdsEngine, Error> {
     })
 }
 
-pub fn swap_side(name: &str) -> Result<SwapSide, Error> {
+pub fn parse_swap_side(name: &str) -> Result<SwapSide, Error> {
     match name {
         "payer" => Ok(SwapSide::Payer),
         "receiver" => Ok(SwapSide::Receiver),
@@ -216,7 +216,7 @@ pub fn swap_side(name: &str) -> Result<SwapSide, Error> {
     }
 }
 
-pub fn compounding(name: &str) -> Result<Compounding, Error> {
+pub fn parse_compounding(name: &str) -> Result<Compounding, Error> {
     Ok(match name {
         "simple" => Compounding::Simple,
         "compounded" => Compounding::Compounded,
@@ -225,7 +225,7 @@ pub fn compounding(name: &str) -> Result<Compounding, Error> {
     })
 }
 
-pub fn business_day_convention(name: &str) -> Result<BusinessDayConvention, Error> {
+pub fn parse_business_day_convention(name: &str) -> Result<BusinessDayConvention, Error> {
     use BusinessDayConvention::*;
     Ok(match name {
         "following" => Following,
@@ -239,7 +239,7 @@ pub fn business_day_convention(name: &str) -> Result<BusinessDayConvention, Erro
     })
 }
 
-pub fn date_generation_rule(name: &str) -> Result<DateGenerationRule, Error> {
+pub fn parse_date_generation_rule(name: &str) -> Result<DateGenerationRule, Error> {
     use DateGenerationRule::*;
     Ok(match name {
         "backward" => Backward,
@@ -256,7 +256,7 @@ pub fn date_generation_rule(name: &str) -> Result<DateGenerationRule, Error> {
     })
 }
 
-pub fn price_type(name: &str) -> Result<PriceType, Error> {
+pub fn parse_price_type(name: &str) -> Result<PriceType, Error> {
     Ok(match name {
         "clean" => PriceType::Clean,
         "dirty" => PriceType::Dirty,
@@ -264,7 +264,7 @@ pub fn price_type(name: &str) -> Result<PriceType, Error> {
     })
 }
 
-pub fn duration_type(name: &str) -> Result<DurationType, Error> {
+pub fn parse_duration_type(name: &str) -> Result<DurationType, Error> {
     Ok(match name {
         "simple" => DurationType::Simple,
         "modified" => DurationType::Modified,
@@ -274,17 +274,17 @@ pub fn duration_type(name: &str) -> Result<DurationType, Error> {
 }
 
 /// The overnight indices of the OIS curves.
-pub fn overnight_index(name: &str) -> Result<OvernightIndex, Error> {
+pub fn parse_overnight_index(name: &str) -> Result<OvernightIndex, Error> {
     Ok(match name {
-        "tonar" => tonar(),
-        "estr" => estr(),
-        "sofr" => sofr(),
-        "sonia" => sonia(),
+        "tonar" => create_tonar_index(),
+        "estr" => create_estr_index(),
+        "sofr" => create_sofr_index(),
+        "sonia" => create_sonia_index(),
         other => return unknown("overnight index", other),
     })
 }
 
-pub fn ois_interpolation(name: &str) -> Result<OisInterpolation, Error> {
+pub fn parse_ois_interpolation(name: &str) -> Result<OisInterpolation, Error> {
     Ok(match name {
         "log_linear" => OisInterpolation::LogLinear,
         "monotonic_log_cubic" => OisInterpolation::MonotonicLogCubic,
@@ -293,7 +293,7 @@ pub fn ois_interpolation(name: &str) -> Result<OisInterpolation, Error> {
 }
 
 /// A period such as `1D`, `2W`, `6M` or `10Y`.
-pub fn period(name: &str) -> Result<Period, Error> {
+pub fn parse_period(name: &str) -> Result<Period, Error> {
     let split = name.len().saturating_sub(1);
     let (length, unit) = (name.get(..split), name.get(split..));
     let unit = match unit {
@@ -315,16 +315,16 @@ mod tests {
 
     #[test]
     fn unknown_names_are_errors() {
-        assert!(calendar("mars").is_err());
-        assert!(day_count("actual_999").is_err());
-        assert!(day_count("business_252:mars").is_err());
-        assert!(period("6").is_err());
-        assert!(period("xM").is_err());
+        assert!(parse_calendar("mars").is_err());
+        assert!(parse_day_count("actual_999").is_err());
+        assert!(parse_day_count("business_252:mars").is_err());
+        assert!(parse_period("6").is_err());
+        assert!(parse_period("xM").is_err());
     }
 
     #[test]
     fn periods_parse() {
-        assert_eq!(period("6M").unwrap(), Period::new(6, TimeUnit::Months));
-        assert_eq!(period("10Y").unwrap(), Period::new(10, TimeUnit::Years));
+        assert_eq!(parse_period("6M").unwrap(), Period::new(6, TimeUnit::Months));
+        assert_eq!(parse_period("10Y").unwrap(), Period::new(10, TimeUnit::Years));
     }
 }

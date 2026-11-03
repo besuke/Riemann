@@ -49,7 +49,7 @@ RiemannFinMath:
 
 ```{r}
 #| label: riemann-volatility
-riemann_volatility <- RiemannFinMath::sabr_volatility(
+riemann_volatility <- RiemannFinMath::compute_sabr_volatility(
   "lognormal", market$strike, forward, expiry, parameters$alpha, beta, parameters$nu, parameters$rho
 )
 ```
@@ -91,7 +91,7 @@ bind_rows(
 tibble(strike_pct = market$strike_pct, Quotes = 100 * market$black_volatility) |>
   mutate(
     `R optim on QuantLib` = 100 * ql_volatility(market$strike, parameters$alpha, parameters$nu, parameters$rho),
-    RiemannFinMath = 100 * RiemannFinMath::sabr_volatility("lognormal", market$strike, forward, expiry, riemann_fit$alpha, beta, riemann_fit$nu, riemann_fit$rho)
+    RiemannFinMath = 100 * RiemannFinMath::compute_sabr_volatility("lognormal", market$strike, forward, expiry, riemann_fit$alpha, beta, riemann_fit$nu, riemann_fit$rho)
   ) |>
   pivot_longer(-strike_pct, names_to = "Series", values_to = "volatility") |>
   ggplot(aes(strike_pct, volatility, colour = Series)) +
@@ -111,7 +111,7 @@ The QuantLib R binding has no normal SABR expansion, so nothing on the C++ side 
 normal_inputs <- list(alpha = 0.03, nu = 0.4, rho = -0.3, forward = 0.03, expiry = 2, beta = 0.5)
 show_inputs(normal_inputs)
 strikes <- 0.03 * c(0.6, 0.8, 0.9, 1, 1.1, 1.25, 1.5)
-normal_smile <- RiemannFinMath::sabr_volatility("normal", strikes, 0.03, 2, 0.03, 0.5, 0.4, -0.3)
+normal_smile <- RiemannFinMath::compute_sabr_volatility("normal", strikes, 0.03, 2, 0.03, 0.5, 0.4, -0.3)
 normal_fit <- RiemannFinMath::calibrate_sabr("normal", strikes, normal_smile, 0.03, 2, 0.5)
 bind_rows(
   compare_values("alpha", "percent", 3, 100 * normal_fit$alpha, "The input"),
@@ -134,7 +134,7 @@ bind_rows(
   against_lagrange(
     sprintf("Strike %.2f percent", market$strike_pct), "percent of volatility",
     paste0("sabr.volatility_pct.", market$strike_pct),
-    100 * RiemannFinMath::sabr_volatility("lognormal", market$strike, forward, expiry, lagrange_parameters$alpha, beta, lagrange_parameters$nu, lagrange_parameters$rho)
+    100 * RiemannFinMath::compute_sabr_volatility("lognormal", market$strike, forward, expiry, lagrange_parameters$alpha, beta, lagrange_parameters$nu, lagrange_parameters$rho)
   ),
   lagrange_not_comparable("alpha", "decimal", "sabr.alpha", riemann_fit$alpha, optimizers),
   lagrange_not_comparable("nu", "decimal", "sabr.nu", riemann_fit$nu, optimizers),

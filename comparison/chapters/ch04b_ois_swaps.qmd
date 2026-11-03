@@ -23,12 +23,12 @@ tona_date <- "2022-08-19"
 sofr_date <- "2023-09-26"
 tona <- as_quotes(lagrange_object(chapter, "tona_quotes", trade_date_tona = tona_date))
 sofr <- as_quotes(lagrange_object(chapter, "sofr_quotes", trade_date_sofr = sofr_date))
-tona_curve <- RiemannFinMath::build_ois_curve(
-  tona_date, tona_date, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), interpolation = "log_linear"
+tona_curve <- RiemannFinMath::bootstrap_ois_curve(
+  tona_date, tona_date, "tonar", "actual_365_fixed", RiemannFinMath::create_ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), interpolation = "log_linear"
 ) |>
   RiemannFinMath::with_extrapolation()
-sofr_curve <- RiemannFinMath::build_ois_curve(
-  sofr_date, sofr_date, "sofr", "actual_360", RiemannFinMath::ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L), interpolation = "log_linear"
+sofr_curve <- RiemannFinMath::bootstrap_ois_curve(
+  sofr_date, sofr_date, "sofr", "actual_360", RiemannFinMath::create_ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L), interpolation = "log_linear"
 ) |>
   RiemannFinMath::with_extrapolation()
 ```
@@ -95,7 +95,7 @@ RiemannFinMath:
 swap_short <- RiemannFinMath::create_ois_swap(short$side, short$nominal, short$effective, short$maturity, "tonar", short$fixed_rate)
 print(swap_short)
 riemann_short <- RiemannFinMath::compute_ois_swap_value(swap_short, tona_curve, short$evaluation)
-riemann_short_flows <- RiemannFinMath::get_ois_swap_cashflows(swap_short, tona_curve, short$evaluation)
+riemann_short_flows <- RiemannFinMath::compute_ois_swap_cashflows(swap_short, tona_curve, short$evaluation)
 riemann_short_flows |>
   select(-error) |>
   knitr::kable(digits = 4, caption = "Cash flows")
@@ -148,12 +148,12 @@ RiemannFinMath:
 
 ```{r}
 #| label: after-riemann
-tona_curve_after <- RiemannFinMath::build_ois_curve(
-  after_date, tona_date, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), interpolation = "log_linear"
+tona_curve_after <- RiemannFinMath::bootstrap_ois_curve(
+  after_date, tona_date, "tonar", "actual_365_fixed", RiemannFinMath::create_ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), interpolation = "log_linear"
 ) |>
   RiemannFinMath::with_extrapolation()
 riemann_after <- RiemannFinMath::compute_ois_swap_value(swap_short, tona_curve, after_date, fixings)
-riemann_after_flows <- RiemannFinMath::get_ois_swap_cashflows(swap_short, tona_curve, after_date, fixings)
+riemann_after_flows <- RiemannFinMath::compute_ois_swap_cashflows(swap_short, tona_curve, after_date, fixings)
 riemann_after_rebuilt <- RiemannFinMath::compute_ois_swap_value(swap_short, tona_curve_after, after_date, fixings)
 ```
 
@@ -201,7 +201,7 @@ RiemannFinMath:
 #| label: sofr-riemann
 swap_long <- RiemannFinMath::create_ois_swap(long$side, long$nominal, long$effective, long$maturity, "sofr", long$fixed_rate)
 riemann_long <- RiemannFinMath::compute_ois_swap_value(swap_long, sofr_curve, long$evaluation)
-riemann_long_flows <- RiemannFinMath::get_ois_swap_cashflows(swap_long, sofr_curve, long$evaluation)
+riemann_long_flows <- RiemannFinMath::compute_ois_swap_cashflows(swap_long, sofr_curve, long$evaluation)
 riemann_long_flows |>
   select(-error) |>
   knitr::kable(digits = 4, caption = "Cash flows")
@@ -273,7 +273,7 @@ bind_rows(
   lagrange_not_comparable("After fixings: overnight amount", "currency", amount_keys("ois.after.overnight"), after_overnight$amount, different_curve),
   lagrange_not_comparable(
     "After fixings: overnight present value", "currency", "ois.after.pv",
-    after_overnight$amount * RiemannFinMath::discount(tona_curve, after_overnight$payment_date), different_curve
+    after_overnight$amount * RiemannFinMath::compute_discount(tona_curve, after_overnight$payment_date), different_curve
   ),
   against_lagrange("SOFR: NPV", "currency", "ois.sofr.npv", riemann_long$npv),
   against_lagrange("SOFR: fair rate", "percent", "ois.sofr.fair_rate_pct", 100 * riemann_long$fair_rate),

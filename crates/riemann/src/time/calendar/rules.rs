@@ -27,7 +27,7 @@ pub(super) mod middle_east_africa;
 pub(super) mod special;
 mod tables;
 
-use super::easter::{easter_monday_day_of_year, orthodox_easter_monday_day_of_year};
+use super::easter::{compute_easter_monday_day_of_year, compute_orthodox_easter_monday_day_of_year};
 use crate::time::{Date, Weekday};
 
 /// The parts of a date the rules look at.
@@ -55,11 +55,11 @@ fn is_weekend(w: Weekday) -> bool {
 }
 
 fn easter_monday(y: i32) -> i32 {
-    easter_monday_day_of_year(y) as i32
+    compute_easter_monday_day_of_year(y) as i32
 }
 
 fn orthodox_easter_monday(y: i32) -> i32 {
-    orthodox_easter_monday_day_of_year(y) as i32
+    compute_orthodox_easter_monday_day_of_year(y) as i32
 }
 
 pub(super) fn japan(x: &Day) -> bool {

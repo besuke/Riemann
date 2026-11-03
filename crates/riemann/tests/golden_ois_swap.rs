@@ -8,7 +8,7 @@ use common::{date, day_count, golden_rows};
 use riemann::curves::YieldCurve;
 use riemann::names;
 use riemann::ois_swap::{create_ois_swap, compute_ois_swap_quote_sensitivity, compute_ois_swap_value, compute_overnight_coupon_amount, compute_ois_swap_daily_rates, Fixings, OisSwap, OisSwapSpec, SwapSide};
-use riemann::ois::{build_ois_curve, OisCurveInstrument, OisCurveSpec, OisInterpolation};
+use riemann::ois::{bootstrap_ois_curve, OisCurveInstrument, OisCurveSpec, OisInterpolation};
 use riemann::time::{Period, TimeUnit};
 
 fn curve(nodes: &str, day_count_name: &str) -> YieldCurve {
@@ -36,7 +36,7 @@ fn swaps_against_quantlib() {
     let (mut solved, mut failed, mut paid, mut worst) = (0, 0, 0, 0.0f64);
     for r in &rows {
         let number = |i: usize| r[i].parse::<f64>().unwrap();
-        let index = names::overnight_index(&r[0]).unwrap();
+        let index = names::parse_overnight_index(&r[0]).unwrap();
         let dc_name = if matches!(r[0].as_str(), "tonar" | "sonia") { "actual_365_fixed" } else { "actual_360" };
         let swap = create_ois_swap(OisSwapSpec {
             side: if r[1] == "payer" { SwapSide::Payer } else { SwapSide::Receiver },
@@ -119,7 +119,7 @@ fn the_legacy_swap_after_fixings_on_quantlibs_curve() {
         nominal: 1e7,
         effective_date: riemann::Date::from_ymd(2022, 8, 23).unwrap(),
         termination_date: riemann::Date::from_ymd(2022, 8, 30).unwrap(),
-        index: names::overnight_index("tonar").unwrap(),
+        index: names::parse_overnight_index("tonar").unwrap(),
         fixed_rate: -0.00015,
         fixed_day_count: None,
         spread: 0.0,
@@ -149,7 +149,7 @@ fn example_swap(side: SwapSide) -> OisSwap {
         nominal: 1e7,
         effective_date: date("46329"),
         termination_date: date("48155"),
-        index: names::overnight_index("tonar").unwrap(),
+        index: names::parse_overnight_index("tonar").unwrap(),
         fixed_rate: 0.012,
         fixed_day_count: None,
         spread: 0.0,
@@ -162,10 +162,10 @@ fn example_swap(side: SwapSide) -> OisSwap {
 
 fn example_curve(quotes: &[f64]) -> riemann::ois::OisCurve {
     let tenors = [(1, TimeUnit::Years), (3, TimeUnit::Years), (5, TimeUnit::Years), (7, TimeUnit::Years)];
-    build_ois_curve(&OisCurveSpec {
+    bootstrap_ois_curve(&OisCurveSpec {
         evaluation_date: date("46328"),
         reference_date: date("46328"),
-        index: names::overnight_index("tonar").unwrap(),
+        index: names::parse_overnight_index("tonar").unwrap(),
         curve_day_count: day_count("actual_365_fixed"),
         instruments: tenors
             .iter()

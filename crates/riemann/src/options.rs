@@ -22,8 +22,8 @@
 
 use crate::autodiff::{Operand, Recorder, Value, Var};
 use crate::batch::map_parallel;
-use crate::math::random::standard_normal;
-use crate::math::solver1d::brent;
+use crate::math::random::generate_standard_normal;
+use crate::math::solver1d::solve_brent;
 use crate::Error;
 use rayon::prelude::*;
 
@@ -102,7 +102,7 @@ impl OptionInputs<f64> {
 }
 
 /// The price of a European option (Black-Scholes-Merton).
-pub fn european_value<T: Operand>(kind: OptionType, inputs: &OptionInputs<T>) -> Result<T, Error> {
+pub fn compute_european_value<T: Operand>(kind: OptionType, inputs: &OptionInputs<T>) -> Result<T, Error> {
     inputs.check()?;
     let OptionInputs { spot, strike, rate, dividend_yield, volatility, time } = *inputs;
     let discount = (-rate * time).exp();
@@ -138,7 +138,7 @@ pub enum ForwardModel {
 }
 
 /// The price of an option on a forward.
-pub fn forward_value<T: Operand>(
+pub fn compute_forward_value<T: Operand>(
     model: ForwardModel,
     kind: OptionType,
     inputs: &ForwardInputs<T>,
@@ -176,7 +176,7 @@ pub struct ForwardGreeks {
 }
 
 /// The value and derivatives of an option on a forward.
-pub fn forward_greeks(
+pub fn compute_forward_greeks(
     model: ForwardModel,
     kind: OptionType,
     inputs: &ForwardInputs,
@@ -189,7 +189,7 @@ pub fn forward_greeks(
         time: recorder.input(inputs.time),
         discount: recorder.input(inputs.discount),
     };
-    let value = forward_value(model, kind, &lifted)?;
+    let value = compute_forward_value(model, kind, &lifted)?;
     let wrt = [lifted.forward, lifted.strike, lifted.volatility, lifted.time, lifted.discount];
     let first = recorder.gradient_vars(value, &wrt)?;
     let gamma = recorder.gradient(first[0], &[lifted.forward])?[0].mean();
@@ -235,13 +235,13 @@ where
 }
 
 /// The value and Greeks of a European option.
-pub fn european_greeks(kind: OptionType, inputs: &OptionInputs) -> Result<Greeks, Error> {
-    greeks_of(inputs, |i| european_value(kind, i))
+pub fn compute_european_greeks(kind: OptionType, inputs: &OptionInputs) -> Result<Greeks, Error> {
+    greeks_of(inputs, |i| compute_european_value(kind, i))
 }
 
 /// The volatility that gives `price`, by Brent's method between 1e-7 and 4, as QuantLib's
 /// `impliedVolatility` searches by default.
-pub fn implied_volatility(
+pub fn compute_implied_volatility(
     kind: OptionType,
     price: f64,
     inputs: &OptionInputs,
@@ -249,17 +249,17 @@ pub fn implied_volatility(
     max_evaluations: usize,
 ) -> Result<f64, Error> {
     let phi = kind.sign();
-    let forward_value = inputs.spot * (-inputs.dividend_yield * inputs.time).exp();
+    let compute_forward_value = inputs.spot * (-inputs.dividend_yield * inputs.time).exp();
     let strike_value = inputs.strike * (-inputs.rate * inputs.time).exp();
-    let intrinsic = (phi * (forward_value - strike_value)).max(0.0);
+    let intrinsic = (phi * (compute_forward_value - strike_value)).max(0.0);
     if !(price >= intrinsic) {
         return invalid(format!("price {price} is below the intrinsic value {intrinsic}"));
     }
     let objective = |v: f64| {
         let trial = OptionInputs { volatility: v, ..*inputs };
-        Ok(european_value(kind, &trial)? - price)
+        Ok(compute_european_value(kind, &trial)? - price)
     };
-    brent(objective, accuracy, 0.2, 1e-7, 4.0, max_evaluations)
+    solve_brent(objective, accuracy, 0.2, 1e-7, 4.0, max_evaluations)
 }
 
 /// Knock-in or knock-out above or below the spot.
@@ -273,7 +273,7 @@ pub enum BarrierType {
 
 /// The price of a European barrier option with continuous monitoring (Reiner and Rubinstein;
 /// QuantLib `AnalyticBarrierEngine`). The barrier and rebate are numbers, not differentiated.
-pub fn barrier_value<T: Operand>(
+pub fn compute_barrier_value<T: Operand>(
     kind: OptionType,
     barrier_type: BarrierType,
     barrier: f64,
@@ -475,14 +475,14 @@ impl<T: Operand> BarrierTerms<T> {
 }
 
 /// The value and Greeks of a barrier option.
-pub fn barrier_greeks(
+pub fn compute_barrier_greeks(
     kind: OptionType,
     barrier_type: BarrierType,
     barrier: f64,
     rebate: f64,
     inputs: &OptionInputs,
 ) -> Result<Greeks, Error> {
-    greeks_of(inputs, |i| barrier_value(kind, barrier_type, barrier, rebate, i))
+    greeks_of(inputs, |i| compute_barrier_value(kind, barrier_type, barrier, rebate, i))
 }
 
 /// When an option can be exercised.
@@ -561,7 +561,7 @@ fn crr_tree<T: Operand>(
 }
 
 /// The value of a vanilla option on a Cox-Ross-Rubinstein tree (QuantLib `BinomialVanillaEngine`).
-pub fn binomial_value<T: Operand>(
+pub fn compute_binomial_value<T: Operand>(
     kind: OptionType,
     exercise: Exercise,
     inputs: &OptionInputs<T>,
@@ -574,7 +574,7 @@ pub fn binomial_value<T: Operand>(
 /// and gamma are read from the first steps of the tree, as in QuantLib. The other sensitivities are
 /// the derivatives of the tree by automatic differentiation; QuantLib computes none of them on a
 /// tree except theta, from the Black-Scholes equation, so `theta` here can differ from QuantLib's.
-pub fn binomial_greeks(
+pub fn compute_binomial_greeks(
     kind: OptionType,
     exercise: Exercise,
     inputs: &OptionInputs,
@@ -632,7 +632,7 @@ pub struct MonteCarloResult {
 
 /// Monte Carlo of a European option over one step to maturity, with pathwise sensitivities by
 /// automatic differentiation on path vectors.
-pub fn monte_carlo_european(
+pub fn compute_monte_carlo_european(
     kind: OptionType,
     inputs: &OptionInputs,
     settings: &MonteCarloSettings,
@@ -663,7 +663,7 @@ fn monte_carlo_on_workers(
     let MonteCarloSettings { paths, seed, antithetic, smoothing, .. } = *settings;
     let draws = if antithetic { paths / 2 } else { paths };
     let mut normals: Vec<f64> =
-        (0..draws).into_par_iter().map(|p| standard_normal(seed, p, 0)).collect();
+        (0..draws).into_par_iter().map(|p| generate_standard_normal(seed, p, 0)).collect();
     if antithetic {
         let opposite: Vec<f64> = normals.iter().map(|z| -z).collect();
         normals.extend(opposite);
@@ -742,8 +742,8 @@ mod tests {
     #[test]
     fn put_call_parity() {
         let i = inputs();
-        let call = european_value(OptionType::Call, &i).unwrap();
-        let put = european_value(OptionType::Put, &i).unwrap();
+        let call = compute_european_value(OptionType::Call, &i).unwrap();
+        let put = compute_european_value(OptionType::Put, &i).unwrap();
         let parity = i.spot * (-i.dividend_yield * i.time).exp() - i.strike * (-i.rate * i.time).exp();
         assert!((call - put - parity).abs() < 1e-12);
     }
@@ -752,12 +752,12 @@ mod tests {
     fn greeks_agree_with_numeric_differences() {
         let i = inputs();
         for kind in [OptionType::Call, OptionType::Put] {
-            let g = european_greeks(kind, &i).unwrap();
+            let g = compute_european_greeks(kind, &i).unwrap();
             let v = |f: &dyn Fn(&mut OptionInputs, f64), h: f64| {
                 let (mut up, mut down) = (i, i);
                 f(&mut up, h);
                 f(&mut down, -h);
-                (european_value(kind, &up).unwrap() - european_value(kind, &down).unwrap()) / (2.0 * h)
+                (compute_european_value(kind, &up).unwrap() - compute_european_value(kind, &down).unwrap()) / (2.0 * h)
             };
             assert!((g.delta - v(&|x, h| x.spot += h, 1e-4)).abs() < 1e-8);
             assert!((g.vega - v(&|x, h| x.volatility += h, 1e-5)).abs() < 1e-7);
@@ -765,7 +765,7 @@ mod tests {
             assert!((g.dividend_rho - v(&|x, h| x.dividend_yield += h, 1e-5)).abs() < 1e-7);
             assert!((g.theta + v(&|x, h| x.time += h, 1e-5)).abs() < 1e-7);
             let h = 1e-2;
-            let bumped = |s: f64| european_value(kind, &OptionInputs { spot: s, ..i }).unwrap();
+            let bumped = |s: f64| compute_european_value(kind, &OptionInputs { spot: s, ..i }).unwrap();
             let gamma = (bumped(i.spot + h) - 2.0 * g.value + bumped(i.spot - h)) / (h * h);
             assert!((g.gamma - gamma).abs() < 1e-6, "{} {gamma}", g.gamma);
         }
@@ -775,8 +775,8 @@ mod tests {
     fn the_tree_converges_to_the_analytic_value() {
         let i = inputs();
         for kind in [OptionType::Call, OptionType::Put] {
-            let analytic = european_value(kind, &i).unwrap();
-            let tree = binomial_value(kind, Exercise::European, &i, 2000).unwrap();
+            let analytic = compute_european_value(kind, &i).unwrap();
+            let tree = compute_binomial_value(kind, Exercise::European, &i, 2000).unwrap();
             assert!((tree - analytic).abs() < 0.01, "{tree} {analytic}");
         }
     }
@@ -784,8 +784,8 @@ mod tests {
     #[test]
     fn american_puts_are_worth_at_least_european_puts_and_exercise_value() {
         let i = OptionInputs { strike: 130.0, ..inputs() };
-        let american = binomial_value(OptionType::Put, Exercise::American, &i, 200).unwrap();
-        let european = binomial_value(OptionType::Put, Exercise::European, &i, 200).unwrap();
+        let american = compute_binomial_value(OptionType::Put, Exercise::American, &i, 200).unwrap();
+        let european = compute_binomial_value(OptionType::Put, Exercise::European, &i, 200).unwrap();
         assert!(american > european);
         assert!(american >= 130.0 - 100.0);
     }
@@ -793,9 +793,9 @@ mod tests {
     #[test]
     fn tree_sensitivities_agree_with_numeric_differences() {
         let i = OptionInputs { strike: 110.0, ..inputs() };
-        let g = binomial_greeks(OptionType::Put, Exercise::American, &i, 100).unwrap();
+        let g = compute_binomial_greeks(OptionType::Put, Exercise::American, &i, 100).unwrap();
         let value = |x: OptionInputs| {
-            binomial_value(OptionType::Put, Exercise::American, &x, 100).unwrap()
+            compute_binomial_value(OptionType::Put, Exercise::American, &x, 100).unwrap()
         };
         let h = 1e-6;
         let vega = (value(OptionInputs { volatility: i.volatility + h, ..i })
@@ -812,15 +812,15 @@ mod tests {
     fn knock_in_plus_knock_out_is_the_vanilla_option() {
         let i = inputs();
         for kind in [OptionType::Call, OptionType::Put] {
-            let vanilla = european_value(kind, &i).unwrap();
+            let vanilla = compute_european_value(kind, &i).unwrap();
             for (out, into, barrier) in [
                 (BarrierType::DownOut, BarrierType::DownIn, 80.0),
                 (BarrierType::DownOut, BarrierType::DownIn, 95.0),
                 (BarrierType::UpOut, BarrierType::UpIn, 120.0),
                 (BarrierType::UpOut, BarrierType::UpIn, 150.0),
             ] {
-                let sum = barrier_value(kind, out, barrier, 0.0, &i).unwrap()
-                    + barrier_value(kind, into, barrier, 0.0, &i).unwrap();
+                let sum = compute_barrier_value(kind, out, barrier, 0.0, &i).unwrap()
+                    + compute_barrier_value(kind, into, barrier, 0.0, &i).unwrap();
                 assert!((sum - vanilla).abs() < 1e-10, "{kind:?} {barrier}: {sum} {vanilla}");
             }
         }
@@ -828,7 +828,7 @@ mod tests {
 
     #[test]
     fn a_touched_barrier_is_an_error() {
-        assert!(barrier_value(OptionType::Call, BarrierType::DownOut, 110.0, 0.0, &inputs()).is_err());
+        assert!(compute_barrier_value(OptionType::Call, BarrierType::DownOut, 110.0, 0.0, &inputs()).is_err());
     }
 
     #[test]
@@ -840,9 +840,9 @@ mod tests {
             (BarrierType::DownIn, 90.0, 2.0),
             (BarrierType::UpIn, 120.0, 0.0),
         ] {
-            let g = barrier_greeks(OptionType::Call, barrier_type, barrier, rebate, &i).unwrap();
+            let g = compute_barrier_greeks(OptionType::Call, barrier_type, barrier, rebate, &i).unwrap();
             let value = |x: OptionInputs| {
-                barrier_value(OptionType::Call, barrier_type, barrier, rebate, &x).unwrap()
+                compute_barrier_value(OptionType::Call, barrier_type, barrier, rebate, &x).unwrap()
             };
             let h = 1e-4;
             let delta = (value(OptionInputs { spot: i.spot + h, ..i })
@@ -862,18 +862,18 @@ mod tests {
         let discount = (-i.rate * i.time).exp();
         let forward = i.spot * (-i.dividend_yield * i.time).exp() / discount;
         let inputs = ForwardInputs { forward, strike: i.strike, volatility: i.volatility, time: i.time, discount };
-        let black = forward_value(ForwardModel::Black, OptionType::Call, &inputs).unwrap();
-        assert!((black - european_value(OptionType::Call, &i).unwrap()).abs() < 1e-11);
+        let black = compute_forward_value(ForwardModel::Black, OptionType::Call, &inputs).unwrap();
+        assert!((black - compute_european_value(OptionType::Call, &i).unwrap()).abs() < 1e-11);
         // Bachelier: put-call parity
         let n = ForwardInputs { volatility: 20.0, ..inputs };
-        let call = forward_value(ForwardModel::Bachelier, OptionType::Call, &n).unwrap();
-        let put = forward_value(ForwardModel::Bachelier, OptionType::Put, &n).unwrap();
+        let call = compute_forward_value(ForwardModel::Bachelier, OptionType::Call, &n).unwrap();
+        let put = compute_forward_value(ForwardModel::Bachelier, OptionType::Put, &n).unwrap();
         assert!((call - put - discount * (forward - i.strike)).abs() < 1e-11);
         // derivatives
-        let g = forward_greeks(ForwardModel::Bachelier, OptionType::Call, &n).unwrap();
+        let g = compute_forward_greeks(ForwardModel::Bachelier, OptionType::Call, &n).unwrap();
         let h = 1e-4;
-        let up = forward_value(ForwardModel::Bachelier, OptionType::Call, &ForwardInputs { forward: forward + h, ..n }).unwrap();
-        let down = forward_value(ForwardModel::Bachelier, OptionType::Call, &ForwardInputs { forward: forward - h, ..n }).unwrap();
+        let up = compute_forward_value(ForwardModel::Bachelier, OptionType::Call, &ForwardInputs { forward: forward + h, ..n }).unwrap();
+        let down = compute_forward_value(ForwardModel::Bachelier, OptionType::Call, &ForwardInputs { forward: forward - h, ..n }).unwrap();
         assert!((g.delta_forward - (up - down) / (2.0 * h)).abs() < 1e-8);
     }
 
@@ -881,11 +881,11 @@ mod tests {
     fn implied_volatility_recovers_the_input() {
         let i = inputs();
         for kind in [OptionType::Call, OptionType::Put] {
-            let price = european_value(kind, &i).unwrap();
-            let v = implied_volatility(kind, price, &i, 1e-12, 200).unwrap();
+            let price = compute_european_value(kind, &i).unwrap();
+            let v = compute_implied_volatility(kind, price, &i, 1e-12, 200).unwrap();
             assert!((v - i.volatility).abs() < 1e-10, "{v}");
         }
-        assert!(implied_volatility(OptionType::Call, -1.0, &i, 1e-8, 100).is_err());
+        assert!(compute_implied_volatility(OptionType::Call, -1.0, &i, 1e-8, 100).is_err());
     }
 
     fn settings(threads: usize) -> MonteCarloSettings {
@@ -896,8 +896,8 @@ mod tests {
     fn monte_carlo_agrees_with_the_analytic_value_and_greeks() {
         let i = inputs();
         for kind in [OptionType::Call, OptionType::Put] {
-            let g = european_greeks(kind, &i).unwrap();
-            let mc = monte_carlo_european(kind, &i, &settings(2)).unwrap();
+            let g = compute_european_greeks(kind, &i).unwrap();
+            let mc = compute_monte_carlo_european(kind, &i, &settings(2)).unwrap();
             let within = |a: f64, b: f64, name: &str| {
                 assert!((a - b).abs() < 0.015 * (1.0 + b.abs()), "{name}: {a} {b}");
             };
@@ -914,9 +914,9 @@ mod tests {
     #[test]
     fn smoothed_monte_carlo_has_a_gamma() {
         let i = inputs();
-        let g = european_greeks(OptionType::Call, &i).unwrap();
+        let g = compute_european_greeks(OptionType::Call, &i).unwrap();
         let s = MonteCarloSettings { smoothing: Some(0.25), ..settings(2) };
-        let mc = monte_carlo_european(OptionType::Call, &i, &s).unwrap();
+        let mc = compute_monte_carlo_european(OptionType::Call, &i, &s).unwrap();
         let gamma = mc.gamma.unwrap();
         assert!((gamma - g.gamma).abs() < 0.03 * g.gamma, "{gamma} {}", g.gamma);
     }
@@ -924,9 +924,9 @@ mod tests {
     #[test]
     fn monte_carlo_does_not_depend_on_the_number_of_threads() {
         let i = inputs();
-        let one = monte_carlo_european(OptionType::Call, &i, &settings(1)).unwrap();
+        let one = compute_monte_carlo_european(OptionType::Call, &i, &settings(1)).unwrap();
         for threads in [2, 4] {
-            let many = monte_carlo_european(OptionType::Call, &i, &settings(threads)).unwrap();
+            let many = compute_monte_carlo_european(OptionType::Call, &i, &settings(threads)).unwrap();
             assert_eq!(one, many);
         }
     }
@@ -934,10 +934,10 @@ mod tests {
     #[test]
     fn invalid_inputs_are_errors() {
         let i = inputs();
-        assert!(european_value(OptionType::Call, &OptionInputs { volatility: 0.0, ..i }).is_err());
-        assert!(european_value(OptionType::Call, &OptionInputs { spot: f64::NAN, ..i }).is_err());
-        assert!(binomial_value(OptionType::Call, Exercise::American, &i, 1).is_err());
+        assert!(compute_european_value(OptionType::Call, &OptionInputs { volatility: 0.0, ..i }).is_err());
+        assert!(compute_european_value(OptionType::Call, &OptionInputs { spot: f64::NAN, ..i }).is_err());
+        assert!(compute_binomial_value(OptionType::Call, Exercise::American, &i, 1).is_err());
         let odd = MonteCarloSettings { paths: 3, ..settings(1) };
-        assert!(monte_carlo_european(OptionType::Call, &i, &odd).is_err());
+        assert!(compute_monte_carlo_european(OptionType::Call, &i, &odd).is_err());
     }
 }

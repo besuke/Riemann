@@ -10,7 +10,7 @@ mod common;
 use common::{date, day_count, golden_rows, ois_curve_spec, Stats};
 use riemann::interest_rate::Compounding;
 use riemann::ois::{
-    build_ois_curve, estr, sofr, sonia, tonar, OisCurve, OisInterpolation, OvernightIndex,
+    bootstrap_ois_curve, create_estr_index, create_sofr_index, create_sonia_index, create_tonar_index, OisCurve, OisInterpolation, OvernightIndex,
 };
 use riemann::Error;
 use std::collections::{BTreeMap, BTreeSet};
@@ -119,7 +119,7 @@ fn check_curves(
     for r in &cases {
         let case = r[0].as_str();
         let status = r[9].as_str();
-        let result = build_ois_curve(&ois_curve_spec(r, index.clone(), interpolation));
+        let result = bootstrap_ois_curve(&ois_curve_spec(r, index.clone(), interpolation));
         *causes
             .entry(status.split(':').next().unwrap().chars().take(40).collect())
             .or_default() += 1;
@@ -349,7 +349,7 @@ fn check_curves(
 fn log_linear_curves_match_quantlib_r_package() {
     check_curves(
         "ois_tonar",
-        tonar(),
+        create_tonar_index(),
         OisInterpolation::LogLinear,
         Tolerances {
             relative: 1e-12,
@@ -385,7 +385,7 @@ fn monotonic_log_cubic_tolerances(reproduction_misses: &'static [&'static str]) 
 fn tonar_monotonic_log_cubic_curves_match_quantlib_r_package() {
     check_curves(
         "ois_tonar_log_cubic",
-        tonar(),
+        create_tonar_index(),
         OisInterpolation::MonotonicLogCubic,
         monotonic_log_cubic_tolerances(&[]),
     );
@@ -395,7 +395,7 @@ fn tonar_monotonic_log_cubic_curves_match_quantlib_r_package() {
 fn estr_monotonic_log_cubic_curves_match_quantlib_r_package() {
     check_curves(
         "ois_estr_log_cubic",
-        estr(),
+        create_estr_index(),
         OisInterpolation::MonotonicLogCubic,
         monotonic_log_cubic_tolerances(&["125", "246"]),
     );
@@ -405,7 +405,7 @@ fn estr_monotonic_log_cubic_curves_match_quantlib_r_package() {
 fn sofr_monotonic_log_cubic_curves_match_quantlib_r_package() {
     check_curves(
         "ois_sofr_log_cubic",
-        sofr(),
+        create_sofr_index(),
         OisInterpolation::MonotonicLogCubic,
         monotonic_log_cubic_tolerances(&["199"]),
     );
@@ -415,7 +415,7 @@ fn sofr_monotonic_log_cubic_curves_match_quantlib_r_package() {
 fn sonia_monotonic_log_cubic_curves_match_quantlib_r_package() {
     check_curves(
         "ois_sonia_log_cubic",
-        sonia(),
+        create_sonia_index(),
         OisInterpolation::MonotonicLogCubic,
         monotonic_log_cubic_tolerances(&[]),
     );

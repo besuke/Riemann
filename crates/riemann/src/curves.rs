@@ -26,8 +26,8 @@
 use crate::autodiff::{Operand, Recorder, Var};
 use crate::interest_rate::{Compounding, InterestRate};
 use crate::math::interpolation::{Linear, MonotonicCubicSpline};
-use crate::math::solver1d::close;
-use crate::math::solver1d::close_enough;
+use crate::math::solver1d::is_close;
+use crate::math::solver1d::is_close_enough;
 use crate::time::{Date, DayCount};
 use crate::Error;
 
@@ -152,7 +152,7 @@ fn curve_times(dates: &[Date], day_count: &DayCount) -> Result<Vec<f64>, Error> 
             });
         }
         let t = day_count.year_fraction(dates[0], dates[i], None, None)?;
-        if close(t, times[i - 1]) {
+        if is_close(t, times[i - 1]) {
             return Err(Error::InvalidInput {
                 reason: format!(
                     "two passed dates ({} and {}) correspond to the same time",
@@ -450,7 +450,7 @@ impl<T: Operand> YieldCurve<T> {
         }
         if !(extrapolate || self.extrapolate) {
             let max_time = self.max_time()?;
-            if !(t <= max_time || close_enough(t, max_time)) {
+            if !(t <= max_time || is_close_enough(t, max_time)) {
                 return Err(Error::OutsideCurveRange {
                     reason: format!("time ({t}) is past max curve time ({max_time})"),
                 });

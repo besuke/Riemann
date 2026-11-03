@@ -58,11 +58,11 @@ RiemannFinMath:
 
 ```{r}
 #| label: riemann-call
-t <- RiemannFinMath::remaining_years(start_date, end_date)
-price <- RiemannFinMath::price_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption)
-simple <- RiemannFinMath::simple_rate_from_price(t, coupon_rate_pct, price, redemption)
-compound <- RiemannFinMath::compound_yield_from_price(t, coupon_rate_pct, price, redemption)
-compound_price <- RiemannFinMath::price_from_compound_yield(t, coupon_rate_pct, compound, redemption)
+t <- RiemannFinMath::compute_remaining_years(start_date, end_date)
+price <- RiemannFinMath::compute_price_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption)
+simple <- RiemannFinMath::compute_simple_rate_from_price(t, coupon_rate_pct, price, redemption)
+compound <- RiemannFinMath::compute_compound_yield_from_price(t, coupon_rate_pct, price, redemption)
+compound_price <- RiemannFinMath::compute_price_from_compound_yield(t, coupon_rate_pct, compound, redemption)
 ```
 
 ```{r}
@@ -93,8 +93,8 @@ baseline_risk <- list(
   )
 )
 riemann_risk <- list(
-  compound = RiemannFinMath::risk_from_compound_yield(t, coupon_rate_pct, compound, redemption, 0),
-  simple = RiemannFinMath::risk_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption, 0)
+  compound = RiemannFinMath::compute_risk_from_compound_yield(t, coupon_rate_pct, compound, redemption, 0),
+  simple = RiemannFinMath::compute_risk_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption, 0)
 )
 ```
 
@@ -128,7 +128,7 @@ leap_dates <- tribble(
 leap_dates |>
   mutate(
     baseline = map2_dbl(start, end, GaussQuant::bond_year_fraction_YEN_GQL),
-    riemann = map2_dbl(start, end, RiemannFinMath::remaining_years)
+    riemann = map2_dbl(start, end, RiemannFinMath::compute_remaining_years)
   ) |>
   (\(x) compare_values(paste(x$start, "to", x$end), "years", x$baseline, x$riemann, "GaussQuant R"))() |>
   show_results()

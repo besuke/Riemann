@@ -5,7 +5,7 @@ mod common;
 
 use common::golden_rows;
 use riemann::options::{
-    barrier_greeks, binomial_greeks, european_greeks, forward_greeks, implied_volatility,
+    compute_barrier_greeks, compute_binomial_greeks, compute_european_greeks, compute_forward_greeks, compute_implied_volatility,
     BarrierType, Exercise, ForwardInputs, ForwardModel, OptionInputs, OptionType,
 };
 
@@ -50,7 +50,7 @@ fn european_values_and_greeks() {
             volatility: n(5),
             time: n(6) / 365.0,
         };
-        let g = european_greeks(kind(&r[0]), &inputs).unwrap();
+        let g = compute_european_greeks(kind(&r[0]), &inputs).unwrap();
         check("value", g.value, n(7), 1e-12, 1e-12, &mut worst);
         check("delta", g.delta, n(8), 1e-12, 1e-12, &mut worst);
         check("gamma", g.gamma, n(9), 1e-11, 1e-13, &mut worst);
@@ -85,7 +85,7 @@ fn barrier_values() {
             volatility: n(8),
             time: n(9) / 365.0,
         };
-        let g = barrier_greeks(kind(&r[0]), barrier_type, n(4), n(5), &inputs).unwrap();
+        let g = compute_barrier_greeks(kind(&r[0]), barrier_type, n(4), n(5), &inputs).unwrap();
         check("barrier value", g.value, n(10), 1e-10, 1e-10, &mut worst);
     }
     println!("Barrier: worst difference {worst:e}");
@@ -111,7 +111,7 @@ fn tree_values_delta_and_gamma() {
             volatility: n(7),
             time: n(8) / 365.0,
         };
-        let g = binomial_greeks(kind(&r[0]), exercise, &inputs, n(2) as usize).unwrap();
+        let g = compute_binomial_greeks(kind(&r[0]), exercise, &inputs, n(2) as usize).unwrap();
         // QuantLib's last grid time, dt * steps, can round below the maturity. An American option
         // then misses its payoff at maturity in QuantLib, and is worth less: docs/spec_options.md
         if exercise == Exercise::American && (inputs.time / n(2)) * n(2) < inputs.time {
@@ -146,7 +146,7 @@ fn forward_formulas() {
             time: n(5),
             discount: n(6),
         };
-        let g = forward_greeks(model, kind(&r[1]), &inputs).unwrap();
+        let g = compute_forward_greeks(model, kind(&r[1]), &inputs).unwrap();
         check("forward value", g.value, n(7), 1e-11, 1e-11, &mut worst);
     }
     println!("Forward: worst difference {worst:e}");
@@ -167,7 +167,7 @@ fn implied_volatilities() {
             volatility: n(5),
             time: n(6) / 365.0,
         };
-        let v = implied_volatility(kind(&r[0]), n(7), &inputs, 1e-10, 200).unwrap();
+        let v = compute_implied_volatility(kind(&r[0]), n(7), &inputs, 1e-10, 200).unwrap();
         // both search to 1e-10 and neither iterates identically, so the bound is not tighter
         check("implied volatility", v, n(8), 0.0, 1e-8, &mut worst);
         check("true volatility", v, n(5), 0.0, 1e-7, &mut worst);

@@ -51,7 +51,7 @@ fn invalid(reason: &str) -> Error {
 /// The anniversary of February 29 in a non-leap year is February 28, so that 2024-02-29 to
 /// 2025-02-28 is one year. This rule belongs to these Japanese bond calculations only; the
 /// QuantLib-compatible dates and day counts in `time` do not use it.
-pub fn remaining_years(start: Date, end: Date) -> Result<f64, Error> {
+pub fn compute_remaining_years(start: Date, end: Date) -> Result<f64, Error> {
     if end < start {
         return Err(invalid(
             "`start_date` and `end_date` must be scalar dates with start_date <= end_date.",
@@ -74,7 +74,7 @@ pub fn remaining_years(start: Date, end: Date) -> Result<f64, Error> {
 
 /// Price from a simple yield (GaussQuant `bond_price_from_simple_rate_YEN_GQL`):
 /// `(R + C t) / (1 + Y t / 100)`, truncated to `digits` decimals (GaussQuant default 3).
-pub fn price_from_simple_rate(
+pub fn compute_price_from_simple_rate(
     t: f64,
     coupon_rate: f64,
     simple_rate: f64,
@@ -127,7 +127,7 @@ fn newton_rate(
 /// Simple yield from a price (GaussQuant `bond_simple_rate_from_price_YEN_GQL`), solved by
 /// Newton's method and truncated to `digits` decimals (GaussQuant defaults: 7 digits, 100
 /// iterations).
-pub fn simple_rate_from_price(
+pub fn compute_simple_rate_from_price(
     t: f64,
     coupon_rate: f64,
     price: f64,
@@ -249,7 +249,7 @@ fn compound_values(
 
 /// Price from a compound yield (GaussQuant `bond_price_from_compound_yield_YEN_GQL`),
 /// truncated to `digits` decimals (GaussQuant default 3).
-pub fn price_from_compound_yield(
+pub fn compute_price_from_compound_yield(
     t: f64,
     coupon_rate: f64,
     compound_yield: f64,
@@ -271,7 +271,7 @@ pub fn price_from_compound_yield(
 /// Compound yield from a price (GaussQuant `bond_compound_yield_from_price_YEN_GQL`), solved
 /// by Newton's method from the simple yield and truncated to `digits` decimals (GaussQuant
 /// defaults: 7 digits, 100 iterations).
-pub fn compound_yield_from_price(
+pub fn compute_compound_yield_from_price(
     t: f64,
     coupon_rate: f64,
     price: f64,
@@ -343,7 +343,7 @@ fn risk(
 }
 
 /// Risk measures at a simple yield (GaussQuant `bond_risk_from_simple_rate_YEN_GQL`).
-pub fn risk_from_simple_rate(
+pub fn compute_risk_from_simple_rate(
     t: f64,
     coupon_rate: f64,
     simple_rate: f64,
@@ -359,7 +359,7 @@ pub fn risk_from_simple_rate(
 }
 
 /// Risk measures at a compound yield (GaussQuant `bond_risk_from_compound_yield_YEN_GQL`).
-pub fn risk_from_compound_yield(
+pub fn compute_risk_from_compound_yield(
     t: f64,
     coupon_rate: f64,
     compound_yield: f64,
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn february_29_anniversaries_are_whole_years() {
-        assert_eq!(remaining_years(d(2024, 2, 29), d(2025, 2, 28)), Ok(1.0));
+        assert_eq!(compute_remaining_years(d(2024, 2, 29), d(2025, 2, 28)), Ok(1.0));
         for year in (1904..=2196)
             .step_by(4)
             .filter(|y| crate::time::is_leap(*y))
@@ -400,7 +400,7 @@ mod tests {
                     28
                 };
                 assert_eq!(
-                    remaining_years(d(year, 2, 29), d(year + n, 2, end_day)),
+                    compute_remaining_years(d(year, 2, 29), d(year + n, 2, end_day)),
                     Ok(n as f64),
                     "{year} + {n}"
                 );
@@ -411,11 +411,11 @@ mod tests {
     #[test]
     fn days_around_the_february_29_anniversary() {
         assert_eq!(
-            remaining_years(d(2024, 2, 29), d(2025, 2, 27)),
+            compute_remaining_years(d(2024, 2, 29), d(2025, 2, 27)),
             Ok(truncate_decimal(364.0 / 365.0, 7))
         );
         assert_eq!(
-            remaining_years(d(2024, 2, 29), d(2025, 3, 1)),
+            compute_remaining_years(d(2024, 2, 29), d(2025, 3, 1)),
             Ok(truncate_decimal(366.0 / 365.0, 7))
         );
     }

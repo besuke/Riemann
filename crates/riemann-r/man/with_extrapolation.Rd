@@ -7,7 +7,7 @@
 with_extrapolation(curve, extrapolate = TRUE)
 }
 \arguments{
-\item{curve}{A curve from \code{\link[=build_ois_curve]{build_ois_curve()}}.}
+\item{curve}{A curve from \code{\link[=bootstrap_ois_curve]{bootstrap_ois_curve()}}.}
 
 \item{extrapolate}{\code{TRUE} or \code{FALSE}. \code{NA} is an error.}
 }
@@ -18,7 +18,7 @@ A new curve; the original does not change.
 Allow a curve to extrapolate
 }
 \examples{
-instruments <- ois_instruments(c("ON", "1Y", "5Y"), c(0.002, 0.004, 0.009), 2L, 1L, 0L)
-curve <- build_ois_curve("2026-11-02", "2026-11-02", "estr", "actual_365_fixed", instruments)
-discount(with_extrapolation(curve), "2040-01-01")
+instruments <- create_ois_instruments(c("ON", "1Y", "5Y"), c(0.002, 0.004, 0.009), 2L, 1L, 0L)
+curve <- bootstrap_ois_curve("2026-11-02", "2026-11-02", "estr", "actual_365_fixed", instruments)
+compute_discount(with_extrapolation(curve), "2040-01-01")
 }

@@ -6,11 +6,11 @@ mod common;
 
 use common::{bond_spec, date, day_count, golden_rows, ois_curve_spec};
 use riemann::batch::{
-    bond_values_batch, curve_values_batch, map_parallel, BondEvaluation, CurveEvaluation,
+    compute_bond_values_batch, compute_curve_values_batch, map_parallel, BondEvaluation, CurveEvaluation,
 };
 use riemann::cashflow_analysis::YieldConvention;
 use riemann::interest_rate::Compounding;
-use riemann::ois::{estr, sofr, sonia, tonar, OisInterpolation, OvernightIndex};
+use riemann::ois::{create_estr_index, create_sofr_index, create_sonia_index, create_tonar_index, OisInterpolation, OvernightIndex};
 
 const THREADS: [usize; 4] = [2, 4, 8, 0];
 
@@ -60,10 +60,10 @@ fn curve_units(prefix: &str, index: OvernightIndex) -> Vec<CurveEvaluation> {
 }
 
 fn all_curve_units() -> Vec<CurveEvaluation> {
-    let mut units = curve_units("ois_tonar_log_cubic", tonar());
-    units.extend(curve_units("ois_estr_log_cubic", estr()));
-    units.extend(curve_units("ois_sofr_log_cubic", sofr()));
-    units.extend(curve_units("ois_sonia_log_cubic", sonia()));
+    let mut units = curve_units("ois_tonar_log_cubic", create_tonar_index());
+    units.extend(curve_units("ois_estr_log_cubic", create_estr_index()));
+    units.extend(curve_units("ois_sofr_log_cubic", create_sofr_index()));
+    units.extend(curve_units("ois_sonia_log_cubic", create_sonia_index()));
     units
 }
 
@@ -75,9 +75,9 @@ fn exact_text<T: std::fmt::Debug>(items: &[T]) -> Vec<String> {
 fn bonds_agree_for_any_number_of_threads() {
     let units = bond_units();
     assert!(units.len() > 100);
-    let sequential = exact_text(&bond_values_batch(&units, 1).unwrap());
+    let sequential = exact_text(&compute_bond_values_batch(&units, 1).unwrap());
     for threads in THREADS {
-        let parallel = exact_text(&bond_values_batch(&units, threads).unwrap());
+        let parallel = exact_text(&compute_bond_values_batch(&units, threads).unwrap());
         assert_eq!(sequential, parallel, "{threads} threads");
     }
 }
@@ -85,12 +85,12 @@ fn bonds_agree_for_any_number_of_threads() {
 #[test]
 fn curves_agree_for_any_number_of_threads() {
     let units = all_curve_units();
-    let sequential = exact_text(&curve_values_batch(&units, 1).unwrap());
+    let sequential = exact_text(&compute_curve_values_batch(&units, 1).unwrap());
     // both curves that build and curves that fail are covered
     assert!(sequential.iter().any(|r| r.starts_with("Ok")));
     assert!(sequential.iter().any(|r| r.starts_with("Err")));
     for threads in THREADS {
-        let parallel = exact_text(&curve_values_batch(&units, threads).unwrap());
+        let parallel = exact_text(&compute_curve_values_batch(&units, threads).unwrap());
         assert_eq!(sequential, parallel, "{threads} threads");
     }
 }
@@ -98,26 +98,26 @@ fn curves_agree_for_any_number_of_threads() {
 #[test]
 fn repeated_runs_agree() {
     let units = all_curve_units();
-    let first = exact_text(&curve_values_batch(&units, 8).unwrap());
+    let first = exact_text(&compute_curve_values_batch(&units, 8).unwrap());
     for _ in 0..3 {
-        assert_eq!(first, exact_text(&curve_values_batch(&units, 8).unwrap()));
+        assert_eq!(first, exact_text(&compute_curve_values_batch(&units, 8).unwrap()));
     }
 }
 
 #[test]
 fn the_order_of_the_units_does_not_change_their_results() {
     let units = all_curve_units();
-    let forward = exact_text(&curve_values_batch(&units, 4).unwrap());
+    let forward = exact_text(&compute_curve_values_batch(&units, 4).unwrap());
     let reversed_units: Vec<_> = units.iter().rev().cloned().collect();
-    let mut reversed = exact_text(&curve_values_batch(&reversed_units, 4).unwrap());
+    let mut reversed = exact_text(&compute_curve_values_batch(&reversed_units, 4).unwrap());
     reversed.reverse();
     assert_eq!(forward, reversed);
 
     // splitting the units in two gives the same results
     let middle = units.len() / 2;
-    let mut split = exact_text(&curve_values_batch(&units[..middle], 2).unwrap());
+    let mut split = exact_text(&compute_curve_values_batch(&units[..middle], 2).unwrap());
     split.extend(exact_text(
-        &curve_values_batch(&units[middle..], 3).unwrap(),
+        &compute_curve_values_batch(&units[middle..], 3).unwrap(),
     ));
     assert_eq!(forward, split);
 }
@@ -125,10 +125,10 @@ fn the_order_of_the_units_does_not_change_their_results() {
 #[test]
 fn a_failing_unit_does_not_affect_the_others() {
     let mut units = bond_units();
-    let good = exact_text(&bond_values_batch(&units, 4).unwrap());
+    let good = exact_text(&compute_bond_values_batch(&units, 4).unwrap());
     units[3].convention.frequency = 0;
     units[3].convention.compounding = Compounding::Compounded;
-    let results = bond_values_batch(&units, 4).unwrap();
+    let results = compute_bond_values_batch(&units, 4).unwrap();
     assert!(results[3].is_err());
     let text = exact_text(&results);
     assert_eq!(good[..3], text[..3]);

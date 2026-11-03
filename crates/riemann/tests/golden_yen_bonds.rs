@@ -79,9 +79,9 @@ fn yen_bonds_match_gaussquant() {
         // remaining years: the rule of docs/spec_bonds.md 5.1, as in GaussQuant
         c.check(
             case,
-            "remaining_years",
+            "compute_remaining_years",
             &r[11],
-            yen_bond::remaining_years(date(&r[1]), date(&r[2])),
+            yen_bond::compute_remaining_years(date(&r[1]), date(&r[2])),
             0.0,
         );
         rule_differs += usize::from(r[13] == "1");
@@ -103,46 +103,46 @@ fn yen_bonds_match_gaussquant() {
             case,
             "price_simple",
             &r[14],
-            yen_bond::price_from_simple_rate(t, coupon, y_s, redemption, None),
+            yen_bond::compute_price_from_simple_rate(t, coupon, y_s, redemption, None),
             1e-15,
         );
         c.check(
             case,
             "price_simple_3",
             &r[15],
-            yen_bond::price_from_simple_rate(t, coupon, y_s, redemption, Some(3)),
+            yen_bond::compute_price_from_simple_rate(t, coupon, y_s, redemption, Some(3)),
             1e-15,
         );
         c.check(
             case,
             "rate_simple",
             &r[16],
-            yen_bond::simple_rate_from_price(t, coupon, target, redemption, 7, 100),
+            yen_bond::compute_simple_rate_from_price(t, coupon, target, redemption, 7, 100),
             1e-15,
         );
         c.check(
             case,
             "price_compound",
             &r[17],
-            yen_bond::price_from_compound_yield(t, coupon, y_c, redemption, freq, None),
+            yen_bond::compute_price_from_compound_yield(t, coupon, y_c, redemption, freq, None),
             1e-12,
         );
         c.check(
             case,
             "price_compound_3",
             &r[18],
-            yen_bond::price_from_compound_yield(t, coupon, y_c, redemption, freq, Some(3)),
+            yen_bond::compute_price_from_compound_yield(t, coupon, y_c, redemption, freq, Some(3)),
             1e-12,
         );
         c.check(
             case,
             "rate_compound",
             &r[19],
-            yen_bond::compound_yield_from_price(t, coupon, target, redemption, freq, 7, 100),
+            yen_bond::compute_compound_yield_from_price(t, coupon, target, redemption, freq, 7, 100),
             1e-12,
         );
-        let risk_s = yen_bond::risk_from_simple_rate(t, coupon, y_s, redemption, accrued);
-        let risk_c = yen_bond::risk_from_compound_yield(t, coupon, y_c, redemption, freq, accrued);
+        let risk_s = yen_bond::compute_risk_from_simple_rate(t, coupon, y_s, redemption, accrued);
+        let risk_c = yen_bond::compute_risk_from_compound_yield(t, coupon, y_c, redemption, freq, accrued);
         for i in 0..6 {
             let s = risk_s
                 .as_ref()

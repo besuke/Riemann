@@ -11,7 +11,7 @@ use riemann::names;
 use riemann::time::{BusinessDayConvention, DateGenerationRule, HolidayCalendar, Period, ScheduleSpec, TimeUnit};
 
 fn bond(r: &[String]) -> FixedRateBond {
-    let calendar = HolidayCalendar::from(names::calendar(&r[0]).unwrap());
+    let calendar = HolidayCalendar::from(names::parse_calendar(&r[0]).unwrap());
     FixedRateBond::new(FixedRateBondSpec {
         settlement_days: r[2].parse().unwrap(),
         face_amount: 100.0,

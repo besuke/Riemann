@@ -13,7 +13,7 @@
 //! THIRD_PARTY_NOTICES. Values are computed in the same order as QuantLib.
 
 use crate::autodiff::Operand;
-use crate::math::solver1d::close;
+use crate::math::solver1d::is_close;
 use crate::Error;
 
 /// Linear interpolation through sorted points; a value, built once.
@@ -103,7 +103,7 @@ fn solve_tridiagonal<T: Operand>(
     let mut result = rhs.to_vec();
     let mut temp = vec![0.0; n];
     let mut bet = diagonal[0];
-    if close(bet, 0.0) {
+    if is_close(bet, 0.0) {
         return Err(Error::InvalidInput {
             reason: format!("diagonal's first element ({bet}) cannot be close to zero"),
         });
@@ -112,7 +112,7 @@ fn solve_tridiagonal<T: Operand>(
     for j in 1..n {
         temp[j] = upper[j - 1] / bet;
         bet = diagonal[j] - lower[j - 1] * temp[j];
-        if close(bet, 0.0) {
+        if is_close(bet, 0.0) {
             return Err(Error::InvalidInput {
                 reason: "division by zero".into(),
             });

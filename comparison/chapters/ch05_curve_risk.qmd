@@ -51,19 +51,19 @@ RiemannFinMath:
 ```{r}
 #| label: value-riemann
 build_riemann <- function(rates) {
-  RiemannFinMath::build_ois_curve(
-    date, date, "tonar", "actual_365_fixed", RiemannFinMath::ois_instruments(quotes$tenor, rates, 2L, 1L, 0L),
+  RiemannFinMath::bootstrap_ois_curve(
+    date, date, "tonar", "actual_365_fixed", RiemannFinMath::create_ois_instruments(quotes$tenor, rates, 2L, 1L, 0L),
     interpolation = "log_linear"
   )
 }
 curve <- build_riemann(quotes$rate)
-bond <- RiemannFinMath::fixed_rate_bond(
+bond <- RiemannFinMath::create_fixed_rate_bond(
   settlement_days = 2L, face_amount = 100, effective_date = bond_terms$issue, termination_date = bond_terms$maturity,
   tenor = "6M", calendar = "japan", convention = "unadjusted", termination_convention = "unadjusted", rule = "backward",
   end_of_month = FALSE, coupon_rate = bond_terms$coupon, day_count = "actual_365_fixed", payment_convention = "following",
   redemption = 100, issue_date = bond_terms$issue
 )
-riemann_value <- RiemannFinMath::value_on_curve(bond, curve, date)
+riemann_value <- RiemannFinMath::compute_bond_value_on_curve(bond, curve, date)
 ```
 
 ```{r}
@@ -98,7 +98,7 @@ RiemannFinMath, by automatic differentiation and the implicit function theorem:
 
 ```{r}
 #| label: quote-riemann
-riemann_quote_risk <- RiemannFinMath::quote_sensitivity(bond, curve, date)
+riemann_quote_risk <- RiemannFinMath::compute_quote_sensitivity(bond, curve, date)
 ```
 
 ```{r}
@@ -134,7 +134,7 @@ RiemannFinMath:
 
 ```{r}
 #| label: node-riemann
-riemann_node_risk <- RiemannFinMath::curve_node_sensitivity(bond, curve, date)
+riemann_node_risk <- RiemannFinMath::compute_curve_node_sensitivity(bond, curve, date)
 ```
 
 ```{r}
@@ -159,8 +159,8 @@ ql_dc <- QuantLib::Actual365Fixed()
 ql_dirty <- QuantLib::BondFunctions_cleanPrice(ql_bond, yield_rate, ql_dc, "Compounded", "Semiannual", ql_settlement) + QuantLib::Bond_accruedAmount(ql_bond, ql_settlement)
 ql_modified <- QuantLib::BondFunctions_duration(ql_bond, yield_rate, ql_dc, "Compounded", "Semiannual", "Modified", ql_settlement)
 ql_convexity <- QuantLib::BondFunctions_convexity(ql_bond, yield_rate, ql_dc, "Compounded", "Semiannual", ql_settlement)
-riemann_yield <- RiemannFinMath::yield_sensitivity(
-  bond, yield_rate, "actual_365_fixed", "compounded", 2L, RiemannFinMath::settlement_date(bond, date)
+riemann_yield <- RiemannFinMath::compute_yield_sensitivity(
+  bond, yield_rate, "actual_365_fixed", "compounded", 2L, RiemannFinMath::compute_settlement_date(bond, date)
 )
 ```
 
@@ -180,7 +180,7 @@ bind_rows(
 #| label: design
 tribble(
   ~Layer,    ~Aspect,             ~QuantLib,                                                     ~RiemannFinMath,
-  "Wrapper", "Value on a curve",  "Set an engine on the bond, then read `NPV`",                  "`value_on_curve(bond, curve, date)`",
+  "Wrapper", "Value on a curve",  "Set an engine on the bond, then read `NPV`",                  "`compute_bond_value_on_curve(bond, curve, date)`",
   "Wrapper", "Bucket risk",       "A loop written by the user, with a rebuild for each bump",    "One call returns the table",
   "Core",    "Derivatives",       "Not exposed in R; finite differences",                        "Reverse-mode automatic differentiation on a graph",
   "Core",    "Quote derivatives", "The bootstrap is repeated",                                   "Implicit function theorem on the solved curve",

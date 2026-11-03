@@ -17,7 +17,7 @@
 #![allow(clippy::excessive_precision)]
 
 /// The normal density.
-pub fn normal_pdf(x: f64) -> f64 {
+pub fn compute_normal_pdf(x: f64) -> f64 {
     (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt()
 }
 
@@ -151,7 +151,7 @@ fn erf(x: f64) -> f64 {
 }
 
 /// The normal distribution function (QuantLib `CumulativeNormalDistribution`).
-pub fn normal_cdf(z: f64) -> f64 {
+pub fn compute_normal_cdf(z: f64) -> f64 {
     let result = 0.5 * (1.0 + erf(z * std::f64::consts::FRAC_1_SQRT_2));
     if result > 1e-8 {
         return result;
@@ -172,7 +172,7 @@ pub fn normal_cdf(z: f64) -> f64 {
             break;
         }
     }
-    -normal_pdf(z) / z * sum
+    -compute_normal_pdf(z) / z * sum
 }
 
 const A: [f64; 6] = [
@@ -208,7 +208,7 @@ const X_LOW: f64 = 0.02425;
 
 /// The inverse of the normal distribution function for 0 < x < 1 (QuantLib
 /// `InverseCumulativeNormal`, without refinement: relative error below 1.15e-9).
-pub fn inverse_normal_cdf(x: f64) -> f64 {
+pub fn compute_inverse_normal_cdf(x: f64) -> f64 {
     let tail = |z: f64| {
         (((((C[0] * z + C[1]) * z + C[2]) * z + C[3]) * z + C[4]) * z + C[5])
             / ((((D[0] * z + D[1]) * z + D[2]) * z + D[3]) * z + 1.0)
@@ -241,7 +241,7 @@ mod tests {
             (3.5, 0.999_767_370_920_964_2),
             (-6.0, 9.865_876_450_376_946e-10),
         ] {
-            let got = normal_cdf(z);
+            let got = compute_normal_cdf(z);
             assert!((got - expected).abs() < 1e-15, "{z}: {got}");
         }
     }
@@ -249,15 +249,15 @@ mod tests {
     #[test]
     fn the_inverse_undoes_the_distribution_function() {
         for x in [1e-8, 1e-4, 0.01, 0.02425, 0.1, 0.5, 0.9, 0.97575, 0.999, 1.0 - 1e-8] {
-            let z = inverse_normal_cdf(x);
-            assert!((normal_cdf(z) - x).abs() < 3e-9, "{x}: {z}");
+            let z = compute_inverse_normal_cdf(x);
+            assert!((compute_normal_cdf(z) - x).abs() < 3e-9, "{x}: {z}");
         }
     }
 
     #[test]
     fn symmetry() {
         for z in [0.1, 0.5, 0.9, 1.2, 2.0, 3.0, 5.0] {
-            assert!((normal_cdf(z) + normal_cdf(-z) - 1.0).abs() < 1e-15, "{z}");
+            assert!((compute_normal_cdf(z) + compute_normal_cdf(-z) - 1.0).abs() < 1e-15, "{z}");
         }
     }
 }

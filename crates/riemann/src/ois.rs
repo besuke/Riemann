@@ -38,8 +38,8 @@
 
 use crate::autodiff::{Operand, Recorder, Var};
 use crate::curves::{LogDiscountInterpolation, LogDiscounts, YieldCurve};
-use crate::math::linear::inverse;
-use crate::math::solver1d::{brent, close_enough, finite_difference_newton_safe};
+use crate::math::linear::compute_inverse;
+use crate::math::solver1d::{solve_brent, is_close_enough, solve_finite_difference_newton_safe};
 use crate::time::{
     generate_schedule, Actual365Kind, BusinessDayConvention, Calendar, Date, DateGenerationRule,
     DayCount, HolidayCalendar, Period, ScheduleSpec, TimeUnit, UkMarket, UsMarket,
@@ -64,7 +64,7 @@ pub struct OvernightIndex {
 }
 
 /// TONAR: Japan calendar, Actual/365 Fixed (QuantLib `Tonar`).
-pub fn tonar() -> OvernightIndex {
+pub fn create_tonar_index() -> OvernightIndex {
     OvernightIndex {
         calendar: HolidayCalendar::from(Calendar::Japan),
         day_count: DayCount::Actual365Fixed(Actual365Kind::Standard),
@@ -72,7 +72,7 @@ pub fn tonar() -> OvernightIndex {
 }
 
 /// €STR: TARGET calendar, Actual/360 (QuantLib `Estr`).
-pub fn estr() -> OvernightIndex {
+pub fn create_estr_index() -> OvernightIndex {
     OvernightIndex {
         calendar: HolidayCalendar::from(Calendar::Target),
         day_count: DayCount::Actual360 {
@@ -82,7 +82,7 @@ pub fn estr() -> OvernightIndex {
 }
 
 /// SOFR: United States SOFR calendar, Actual/360 (QuantLib `Sofr`).
-pub fn sofr() -> OvernightIndex {
+pub fn create_sofr_index() -> OvernightIndex {
     OvernightIndex {
         calendar: HolidayCalendar::from(Calendar::UnitedStates(UsMarket::Sofr)),
         day_count: DayCount::Actual360 {
@@ -92,7 +92,7 @@ pub fn sofr() -> OvernightIndex {
 }
 
 /// SONIA: United Kingdom exchange calendar, Actual/365 Fixed (QuantLib `Sonia`).
-pub fn sonia() -> OvernightIndex {
+pub fn create_sonia_index() -> OvernightIndex {
     OvernightIndex {
         calendar: HolidayCalendar::from(Calendar::UnitedKingdom(UkMarket::Exchange)),
         day_count: DayCount::Actual365Fixed(Actual365Kind::Standard),
@@ -389,7 +389,7 @@ impl Helper {
 /// node from the shortest pillar. The first pass uses Brent and only the nodes found so far. A
 /// global interpolation repeats the pass over all nodes with `FiniteDifferenceNewtonSafe`, from
 /// the previous values, until no node moves by more than the accuracy.
-pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
+pub fn bootstrap_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
     if spec.instruments.is_empty() {
         return Err(Error::InvalidInput {
             reason: "no bootstrap helpers given".into(),
@@ -479,7 +479,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
                             reason: format!("negative time ({t}) given"),
                         });
                     }
-                    if !(t <= max_time || close_enough(t, max_time)) {
+                    if !(t <= max_time || is_close_enough(t, max_time)) {
                         return Err(Error::OutsideCurveRange {
                             reason: format!("time ({t}) is past max curve time ({max_time})"),
                         });
@@ -489,7 +489,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
                 Ok(rate_of(i) - helpers[i].implied_quote(reference, &discount)?)
             };
             let solved = if valid_data {
-                finite_difference_newton_safe(
+                solve_finite_difference_newton_safe(
                     error,
                     spec.accuracy,
                     guess,
@@ -498,7 +498,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error> {
                     MAX_FUNCTION_EVALUATIONS,
                 )
             } else {
-                brent(
+                solve_brent(
                     error,
                     spec.accuracy,
                     guess,
@@ -627,7 +627,7 @@ impl OisCurve {
             LogDiscounts::new(spec.interpolation.log_discounts(), times, logs)?;
         let discount = |d: Date| -> Result<Var, Error> {
             let t = time(d)?;
-            if t < 0.0 || !(t <= max_time || close_enough(t, max_time)) {
+            if t < 0.0 || !(t <= max_time || is_close_enough(t, max_time)) {
                 return Err(Error::OutsideCurveRange {
                     reason: format!("time ({t}) is outside the curve (0 to {max_time})"),
                 });
@@ -643,7 +643,7 @@ impl OisCurve {
         Ok(QuoteJacobian {
             node_dates: dates[1..].to_vec(),
             instruments: order,
-            d_log_discount_d_quote: inverse(&rows)?,
+            d_log_discount_d_quote: compute_inverse(&rows)?,
         })
     }
 }

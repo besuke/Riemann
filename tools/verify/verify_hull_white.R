@@ -2,11 +2,11 @@
 # LagrangeFinance are in the Rust tests (crates/riemann/tests/golden_hull_white.rs). Synthetic inputs.
 
 verify_hull_white <- function() {
-  quotes <- RiemannFinMath::ois_instruments(c("1Y", "5Y", "10Y", "20Y"), rep(0.02, 4), 2L, 1L, 0L)
-  curve <- RiemannFinMath::build_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", quotes)
+  quotes <- RiemannFinMath::create_ois_instruments(c("1Y", "5Y", "10Y", "20Y"), rep(0.02, 4), 2L, 1L, 0L)
+  curve <- RiemannFinMath::bootstrap_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", quotes)
   flows <- list(time = (1:10) / 2, coupon = 1.5, principal = c(rep(0, 9), 100), call_price = c(NA, rep(100, 8), NA))
   value <- function(points, nodes, spacing) {
-    do.call(RiemannFinMath::hull_white_callable_bond, c(flows, list(0.15, 0.012, curve, points = points, limit = 0.2, nodes = nodes, spacing = spacing)))$callable
+    do.call(RiemannFinMath::compute_hull_white_callable_bond_value, c(flows, list(0.15, 0.012, curve, points = points, limit = 0.2, nodes = nodes, spacing = spacing)))$callable
   }
   reference <- value(1601L, 24L, 0.01)
   tibble(

@@ -2,13 +2,13 @@
 % Please edit documentation in R/bonds.R
 \name{yen_bond_yields}
 \alias{yen_bond_yields}
-\alias{price_from_simple_rate}
-\alias{simple_rate_from_price}
-\alias{price_from_compound_yield}
-\alias{compound_yield_from_price}
+\alias{compute_price_from_simple_rate}
+\alias{compute_simple_rate_from_price}
+\alias{compute_price_from_compound_yield}
+\alias{compute_compound_yield_from_price}
 \title{Japanese simple and compound yields}
 \usage{
-price_from_simple_rate(
+compute_price_from_simple_rate(
   t,
   coupon_rate,
   simple_rate,
@@ -17,7 +17,7 @@ price_from_simple_rate(
   on_error = "stop"
 )
 
-simple_rate_from_price(
+compute_simple_rate_from_price(
   t,
   coupon_rate,
   price,
@@ -27,7 +27,7 @@ simple_rate_from_price(
   on_error = "stop"
 )
 
-price_from_compound_yield(
+compute_price_from_compound_yield(
   t,
   coupon_rate,
   compound_yield,
@@ -38,7 +38,7 @@ price_from_compound_yield(
   on_error = "stop"
 )
 
-compound_yield_from_price(
+compute_compound_yield_from_price(
   t,
   coupon_rate,
   price,
@@ -51,7 +51,7 @@ compound_yield_from_price(
 )
 }
 \arguments{
-\item{t}{Remaining years; see \code{\link[=remaining_years]{remaining_years()}}.}
+\item{t}{Remaining years; see \code{\link[=compute_remaining_years]{compute_remaining_years()}}.}
 
 \item{coupon_rate}{Coupon rate in percent per year.}
 
@@ -76,8 +76,8 @@ A numeric vector.
 Prices per 100 and yields in percent, for Japanese bond calculations.
 }
 \examples{
-price_from_simple_rate(5, 1.5, 1.2, 100)
-simple_rate_from_price(5, 1.5, 101.4, 100)
-price_from_compound_yield(5, 1.5, 1.2, 100)
-compound_yield_from_price(5, 1.5, 101.4, 100)
+compute_price_from_simple_rate(5, 1.5, 1.2, 100)
+compute_simple_rate_from_price(5, 1.5, 101.4, 100)
+compute_price_from_compound_yield(5, 1.5, 1.2, 100)
+compute_compound_yield_from_price(5, 1.5, 101.4, 100)
 }

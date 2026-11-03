@@ -94,8 +94,8 @@ fn value_list(rows: Vec<Core<f64>>) -> List {
 
 fn yield_convention(day_count: &str, compounding: &str, frequency: i32) -> Core<YieldConvention> {
     Ok(YieldConvention {
-        day_count: names::day_count(day_count)?,
-        compounding: names::compounding(compounding)?,
+        day_count: names::parse_day_count(day_count)?,
+        compounding: names::parse_compounding(compounding)?,
         frequency: frequency as u32,
     })
 }
@@ -104,7 +104,7 @@ fn yield_convention(day_count: &str, compounding: &str, frequency: i32) -> Core<
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn fixed_rate_bond(
+fn create_fixed_rate_bond(
     settlement_days: i32,
     face_amount: f64,
     effective_date: i32,
@@ -130,18 +130,18 @@ fn fixed_rate_bond(
             schedule: ScheduleSpec {
                 effective_date: date(effective_date)?,
                 termination_date: date(termination_date)?,
-                tenor: names::period(tenor)?,
-                calendar: HolidayCalendar::from(names::calendar(calendar)?),
-                convention: names::business_day_convention(convention)?,
-                termination_convention: names::business_day_convention(termination_convention)?,
-                rule: names::date_generation_rule(rule)?,
+                tenor: names::parse_period(tenor)?,
+                calendar: HolidayCalendar::from(names::parse_calendar(calendar)?),
+                convention: names::parse_business_day_convention(convention)?,
+                termination_convention: names::parse_business_day_convention(termination_convention)?,
+                rule: names::parse_date_generation_rule(rule)?,
                 end_of_month,
                 first_date: optional_date(first_date)?,
                 next_to_last_date: optional_date(next_to_last_date)?,
             },
             coupon_rate,
-            day_count: names::day_count(day_count)?,
-            payment_convention: names::business_day_convention(payment_convention)?,
+            day_count: names::parse_day_count(day_count)?,
+            payment_convention: names::parse_business_day_convention(payment_convention)?,
             redemption,
             issue_date: optional_date(issue_date)?,
             payment_calendar: None,
@@ -151,7 +151,7 @@ fn fixed_rate_bond(
 }
 
 #[extendr]
-fn settlement_date(bond: ExternalPtr<FixedRateBond>, evaluation_date: Vec<i32>) -> List {
+fn compute_settlement_date(bond: ExternalPtr<FixedRateBond>, evaluation_date: Vec<i32>) -> List {
     let rows = evaluation_date
         .iter()
         .map(|&d| Ok(bond.settlement_date(date(d)?)?.serial() as f64))
@@ -161,7 +161,7 @@ fn settlement_date(bond: ExternalPtr<FixedRateBond>, evaluation_date: Vec<i32>) 
 
 /// All measures of a bond at each yield and settlement date.
 #[extendr]
-fn bond_values(
+fn compute_bond_values(
     bond: ExternalPtr<FixedRateBond>,
     rate: Vec<f64>,
     day_count: &str,
@@ -192,9 +192,9 @@ fn bond_values_rows(
     let mut columns: [Vec<f64>; 9] = Default::default();
     let mut errors = vec![String::new(); n];
     let kinds = [
-        names::duration_type("simple")?,
-        names::duration_type("modified")?,
-        names::duration_type("macaulay")?,
+        names::parse_duration_type("simple")?,
+        names::parse_duration_type("modified")?,
+        names::parse_duration_type("macaulay")?,
     ];
     // the Macaulay duration exists only for compounded yields; elsewhere its column is NA, which
     // is not a failure of the row. `duration` reports it as an error when it is asked for.
@@ -255,7 +255,7 @@ fn bond_values_rows(
 /// One duration measure at each yield and settlement date.
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn duration(
+fn compute_duration(
     bond: ExternalPtr<FixedRateBond>,
     rate: Vec<f64>,
     day_count: &str,
@@ -266,7 +266,7 @@ fn duration(
 ) -> List {
     let rows = || -> Core<List> {
         let convention = yield_convention(day_count, compounding, frequency)?;
-        let kind = names::duration_type(duration_type)?;
+        let kind = names::parse_duration_type(duration_type)?;
         let rows = rate
             .iter()
             .zip(&settlement_date)
@@ -279,7 +279,7 @@ fn duration(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn yield_from_price(
+fn compute_yield_from_price(
     bond: ExternalPtr<FixedRateBond>,
     price: Vec<f64>,
     price_type: &str,
@@ -293,7 +293,7 @@ fn yield_from_price(
 ) -> List {
     let rows = || -> Core<List> {
         let convention = yield_convention(day_count, compounding, frequency)?;
-        let kind = names::price_type(price_type)?;
+        let kind = names::parse_price_type(price_type)?;
         let solver = YieldSolver {
             accuracy,
             max_iterations: max_iterations as usize,
@@ -326,13 +326,13 @@ fn create_ois_swap(
 ) -> List {
     let build = || -> Core<OisSwap> {
         ois_swap::create_ois_swap(OisSwapSpec {
-            side: names::swap_side(side)?,
+            side: names::parse_swap_side(side)?,
             nominal,
             effective_date: date(effective_date)?,
             termination_date: date(termination_date)?,
-            index: names::overnight_index(index)?,
+            index: names::parse_overnight_index(index)?,
             fixed_rate,
-            fixed_day_count: if fixed_day_count.is_empty() { None } else { Some(names::day_count(fixed_day_count)?) },
+            fixed_day_count: if fixed_day_count.is_empty() { None } else { Some(names::parse_day_count(fixed_day_count)?) },
             spread,
             fixed_frequency: fixed_frequency as u32,
             overnight_frequency: overnight_frequency as u32,
@@ -387,7 +387,7 @@ fn compute_ois_swap_value(
 
 /// The coupons of both legs. A coupon that cannot be computed has NA and its message.
 #[extendr]
-fn get_ois_swap_cashflows(
+fn compute_ois_swap_cashflows(
     swap: ExternalPtr<OisSwap>,
     curve: ExternalPtr<OisCurve>,
     evaluation_date: i32,
@@ -483,7 +483,7 @@ fn compute_ois_swap_quote_sensitivity(
 
 /// The cash flows of a bond in date order, coupons before a redemption on the same date.
 #[extendr]
-fn bond_cashflows(bond: ExternalPtr<FixedRateBond>) -> List {
+fn get_bond_cashflows(bond: ExternalPtr<FixedRateBond>) -> List {
     let rows = || -> Core<List> {
         let n = bond.cashflows.len();
         let mut payment_date = Vec::with_capacity(n);
@@ -519,7 +519,7 @@ fn bond_cashflows(bond: ExternalPtr<FixedRateBond>) -> List {
 }
 
 #[extendr]
-fn value_with_zero_spread(
+fn compute_bond_value_with_zero_spread(
     bond: ExternalPtr<FixedRateBond>,
     curve: ExternalPtr<OisCurve>,
     spread: Vec<f64>,
@@ -528,7 +528,7 @@ fn value_with_zero_spread(
     evaluation_date: Vec<i32>,
 ) -> List {
     let rows = || -> Core<List> {
-        let compounding = names::compounding(compounding)?;
+        let compounding = names::parse_compounding(compounding)?;
         let n = spread.len();
         let (mut npv, mut settlement_value) = (Vec::with_capacity(n), Vec::with_capacity(n));
         let (mut dirty_price, mut clean_price) = (Vec::with_capacity(n), Vec::with_capacity(n));
@@ -566,7 +566,7 @@ fn value_with_zero_spread(
 }
 
 #[extendr]
-fn z_spread_from_price(
+fn compute_z_spread_from_price(
     bond: ExternalPtr<FixedRateBond>,
     curve: ExternalPtr<OisCurve>,
     price: Vec<f64>,
@@ -579,8 +579,8 @@ fn z_spread_from_price(
     guess: f64,
 ) -> List {
     let rows = || -> Core<List> {
-        let kind = names::price_type(price_type)?;
-        let compounding = names::compounding(compounding)?;
+        let kind = names::parse_price_type(price_type)?;
+        let compounding = names::parse_compounding(compounding)?;
         let rows = price
             .iter()
             .zip(&settlement_date)
@@ -604,7 +604,7 @@ fn z_spread_from_price(
 }
 
 #[extendr]
-fn value_on_curve(
+fn compute_bond_value_on_curve(
     bond: ExternalPtr<FixedRateBond>,
     curve: ExternalPtr<OisCurve>,
     evaluation_date: Vec<i32>,
@@ -652,17 +652,17 @@ fn optional_digits(digits: i32) -> Option<u32> {
 }
 
 #[extendr]
-fn remaining_years(start: Vec<i32>, end: Vec<i32>) -> List {
+fn compute_remaining_years(start: Vec<i32>, end: Vec<i32>) -> List {
     let rows = start
         .iter()
         .zip(&end)
-        .map(|(&a, &b)| yen_bond::remaining_years(date(a)?, date(b)?))
+        .map(|(&a, &b)| yen_bond::compute_remaining_years(date(a)?, date(b)?))
         .collect();
     value_list(rows)
 }
 
 #[extendr]
-fn price_from_simple_rate(
+fn compute_price_from_simple_rate(
     t: Vec<f64>,
     coupon_rate: Vec<f64>,
     simple_rate: Vec<f64>,
@@ -671,7 +671,7 @@ fn price_from_simple_rate(
 ) -> List {
     let rows = (0..t.len())
         .map(|i| {
-            yen_bond::price_from_simple_rate(
+            yen_bond::compute_price_from_simple_rate(
                 t[i],
                 coupon_rate[i],
                 simple_rate[i],
@@ -684,7 +684,7 @@ fn price_from_simple_rate(
 }
 
 #[extendr]
-fn simple_rate_from_price(
+fn compute_simple_rate_from_price(
     t: Vec<f64>,
     coupon_rate: Vec<f64>,
     price: Vec<f64>,
@@ -694,7 +694,7 @@ fn simple_rate_from_price(
 ) -> List {
     let rows = (0..t.len())
         .map(|i| {
-            yen_bond::simple_rate_from_price(
+            yen_bond::compute_simple_rate_from_price(
                 t[i],
                 coupon_rate[i],
                 price[i],
@@ -716,7 +716,7 @@ fn frequencies(coupon: i32, compound: i32) -> yen_bond::CompoundFrequencies {
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn price_from_compound_yield(
+fn compute_price_from_compound_yield(
     t: Vec<f64>,
     coupon_rate: Vec<f64>,
     compound_yield: Vec<f64>,
@@ -727,7 +727,7 @@ fn price_from_compound_yield(
 ) -> List {
     let rows = (0..t.len())
         .map(|i| {
-            yen_bond::price_from_compound_yield(
+            yen_bond::compute_price_from_compound_yield(
                 t[i],
                 coupon_rate[i],
                 compound_yield[i],
@@ -742,7 +742,7 @@ fn price_from_compound_yield(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn compound_yield_from_price(
+fn compute_compound_yield_from_price(
     t: Vec<f64>,
     coupon_rate: Vec<f64>,
     price: Vec<f64>,
@@ -754,7 +754,7 @@ fn compound_yield_from_price(
 ) -> List {
     let rows = (0..t.len())
         .map(|i| {
-            yen_bond::compound_yield_from_price(
+            yen_bond::compute_compound_yield_from_price(
                 t[i],
                 coupon_rate[i],
                 price[i],
@@ -793,7 +793,7 @@ fn risk_list(rows: Vec<Core<yen_bond::YenBondRisk>>) -> List {
 }
 
 #[extendr]
-fn risk_from_simple_rate(
+fn compute_risk_from_simple_rate(
     t: Vec<f64>,
     coupon_rate: Vec<f64>,
     simple_rate: Vec<f64>,
@@ -803,7 +803,7 @@ fn risk_from_simple_rate(
     risk_list(
         (0..t.len())
             .map(|i| {
-                yen_bond::risk_from_simple_rate(
+                yen_bond::compute_risk_from_simple_rate(
                     t[i],
                     coupon_rate[i],
                     simple_rate[i],
@@ -817,7 +817,7 @@ fn risk_from_simple_rate(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn risk_from_compound_yield(
+fn compute_risk_from_compound_yield(
     t: Vec<f64>,
     coupon_rate: Vec<f64>,
     compound_yield: Vec<f64>,
@@ -829,7 +829,7 @@ fn risk_from_compound_yield(
     risk_list(
         (0..t.len())
             .map(|i| {
-                yen_bond::risk_from_compound_yield(
+                yen_bond::compute_risk_from_compound_yield(
                     t[i],
                     coupon_rate[i],
                     compound_yield[i],
@@ -847,7 +847,7 @@ fn risk_from_compound_yield(
 /// A tenor of `ON` is an overnight deposit, which has no settlement days, frequency or lag.
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn build_ois_curve(
+fn bootstrap_ois_curve(
     evaluation_date: i32,
     reference_date: i32,
     index: &str,
@@ -867,7 +867,7 @@ fn build_ois_curve(
                     OisCurveInstrument::OvernightDeposit { rate: rate[i] }
                 } else {
                     OisCurveInstrument::Ois {
-                        tenor: names::period(&tenor[i])?,
+                        tenor: names::parse_period(&tenor[i])?,
                         rate: rate[i],
                         settlement_days: settlement_days[i] as u32,
                         payment_frequency: payment_frequency[i] as u32,
@@ -876,13 +876,13 @@ fn build_ois_curve(
                 })
             })
             .collect::<Core<Vec<_>>>()?;
-        riemann::ois::build_ois_curve(&OisCurveSpec {
+        riemann::ois::bootstrap_ois_curve(&OisCurveSpec {
             evaluation_date: date(evaluation_date)?,
             reference_date: date(reference_date)?,
-            index: names::overnight_index(index)?,
-            curve_day_count: names::day_count(curve_day_count)?,
+            index: names::parse_overnight_index(index)?,
+            curve_day_count: names::parse_day_count(curve_day_count)?,
             instruments,
-            interpolation: names::ois_interpolation(interpolation)?,
+            interpolation: names::parse_ois_interpolation(interpolation)?,
             accuracy,
         })
     };
@@ -898,7 +898,7 @@ fn with_extrapolation(curve: ExternalPtr<OisCurve>, extrapolate: bool) -> Extern
 }
 
 #[extendr]
-fn discount(curve: ExternalPtr<OisCurve>, date_serial: Vec<i32>) -> List {
+fn compute_discount(curve: ExternalPtr<OisCurve>, date_serial: Vec<i32>) -> List {
     let rows = date_serial
         .iter()
         .map(|&d| curve.curve.discount(date(d)?))
@@ -907,7 +907,7 @@ fn discount(curve: ExternalPtr<OisCurve>, date_serial: Vec<i32>) -> List {
 }
 
 #[extendr]
-fn zero_rate(
+fn compute_zero_rate(
     curve: ExternalPtr<OisCurve>,
     date_serial: Vec<i32>,
     day_count: &str,
@@ -915,8 +915,8 @@ fn zero_rate(
     frequency: i32,
 ) -> List {
     let rows = || -> Core<List> {
-        let dc = names::day_count(day_count)?;
-        let comp = names::compounding(compounding)?;
+        let dc = names::parse_day_count(day_count)?;
+        let comp = names::parse_compounding(compounding)?;
         let rows = date_serial
             .iter()
             .map(|&d| {
@@ -932,7 +932,7 @@ fn zero_rate(
 }
 
 #[extendr]
-fn forward_rate(
+fn compute_forward_rate(
     curve: ExternalPtr<OisCurve>,
     start_date: Vec<i32>,
     end_date: Vec<i32>,
@@ -941,8 +941,8 @@ fn forward_rate(
     frequency: i32,
 ) -> List {
     let rows = || -> Core<List> {
-        let dc = names::day_count(day_count)?;
-        let comp = names::compounding(compounding)?;
+        let dc = names::parse_day_count(day_count)?;
+        let comp = names::parse_compounding(compounding)?;
         let rows = start_date
             .iter()
             .zip(&end_date)
@@ -959,7 +959,7 @@ fn forward_rate(
 }
 
 #[extendr]
-fn quote_repricing(curve: ExternalPtr<OisCurve>) -> List {
+fn get_quote_repricing(curve: ExternalPtr<OisCurve>) -> List {
     let q = &curve.quote_repricing;
     let serials = |f: fn(&riemann::ois::QuoteRepricing) -> Date| -> Vec<i32> {
         q.iter().map(|r| f(r).serial()).collect()
@@ -979,7 +979,7 @@ fn quote_repricing(curve: ExternalPtr<OisCurve>) -> List {
 }
 
 #[extendr]
-fn discount_nodes(curve: ExternalPtr<OisCurve>) -> List {
+fn get_discount_nodes(curve: ExternalPtr<OisCurve>) -> List {
     let (dates, values) = curve
         .curve
         .discount_nodes()
@@ -993,7 +993,7 @@ fn discount_nodes(curve: ExternalPtr<OisCurve>) -> List {
 // ---- sensitivities ---------------------------------------------------------------------------
 
 #[extendr]
-fn yield_sensitivity(
+fn compute_yield_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
     rate: Vec<f64>,
     day_count: &str,
@@ -1010,7 +1010,7 @@ fn yield_sensitivity(
         for (&r, &s) in rate.iter().zip(&settlement_date) {
             let row = convention
                 .rate(r)
-                .and_then(|y| risk::yield_sensitivity(&bond, &y, date(s)?));
+                .and_then(|y| risk::compute_yield_sensitivity(&bond, &y, date(s)?));
             match row {
                 Ok(v) => {
                     price.push(v.dirty_price);
@@ -1037,13 +1037,13 @@ fn yield_sensitivity(
 }
 
 #[extendr]
-fn curve_node_sensitivity(
+fn compute_curve_node_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
     curve: ExternalPtr<OisCurve>,
     evaluation_date: i32,
 ) -> List {
     let rows = || -> Core<List> {
-        let (value, rows) = risk::curve_sensitivity(&bond, &curve.curve, date(evaluation_date)?)?;
+        let (value, rows) = risk::compute_curve_sensitivity(&bond, &curve.curve, date(evaluation_date)?)?;
         let (mut dates, mut times) = (Vec::new(), Vec::new());
         let (mut d_npv, mut d_price) = (Vec::new(), Vec::new());
         for row in rows {
@@ -1067,13 +1067,13 @@ fn curve_node_sensitivity(
 }
 
 #[extendr]
-fn quote_sensitivity(
+fn compute_quote_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
     curve: ExternalPtr<OisCurve>,
     evaluation_date: i32,
 ) -> List {
     let rows = || -> Core<List> {
-        let (value, rows) = risk::quote_sensitivity(&bond, &curve, date(evaluation_date)?)?;
+        let (value, rows) = risk::compute_quote_sensitivity(&bond, &curve, date(evaluation_date)?)?;
         Ok(list!(
             npv = value.npv,
             dirty_price = value.dirty_price,
@@ -1090,7 +1090,7 @@ fn quote_sensitivity(
 // ---- asset swaps and futures basis ----------------------------------------------------------
 
 #[extendr]
-fn ois_asset_swap(
+fn compute_ois_asset_swap(
     bond: ExternalPtr<FixedRateBond>,
     curve: ExternalPtr<OisCurve>,
     clean_price: Vec<f64>,
@@ -1100,7 +1100,7 @@ fn ois_asset_swap(
     evaluation_date: i32,
 ) -> List {
     let (columns, error) = table(clean_price.len(), |i| {
-        let v = asset_swap::ois_asset_swap(
+        let v = asset_swap::compute_ois_asset_swap(
             &bond,
             &curve.curve,
             &curve.spec.index,
@@ -1145,7 +1145,7 @@ fn ois_asset_swap(
 }
 
 #[extendr]
-fn asset_swap_quote_sensitivity(
+fn compute_asset_swap_quote_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
     curve: ExternalPtr<OisCurve>,
     clean_price: f64,
@@ -1154,7 +1154,7 @@ fn asset_swap_quote_sensitivity(
     evaluation_date: i32,
 ) -> List {
     let run = || -> Core<List> {
-        let rows = asset_swap::asset_swap_quote_sensitivity(
+        let rows = asset_swap::compute_asset_swap_quote_sensitivity(
             &bond,
             &curve,
             &OisAssetSwapTerms {
@@ -1177,7 +1177,7 @@ fn asset_swap_quote_sensitivity(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn yen_asset_swap(
+fn compute_yen_asset_swap(
     bond: ExternalPtr<FixedRateBond>,
     foreign_curve: ExternalPtr<OisCurve>,
     yen_curve: ExternalPtr<OisCurve>,
@@ -1198,7 +1198,7 @@ fn yen_asset_swap(
             payment_lag: lag.max(0) as u32,
             spread: 0.0,
         };
-        let v = asset_swap::yen_asset_swap(
+        let v = asset_swap::compute_yen_asset_swap(
             &bond,
             &foreign_curve.curve,
             &foreign_curve.spec.index,
@@ -1236,7 +1236,7 @@ fn yen_asset_swap(
 }
 
 #[extendr]
-fn future_basis(
+fn compute_future_basis(
     bond: ExternalPtr<FixedRateBond>,
     clean_price: f64,
     futures_price: f64,
@@ -1246,7 +1246,7 @@ fn future_basis(
     delivery_date: i32,
 ) -> List {
     let run = || -> Core<List> {
-        let v = asset_swap::future_basis(
+        let v = asset_swap::compute_future_basis(
             &bond,
             &FutureBasisTerms {
                 clean_price,
@@ -1289,7 +1289,7 @@ fn grid_settings(points: i32, limit: f64, nodes: i32, spacing: f64) -> GridSetti
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn hull_white_bond_option(
+fn compute_hull_white_bond_option_value(
     option_type: Vec<String>,
     strike: Vec<f64>,
     maturity: Vec<f64>,
@@ -1302,7 +1302,7 @@ fn hull_white_bond_option(
     let rows = (0..strike.len())
         .map(|i| {
             model.discount_bond_option(
-                names::option_type(&option_type[i])?,
+                names::parse_option_type(&option_type[i])?,
                 strike[i],
                 maturity[i],
                 maturity[i],
@@ -1315,7 +1315,7 @@ fn hull_white_bond_option(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn hull_white_swaption(
+fn compute_hull_white_swaption_value(
     payer: bool,
     maturity: f64,
     payment_times: Vec<f64>,
@@ -1327,7 +1327,7 @@ fn hull_white_swaption(
 ) -> List {
     let flows = SwaptionFlows { payer, maturity, value_time: maturity, payment_times, coupons, nominal };
     outcome(
-        hull_white::jamshidian_swaption_sensitivity(mean_reversion, volatility, &curve.curve, &flows).map(|s| {
+        hull_white::compute_jamshidian_swaption_sensitivity(mean_reversion, volatility, &curve.curve, &flows).map(|s| {
             list!(value = s.value, d_mean_reversion = s.d_mean_reversion, d_volatility = s.d_volatility)
         }),
     )
@@ -1335,7 +1335,7 @@ fn hull_white_swaption(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn hull_white_bermudan_swaption(
+fn compute_hull_white_bermudan_swaption_value(
     payer: bool,
     maturity: f64,
     payment_times: Vec<f64>,
@@ -1353,14 +1353,14 @@ fn hull_white_bermudan_swaption(
     let flows = SwaptionFlows { payer, maturity, value_time: maturity, payment_times, coupons, nominal };
     let settings = grid_settings(points, limit, nodes, spacing);
     outcome(
-        hull_white::bermudan_swaption(&flows, &exercise_times, mean_reversion, volatility, &curve.curve, &settings)
+        hull_white::compute_bermudan_swaption(&flows, &exercise_times, mean_reversion, volatility, &curve.curve, &settings)
             .map(|value| list!(value = value)),
     )
 }
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn hull_white_callable_bond(
+fn compute_hull_white_callable_bond_value(
     time: Vec<f64>,
     coupon: Vec<f64>,
     principal: Vec<f64>,
@@ -1384,7 +1384,7 @@ fn hull_white_callable_bond(
         .collect();
     let settings = grid_settings(points, limit, nodes, spacing);
     outcome(
-        hull_white::callable_bond(&flows, mean_reversion, volatility, &curve.curve, &settings).map(|v| {
+        hull_white::compute_callable_bond(&flows, mean_reversion, volatility, &curve.curve, &settings).map(|v| {
             list!(bullet = v.bullet, callable = v.callable, issuer_call_value = v.issuer_call_value)
         }),
     )
@@ -1392,7 +1392,7 @@ fn hull_white_callable_bond(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn sabr_volatility(
+fn compute_sabr_volatility(
     kind: &str,
     strike: Vec<f64>,
     forward: Vec<f64>,
@@ -1403,10 +1403,10 @@ fn sabr_volatility(
     rho: Vec<f64>,
 ) -> List {
     let rows = || -> Core<List> {
-        let kind = names::sabr_volatility_type(kind)?;
+        let kind = names::parse_sabr_volatility_type(kind)?;
         let rows = (0..strike.len())
             .map(|i| {
-                sabr::sabr_volatility(
+                sabr::compute_sabr_volatility(
                     kind,
                     strike[i],
                     forward[i],
@@ -1423,7 +1423,7 @@ fn sabr_volatility(
 #[extendr]
 fn calibrate_sabr(kind: &str, strike: Vec<f64>, volatility: Vec<f64>, forward: f64, expiry: f64, beta: f64) -> List {
     let run = || -> Core<List> {
-        let c = sabr::calibrate_sabr(names::sabr_volatility_type(kind)?, &strike, &volatility, forward, expiry, beta)?;
+        let c = sabr::calibrate_sabr(names::parse_sabr_volatility_type(kind)?, &strike, &volatility, forward, expiry, beta)?;
         Ok(list!(
             alpha = c.parameters.alpha,
             beta = c.parameters.beta,
@@ -1452,7 +1452,7 @@ fn cds_value_list(v: CdsValue) -> List {
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn credit_default_swap(
+fn create_credit_default_swap(
     side: &str,
     notional: f64,
     running_spread: f64,
@@ -1474,27 +1474,27 @@ fn credit_default_swap(
 ) -> List {
     let build = || -> Core<Cds> {
         Cds::new(CdsSpec {
-            side: names::protection_side(side)?,
+            side: names::parse_protection_side(side)?,
             notional,
             running_spread,
             schedule: ScheduleSpec {
                 effective_date: date(effective_date)?,
                 termination_date: date(termination_date)?,
-                tenor: names::period(tenor)?,
-                calendar: HolidayCalendar::from(names::calendar(calendar)?),
-                convention: names::business_day_convention(convention)?,
-                termination_convention: names::business_day_convention(termination_convention)?,
-                rule: names::date_generation_rule(rule)?,
+                tenor: names::parse_period(tenor)?,
+                calendar: HolidayCalendar::from(names::parse_calendar(calendar)?),
+                convention: names::parse_business_day_convention(convention)?,
+                termination_convention: names::parse_business_day_convention(termination_convention)?,
+                rule: names::parse_date_generation_rule(rule)?,
                 end_of_month: false,
                 first_date: None,
                 next_to_last_date: None,
             },
-            payment_convention: names::business_day_convention(payment_convention)?,
-            day_count: names::day_count(day_count)?,
+            payment_convention: names::parse_business_day_convention(payment_convention)?,
+            day_count: names::parse_day_count(day_count)?,
             last_period_day_count: if last_period_day_count.is_empty() {
                 None
             } else {
-                Some(names::day_count(last_period_day_count)?)
+                Some(names::parse_day_count(last_period_day_count)?)
             },
             upfront: Some(upfront),
             protection_start: optional_date(protection_start)?,
@@ -1507,23 +1507,23 @@ fn credit_default_swap(
 }
 
 #[extendr]
-fn hazard_curve(reference_date: i32, day_count: &str, dates: Vec<i32>, hazards: Vec<f64>) -> List {
+fn create_hazard_curve(reference_date: i32, day_count: &str, dates: Vec<i32>, hazards: Vec<f64>) -> List {
     let build = || -> Core<HazardCurve> {
         let reference = date(reference_date)?;
         let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<Date>>>()?;
-        HazardCurve::new(reference, names::day_count(day_count)?, dates, hazards.clone())
+        HazardCurve::new(reference, names::parse_day_count(day_count)?, dates, hazards.clone())
     };
     outcome(build().map(|c| list!(value = ExternalPtr::new(c))))
 }
 
 #[extendr]
-fn survival_probability(curve: ExternalPtr<HazardCurve>, date_serial: Vec<i32>) -> List {
+fn compute_survival_probability(curve: ExternalPtr<HazardCurve>, date_serial: Vec<i32>) -> List {
     let rows = date_serial.iter().map(|&d| curve.survival(date(d)?)).collect();
     value_list(rows)
 }
 
 #[extendr]
-fn cds_value(
+fn compute_cds_value(
     cds: ExternalPtr<Cds>,
     hazard: ExternalPtr<HazardCurve>,
     recovery: f64,
@@ -1532,7 +1532,7 @@ fn cds_value(
     engine: &str,
 ) -> List {
     let run = || -> Core<List> {
-        let v = cds::cds_value(names::cds_engine(engine)?, &cds, &hazard, recovery, &curve.curve, date(evaluation_date)?)?;
+        let v = cds::compute_cds_value(names::parse_cds_engine(engine)?, &cds, &hazard, recovery, &curve.curve, date(evaluation_date)?)?;
         Ok(cds_value_list(v))
     };
     outcome(run())
@@ -1560,16 +1560,16 @@ fn bootstrap_hazard_curve(
         let spec = CdsCurveSpec {
             evaluation_date: date(evaluation_date)?,
             settlement_days: settlement_days.max(0) as u32,
-            calendar: HolidayCalendar::from(names::calendar(calendar)?),
-            tenor: names::period(tenor)?,
-            payment_convention: names::business_day_convention(payment_convention)?,
-            rule: names::date_generation_rule(rule)?,
-            day_count: names::day_count(day_count)?,
+            calendar: HolidayCalendar::from(names::parse_calendar(calendar)?),
+            tenor: names::parse_period(tenor)?,
+            payment_convention: names::parse_business_day_convention(payment_convention)?,
+            rule: names::parse_date_generation_rule(rule)?,
+            day_count: names::parse_day_count(day_count)?,
             last_period_day_count: None,
             rebates_accrual: true,
             recovery,
-            engine: names::cds_engine(engine)?,
-            curve_day_count: names::day_count(curve_day_count)?,
+            engine: names::parse_cds_engine(engine)?,
+            curve_day_count: names::parse_day_count(curve_day_count)?,
             accuracy,
             quotes: maturity
                 .iter()
@@ -1577,7 +1577,7 @@ fn bootstrap_hazard_curve(
                 .map(|(&m, &s)| Ok(SpreadQuote { maturity: date(m)?, spread: s }))
                 .collect::<Core<Vec<_>>>()?,
         };
-        cds::bootstrap_hazard(&spec, &curve.curve)
+        cds::bootstrap_hazard_curve(&spec, &curve.curve)
     };
     outcome(build().map(|c| {
         list!(
@@ -1590,7 +1590,7 @@ fn bootstrap_hazard_curve(
 }
 
 #[extendr]
-fn cds_quote_sensitivity(
+fn compute_cds_quote_sensitivity(
     cds: ExternalPtr<Cds>,
     credit: ExternalPtr<CdsCurve>,
     curve: ExternalPtr<OisCurve>,
@@ -1598,7 +1598,7 @@ fn cds_quote_sensitivity(
     engine: &str,
 ) -> List {
     let run = || -> Core<List> {
-        let s = cds::cds_sensitivity(names::cds_engine(engine)?, &cds, &credit, &curve.curve, date(evaluation_date)?)?;
+        let s = cds::compute_cds_sensitivity(names::parse_cds_engine(engine)?, &cds, &credit, &curve.curve, date(evaluation_date)?)?;
         Ok(list!(
             npv = s.value.npv,
             d_npv_d_recovery = s.d_npv_d_recovery,
@@ -1612,9 +1612,9 @@ fn cds_quote_sensitivity(
 }
 
 #[extendr]
-fn cds_maturity(trade_date: i32, tenor: &str, rule: &str) -> List {
+fn compute_cds_maturity(trade_date: i32, tenor: &str, rule: &str) -> List {
     let run = || -> Core<f64> {
-        let d = riemann::time::cds_maturity(date(trade_date)?, names::period(tenor)?, names::date_generation_rule(rule)?)?;
+        let d = riemann::time::compute_cds_maturity(date(trade_date)?, names::parse_period(tenor)?, names::parse_date_generation_rule(rule)?)?;
         Ok(d.serial() as f64)
     };
     value_list(vec![run()])
@@ -1646,7 +1646,7 @@ fn prdc_list(s: PrdcSensitivity) -> List {
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn prdc_value(
+fn compute_prdc_value(
     spot: f64,
     volatility: f64,
     domestic_curve: ExternalPtr<OisCurve>,
@@ -1680,7 +1680,7 @@ fn prdc_value(
         cap,
     };
     let result = if paths > 0.0 {
-        prdc::prdc_monte_carlo(
+        prdc::compute_prdc_monte_carlo(
             &terms,
             spot,
             volatility,
@@ -1689,7 +1689,7 @@ fn prdc_value(
             &PrdcMonteCarlo { paths: paths as u64, seed: seed as u64, antithetic, threads: threads.max(0) as usize },
         )
     } else {
-        prdc::prdc_analytic(&terms, spot, volatility, &domestic_curve.curve, &foreign_curve.curve)
+        prdc::compute_prdc_analytic(&terms, spot, volatility, &domestic_curve.curve, &foreign_curve.curve)
     };
     outcome(result.map(prdc_list))
 }
@@ -1741,7 +1741,7 @@ fn greeks_list(n: usize, f: impl Fn(usize) -> Core<Greeks>) -> List {
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn european_option(
+fn compute_european_option_value(
     option_type: Vec<String>,
     spot: Vec<f64>,
     strike: Vec<f64>,
@@ -1751,8 +1751,8 @@ fn european_option(
     time: Vec<f64>,
 ) -> List {
     greeks_list(spot.len(), |i| {
-        options::european_greeks(
-            names::option_type(&option_type[i])?,
+        options::compute_european_greeks(
+            names::parse_option_type(&option_type[i])?,
             &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], volatility[i], time[i]]),
         )
     })
@@ -1760,7 +1760,7 @@ fn european_option(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn barrier_option(
+fn compute_barrier_option_value(
     option_type: Vec<String>,
     barrier_type: Vec<String>,
     spot: Vec<f64>,
@@ -1773,9 +1773,9 @@ fn barrier_option(
     time: Vec<f64>,
 ) -> List {
     greeks_list(spot.len(), |i| {
-        options::barrier_greeks(
-            names::option_type(&option_type[i])?,
-            names::barrier_type(&barrier_type[i])?,
+        options::compute_barrier_greeks(
+            names::parse_option_type(&option_type[i])?,
+            names::parse_barrier_type(&barrier_type[i])?,
             barrier[i],
             rebate[i],
             &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], volatility[i], time[i]]),
@@ -1785,7 +1785,7 @@ fn barrier_option(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn binomial_option(
+fn compute_binomial_option_value(
     option_type: Vec<String>,
     exercise: Vec<String>,
     spot: Vec<f64>,
@@ -1797,9 +1797,9 @@ fn binomial_option(
     steps: Vec<i32>,
 ) -> List {
     greeks_list(spot.len(), |i| {
-        options::binomial_greeks(
-            names::option_type(&option_type[i])?,
-            names::exercise(&exercise[i])?,
+        options::compute_binomial_greeks(
+            names::parse_option_type(&option_type[i])?,
+            names::parse_exercise(&exercise[i])?,
             &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], volatility[i], time[i]]),
             steps[i].max(0) as usize,
         )
@@ -1807,7 +1807,7 @@ fn binomial_option(
 }
 
 #[extendr]
-fn forward_option(
+fn compute_forward_option_value(
     model: Vec<String>,
     option_type: Vec<String>,
     forward: Vec<f64>,
@@ -1817,9 +1817,9 @@ fn forward_option(
     discount: Vec<f64>,
 ) -> List {
     let (columns, error) = table(forward.len(), |i| {
-        let g = options::forward_greeks(
-            names::forward_model(&model[i])?,
-            names::option_type(&option_type[i])?,
+        let g = options::compute_forward_greeks(
+            names::parse_forward_model(&model[i])?,
+            names::parse_option_type(&option_type[i])?,
             &options::ForwardInputs {
                 forward: forward[i],
                 strike: strike[i],
@@ -1844,7 +1844,7 @@ fn forward_option(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn implied_volatility(
+fn compute_implied_volatility(
     option_type: Vec<String>,
     price: Vec<f64>,
     spot: Vec<f64>,
@@ -1857,8 +1857,8 @@ fn implied_volatility(
 ) -> List {
     let rows = (0..spot.len())
         .map(|i| {
-            options::implied_volatility(
-                names::option_type(&option_type[i])?,
+            options::compute_implied_volatility(
+                names::parse_option_type(&option_type[i])?,
                 price[i],
                 &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], 0.2, time[i]]),
                 accuracy,
@@ -1871,7 +1871,7 @@ fn implied_volatility(
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn monte_carlo_european(
+fn compute_monte_carlo_european_value(
     option_type: &str,
     spot: f64,
     strike: f64,
@@ -1893,8 +1893,8 @@ fn monte_carlo_european(
             smoothing: if smoothing > 0.0 { Some(smoothing) } else { None },
             threads: threads.max(0) as usize,
         };
-        let r = options::monte_carlo_european(
-            names::option_type(option_type)?,
+        let r = options::compute_monte_carlo_european(
+            names::parse_option_type(option_type)?,
             &option_inputs([spot, strike, rate, dividend_yield, volatility, time]),
             &settings,
         )?;
@@ -1917,7 +1917,7 @@ fn monte_carlo_european(
 /// 1 for a business day, 0 for a holiday, NA where the calendar fails.
 #[extendr]
 fn is_business_day(calendar: &str, date_serial: Vec<i32>) -> List {
-    outcome(names::calendar(calendar).map(|cal| {
+    outcome(names::parse_calendar(calendar).map(|cal| {
         let rows = date_serial
             .iter()
             .map(|&d| Ok(f64::from(u8::from(cal.is_business_day(date(d)?)?))))
@@ -1927,9 +1927,9 @@ fn is_business_day(calendar: &str, date_serial: Vec<i32>) -> List {
 }
 
 #[extendr]
-fn holidays(calendar: &str, from: i32, to: i32, include_weekends: bool) -> List {
+fn generate_holidays(calendar: &str, from: i32, to: i32, include_weekends: bool) -> List {
     let rows = || -> Core<List> {
-        let cal = HolidayCalendar::from(names::calendar(calendar)?);
+        let cal = HolidayCalendar::from(names::parse_calendar(calendar)?);
         let list = cal.holidays(date(from)?, date(to)?, include_weekends)?;
         Ok(list!(
             value = list.iter().map(|d| d.serial()).collect::<Vec<i32>>()
@@ -1946,7 +1946,7 @@ fn holidays(calendar: &str, from: i32, to: i32, include_weekends: bool) -> List 
 
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn bond_values_batch(
+fn compute_bond_values_batch(
     settlement_days: Vec<i32>,
     face_amount: Vec<f64>,
     effective_date: Vec<i32>,
@@ -1979,20 +1979,20 @@ fn bond_values_batch(
                         schedule: ScheduleSpec {
                             effective_date: date(effective_date[i])?,
                             termination_date: date(termination_date[i])?,
-                            tenor: names::period(&tenor[i])?,
-                            calendar: HolidayCalendar::from(names::calendar(&calendar[i])?),
-                            convention: names::business_day_convention(&convention[i])?,
-                            termination_convention: names::business_day_convention(
+                            tenor: names::parse_period(&tenor[i])?,
+                            calendar: HolidayCalendar::from(names::parse_calendar(&calendar[i])?),
+                            convention: names::parse_business_day_convention(&convention[i])?,
+                            termination_convention: names::parse_business_day_convention(
                                 &termination_convention[i],
                             )?,
-                            rule: names::date_generation_rule(&rule[i])?,
+                            rule: names::parse_date_generation_rule(&rule[i])?,
                             end_of_month: flag(end_of_month[i])?,
                             first_date: None,
                             next_to_last_date: None,
                         },
                         coupon_rate: coupon_rate[i],
-                        day_count: names::day_count(&day_count[i])?,
-                        payment_convention: names::business_day_convention(&payment_convention[i])?,
+                        day_count: names::parse_day_count(&day_count[i])?,
+                        payment_convention: names::parse_business_day_convention(&payment_convention[i])?,
                         redemption: redemption[i],
                         issue_date: Some(date(issue_date[i])?),
                         payment_calendar: None,
@@ -2007,7 +2007,7 @@ fn bond_values_batch(
                 })
             })
             .collect::<Core<Vec<_>>>()?;
-        let rows = batch::bond_values_batch(&units, threads as usize)?;
+        let rows = batch::compute_bond_values_batch(&units, threads as usize)?;
         let pick = |f: fn(&batch::BondValues) -> f64| -> Vec<f64> {
             rows.iter()
                 .map(|r| r.as_ref().map_or(na_real(), f))
@@ -2042,7 +2042,7 @@ fn first_error(values: [&Core<f64>; 3]) -> String {
 /// Instruments and dates are columns with the 1-based number of their curve.
 #[extendr]
 #[allow(clippy::too_many_arguments)]
-fn curve_values_batch(
+fn compute_curve_values_batch(
     evaluation_date: Vec<i32>,
     reference_date: Vec<i32>,
     index: Vec<String>,
@@ -2070,7 +2070,7 @@ fn curve_values_batch(
                         OisCurveInstrument::OvernightDeposit { rate: rate[i] }
                     } else {
                         OisCurveInstrument::Ois {
-                            tenor: names::period(&tenor[i])?,
+                            tenor: names::parse_period(&tenor[i])?,
                             rate: rate[i],
                             settlement_days: settlement_days[i] as u32,
                             payment_frequency: payment_frequency[i] as u32,
@@ -2087,17 +2087,17 @@ fn curve_values_batch(
                 spec: OisCurveSpec {
                     evaluation_date: date(evaluation_date[c])?,
                     reference_date: date(reference_date[c])?,
-                    index: names::overnight_index(&index[c])?,
-                    curve_day_count: names::day_count(&curve_day_count[c])?,
+                    index: names::parse_overnight_index(&index[c])?,
+                    curve_day_count: names::parse_day_count(&curve_day_count[c])?,
                     instruments,
-                    interpolation: names::ois_interpolation(&interpolation[c])?,
+                    interpolation: names::parse_ois_interpolation(&interpolation[c])?,
                     accuracy: accuracy[c],
                 },
                 dates,
-                day_count: names::day_count(&curve_day_count[c])?,
+                day_count: names::parse_day_count(&curve_day_count[c])?,
             });
         }
-        let results = batch::curve_values_batch(&units, threads as usize)?;
+        let results = batch::compute_curve_values_batch(&units, threads as usize)?;
 
         let (mut curve, mut serial, mut errors) = (Vec::new(), Vec::new(), Vec::new());
         let (mut discount, mut zero, mut forward, mut worst) =
@@ -2157,64 +2157,64 @@ fn panic_for_test() {
 // The module has the name of the R package, because R looks for its routines by that name.
 extendr_module! {
     mod RiemannFinMath;
-    fn fixed_rate_bond;
-    fn settlement_date;
-    fn bond_values;
-    fn duration;
-    fn yield_from_price;
+    fn create_fixed_rate_bond;
+    fn compute_settlement_date;
+    fn compute_bond_values;
+    fn compute_duration;
+    fn compute_yield_from_price;
     fn create_ois_swap;
     fn compute_ois_swap_value;
-    fn get_ois_swap_cashflows;
+    fn compute_ois_swap_cashflows;
     fn compute_ois_swap_daily_rates;
     fn compute_ois_swap_quote_sensitivity;
-    fn bond_cashflows;
-    fn value_with_zero_spread;
-    fn z_spread_from_price;
-    fn value_on_curve;
-    fn yield_sensitivity;
-    fn curve_node_sensitivity;
-    fn quote_sensitivity;
-    fn ois_asset_swap;
-    fn asset_swap_quote_sensitivity;
-    fn yen_asset_swap;
-    fn future_basis;
-    fn hull_white_bond_option;
-    fn hull_white_swaption;
-    fn hull_white_bermudan_swaption;
-    fn hull_white_callable_bond;
-    fn sabr_volatility;
+    fn get_bond_cashflows;
+    fn compute_bond_value_with_zero_spread;
+    fn compute_z_spread_from_price;
+    fn compute_bond_value_on_curve;
+    fn compute_yield_sensitivity;
+    fn compute_curve_node_sensitivity;
+    fn compute_quote_sensitivity;
+    fn compute_ois_asset_swap;
+    fn compute_asset_swap_quote_sensitivity;
+    fn compute_yen_asset_swap;
+    fn compute_future_basis;
+    fn compute_hull_white_bond_option_value;
+    fn compute_hull_white_swaption_value;
+    fn compute_hull_white_bermudan_swaption_value;
+    fn compute_hull_white_callable_bond_value;
+    fn compute_sabr_volatility;
     fn calibrate_sabr;
-    fn credit_default_swap;
-    fn hazard_curve;
-    fn survival_probability;
-    fn cds_value;
+    fn create_credit_default_swap;
+    fn create_hazard_curve;
+    fn compute_survival_probability;
+    fn compute_cds_value;
     fn bootstrap_hazard_curve;
-    fn cds_quote_sensitivity;
-    fn cds_maturity;
-    fn prdc_value;
-    fn european_option;
-    fn barrier_option;
-    fn binomial_option;
-    fn forward_option;
-    fn implied_volatility;
-    fn monte_carlo_european;
-    fn remaining_years;
-    fn price_from_simple_rate;
-    fn simple_rate_from_price;
-    fn price_from_compound_yield;
-    fn compound_yield_from_price;
-    fn risk_from_simple_rate;
-    fn risk_from_compound_yield;
-    fn build_ois_curve;
+    fn compute_cds_quote_sensitivity;
+    fn compute_cds_maturity;
+    fn compute_prdc_value;
+    fn compute_european_option_value;
+    fn compute_barrier_option_value;
+    fn compute_binomial_option_value;
+    fn compute_forward_option_value;
+    fn compute_implied_volatility;
+    fn compute_monte_carlo_european_value;
+    fn compute_remaining_years;
+    fn compute_price_from_simple_rate;
+    fn compute_simple_rate_from_price;
+    fn compute_price_from_compound_yield;
+    fn compute_compound_yield_from_price;
+    fn compute_risk_from_simple_rate;
+    fn compute_risk_from_compound_yield;
+    fn bootstrap_ois_curve;
     fn with_extrapolation;
-    fn discount;
-    fn zero_rate;
-    fn forward_rate;
-    fn quote_repricing;
-    fn discount_nodes;
+    fn compute_discount;
+    fn compute_zero_rate;
+    fn compute_forward_rate;
+    fn get_quote_repricing;
+    fn get_discount_nodes;
     fn is_business_day;
-    fn holidays;
-    fn bond_values_batch;
-    fn curve_values_batch;
+    fn generate_holidays;
+    fn compute_bond_values_batch;
+    fn compute_curve_values_batch;
     fn panic_for_test;
 }

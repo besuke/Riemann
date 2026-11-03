@@ -40,7 +40,7 @@ show_inputs(black)
 ```{r}
 #| label: black-calls
 ql_black <- QuantLib::blackFormula(ql_type("call"), black$strike, black$forward, black$volatility * sqrt(black$time), black$discount)
-riemann_black <- RiemannFinMath::forward_option("black", "call", black$forward, black$strike, black$volatility, black$time, black$discount)
+riemann_black <- RiemannFinMath::compute_forward_option_value("black", "call", black$forward, black$strike, black$volatility, black$time, black$discount)
 calculator <- QuantLib::BlackCalculator(
   QuantLib::PlainVanillaPayoff(ql_type("call"), black$strike), black$forward, black$volatility * sqrt(black$time), black$discount
 )
@@ -68,7 +68,7 @@ show_inputs(normal)
 ql_normal <- map_dbl(c("call", "put"), \(kind) {
   QuantLib::bachelierBlackFormula(ql_type(kind), normal$strike, normal$forward, normal$volatility * sqrt(normal$time), normal$discount)
 })
-riemann_normal <- RiemannFinMath::forward_option("bachelier", c("call", "put"), normal$forward, normal$strike, normal$volatility, normal$time, normal$discount)
+riemann_normal <- RiemannFinMath::compute_forward_option_value("bachelier", c("call", "put"), normal$forward, normal$strike, normal$volatility, normal$time, normal$discount)
 compare_values(c("Call", "Put"), "bp of price", 1e4 * ql_normal, 1e4 * riemann_normal$value) |>
   show_results()
 ```
@@ -100,7 +100,7 @@ RiemannFinMath:
 
 ```{r}
 #| label: european-riemann
-riemann_call <- RiemannFinMath::european_option("call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time)
+riemann_call <- RiemannFinMath::compute_european_option_value("call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time)
 ```
 
 ```{r}
@@ -117,7 +117,7 @@ imap(ql_greeks, \(q, name) compare_values(name, units[[name]], q, riemann_call[[
 ```{r}
 #| label: implied
 ql_implied <- ql_call$impliedVolatility(ql_greeks$value, ql_equity_process, 1e-10, 200L, 1e-7, 4)
-riemann_implied <- RiemannFinMath::implied_volatility("call", ql_greeks$value, equity$spot, equity$strike, equity$rate, equity$dividend, equity$time)
+riemann_implied <- RiemannFinMath::compute_implied_volatility("call", ql_greeks$value, equity$spot, equity$strike, equity$rate, equity$dividend, equity$time)
 compare_values("Implied volatility", "percent", 100 * ql_implied, 100 * riemann_implied) |>
   show_results()
 ```
@@ -145,7 +145,7 @@ ql_tree <- map2(tree_cases$exercise, tree_cases$steps, \(kind, steps) {
   tibble(value = option$NPV(), delta = option$delta(), gamma = option$gamma())
 }) |>
   list_rbind()
-riemann_tree <- RiemannFinMath::binomial_option(
+riemann_tree <- RiemannFinMath::compute_binomial_option_value(
   "put", tree_cases$exercise, tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time, tree_cases$steps
 )
 ```
@@ -169,7 +169,7 @@ ql_analytic_put <- ql_vanilla("put", tree$strike, QuantLib::EuropeanExercise(ql_
 QuantLib::Instrument_setPricingEngine(ql_analytic_put, QuantLib::AnalyticEuropeanEngine(ql_tree_process))
 compare_values(
   "Analytic European put", "price", ql_analytic_put$NPV(),
-  RiemannFinMath::european_option("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)$value
+  RiemannFinMath::compute_european_option_value("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)$value
 ) |>
   show_results()
 ```
@@ -195,7 +195,7 @@ ql_barrier <- map2_dbl(barriers$ql_type, barriers$level, \(type, level) {
   QuantLib::Instrument_setPricingEngine(option, QuantLib::AnalyticBarrierEngine(ql_equity_process))
   option$NPV()
 })
-riemann_barrier <- RiemannFinMath::barrier_option(
+riemann_barrier <- RiemannFinMath::compute_barrier_option_value(
   "call", barriers$type, equity$spot, equity$strike, barriers$level, 0, equity$rate, equity$dividend, equity$volatility, equity$time
 )
 compare_values(paste("Call,", barriers$type, barriers$level), "price", ql_barrier, riemann_barrier$value) |>
@@ -208,7 +208,7 @@ The two sides do not share random numbers, so a Monte Carlo value cannot meet an
 
 ```{r}
 #| label: monte-carlo
-mc <- RiemannFinMath::monte_carlo_european(
+mc <- RiemannFinMath::compute_monte_carlo_european_value(
   "call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time,
   paths = 200000, seed = 1234, smoothing = 0.25
 )
@@ -229,10 +229,10 @@ bind_rows(
 
 ```{r}
 #| label: monte-carlo-threads
-one_thread <- RiemannFinMath::monte_carlo_european(
+one_thread <- RiemannFinMath::compute_monte_carlo_european_value(
   "call", 100, 100, 0.03, 0, 0.2, equity$time, paths = 200000, seed = 1234, threads = 1L
 )
-four_threads <- RiemannFinMath::monte_carlo_european(
+four_threads <- RiemannFinMath::compute_monte_carlo_european_value(
   "call", 100, 100, 0.03, 0, 0.2, equity$time, paths = 200000, seed = 1234, threads = 4L
 )
 compare_values("Value on 1 and on 4 threads", "price", one_thread$value, four_threads$value, "RiemannFinMath itself") |>
@@ -241,13 +241,13 @@ compare_values("Value on 1 and on 4 threads", "price", one_thread$value, four_th
 
 ## Against LagrangeFinance
 
-The legacy text values the Black 76 option through a process whose spot is the forward and whose dividend yield equals the rate, so the same form is used here. Its implied volatility uses QuantLib's default accuracy of 1e-4 and is not judged, because `implied_volatility` here uses 1e-10.
+The legacy text values the Black 76 option through a process whose spot is the forward and whose dividend yield equals the rate, so the same form is used here. Its implied volatility uses QuantLib's default accuracy of 1e-4 and is not judged, because `compute_implied_volatility` here uses 1e-10.
 
 ```{r}
 #| label: lagrange
-black_as_equity <- RiemannFinMath::european_option("call", black$forward, black$strike, black$rate, black$rate, black$volatility, black$time)
+black_as_equity <- RiemannFinMath::compute_european_option_value("call", black$forward, black$strike, black$rate, black$rate, black$volatility, black$time)
 tree_value <- function(kind, steps) riemann_tree$value[tree_cases$exercise == kind & tree_cases$steps == steps]
-european_put <- RiemannFinMath::european_option("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)
+european_put <- RiemannFinMath::compute_european_option_value("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)
 bind_rows(
   against_lagrange("Black 76 value", "price", "black.npv", black_as_equity$value),
   against_lagrange("Black 76 delta", "per unit of forward", "black.delta", black_as_equity$delta),
@@ -256,7 +256,7 @@ bind_rows(
   against_lagrange("Black 76 theta", "per year", "black.theta", black_as_equity$theta),
   lagrange_not_comparable(
     "Black 76 implied volatility", "percent", "black.implied_volatility_pct",
-    100 * RiemannFinMath::implied_volatility("call", black_as_equity$value, black$forward, black$strike, black$rate, black$rate, black$time),
+    100 * RiemannFinMath::compute_implied_volatility("call", black_as_equity$value, black$forward, black$strike, black$rate, black$rate, black$time),
     "Different solver accuracy: 1e-4 against 1e-10"
   ),
   against_lagrange("European put, analytic", "price", "tree.european.analytic", european_put$value),

@@ -11,7 +11,7 @@ mod common;
 
 use common::{date, day_count, ois_curve_spec};
 use riemann::interest_rate::{Compounding, InterestRate};
-use riemann::ois::{build_ois_curve, estr, sofr, sonia, tonar, OisCurve, OisInterpolation};
+use riemann::ois::{bootstrap_ois_curve, create_estr_index, create_sofr_index, create_sonia_index, create_tonar_index, OisCurve, OisInterpolation};
 use riemann::Error;
 
 fn cell(value: Result<f64, Error>) -> String {
@@ -29,17 +29,17 @@ fn value_rows(r: &[String]) -> Vec<(String, i64, String)> {
         other => panic!("unknown interpolation {other}"),
     };
     let index = match r[11].as_str() {
-        "TONAR" => tonar(),
-        "ESTR" => estr(),
-        "SOFR" => sofr(),
-        "SONIA" => sonia(),
+        "TONAR" => create_tonar_index(),
+        "ESTR" => create_estr_index(),
+        "SOFR" => create_sofr_index(),
+        "SONIA" => create_sonia_index(),
         other => panic!("unknown index {other}"),
     };
     let OisCurve {
         curve,
         quote_repricing,
         ..
-    } = match build_ois_curve(&ois_curve_spec(r, index, interpolation)) {
+    } = match bootstrap_ois_curve(&ois_curve_spec(r, index, interpolation)) {
         Ok(built) => built,
         Err(_) => return vec![("build".to_string(), 0, "ERROR".to_string())],
     };

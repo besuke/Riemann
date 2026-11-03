@@ -50,17 +50,17 @@ R CMD INSTALL --build dist/RiemannFinMath_0.2.0.tar.gz
 source(system.file("examples", "quickstart.R", package = "RiemannFinMath"))
 ```
 
-ヘルプは `?RiemannFinMath::bond_values`、全体の説明は `?RiemannFinMath::RiemannFinMath` です。
+ヘルプは `?RiemannFinMath::compute_bond_values`、全体の説明は `?RiemannFinMath::RiemannFinMath` です。
 
 ```r
-bond <- RiemannFinMath::fixed_rate_bond(
+bond <- RiemannFinMath::create_fixed_rate_bond(
   settlement_days = 1L, face_amount = 100,
   effective_date = "2020-03-20", termination_date = as.Date("2030-03-20"),
   tenor = "6M", calendar = "japan",
   convention = "following", termination_convention = "following", rule = "backward", end_of_month = FALSE,
   coupon_rate = 0.015, day_count = "act_act_isma", payment_convention = "following", redemption = 100
 )
-RiemannFinMath::bond_values(bond, rate = 0.02, day_count = "act_act_isma", compounding = "compounded",
+RiemannFinMath::compute_bond_values(bond, rate = 0.02, day_count = "act_act_isma", compounding = "compounded",
                             frequency = 2L, settlement_date = "2026-11-04")
 ```
 
@@ -70,7 +70,7 @@ RiemannFinMath::bond_values(bond, rate = 0.02, day_count = "act_act_isma", compo
 
 ## 注意
 
-- **カーブの再現誤差を確かめてください。** 大きく振れる気配では、割引係数がほぼ 0 になり、入力の気配を再現しないことがあります（`quote_repricing()`）。
+- **カーブの再現誤差を確かめてください。** 大きく振れる気配では、割引係数がほぼ 0 になり、入力の気配を再現しないことがあります（`get_quote_repricing()`）。
 - **カレンダーの一致は QuantLib とのものです。** 実際の市場休日とは照合していません。年別データの収録期間にも制限があります（`?RiemannFinMath::is_business_day`）。
 - `library(RiemannFinMath)` すると `duration` などが他のパッケージと衝突することがあるので、`RiemannFinMath::` を付けて呼ぶのが安全です。
 - 同梱した Rust の crate のライセンスは `system.file("RUST_DEPENDENCIES", package = "RiemannFinMath")`、QuantLib の表示は `THIRD_PARTY_NOTICES` にあります（配布ファイルだけ）。

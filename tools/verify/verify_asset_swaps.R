@@ -21,7 +21,7 @@ verify_asset_swaps <- function() {
       curve_type = "log_cubic_discount", reference = "evaluation", payment_frequency = "Annual", payment_lag = 0L,
       payment_convention = "ModifiedFollowing", max_quote_error_bp = 1e-4
     )
-    r_curve <- RiemannFinMath::build_ois_curve(evaluation, evaluation, index, "actual_365_fixed", RiemannFinMath::ois_instruments(tenors, q, settlement_days, 1L, 0L))
+    r_curve <- RiemannFinMath::bootstrap_ois_curve(evaluation, evaluation, index, "actual_365_fixed", RiemannFinMath::create_ois_instruments(tenors, q, settlement_days, 1L, 0L))
     purrr::map_dfr(1:10, function(i) {
       coupon <- round(runif(1, 0.005, 0.06), 4)
       years <- sample(c(3L, 5L, 7L, 10L), 1)
@@ -33,12 +33,12 @@ verify_asset_swaps <- function() {
         payment_convention = "Following", schedule_convention = "Unadjusted", maturity_convention = "Unadjusted"
       )
       gq <- GaussQuant::ois_asset_swap_GQL(gq_bond, clean, gq_curve, payment_frequency = "Semiannual", payment_lag = 0L)$valuation
-      r_bond <- RiemannFinMath::fixed_rate_bond(
+      r_bond <- RiemannFinMath::create_fixed_rate_bond(
         settlement_days = 2L, face_amount = 100, effective_date = "2026-09-30", termination_date = sprintf("%d-09-30", 2026L + years), tenor = "6M",
         calendar = calendar_riemann, convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
         coupon_rate = coupon, day_count = "actual_365_fixed", payment_convention = "following", redemption = 100
       )
-      r <- RiemannFinMath::ois_asset_swap(r_bond, clean, r_curve, evaluation)
+      r <- RiemannFinMath::compute_ois_asset_swap(r_bond, clean, r_curve, evaluation)
       tibble(currency = currency, diff_bp = abs(r$fair_spread_bp - gq$fair_spread_bp), diff_annuity = abs(r$spread_annuity - gq$spread_annuity))
     })
   })

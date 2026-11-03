@@ -58,15 +58,15 @@ RiemannFinMath:
 
 ```{r}
 #| label: riemann-call
-bond <- RiemannFinMath::fixed_rate_bond(
+bond <- RiemannFinMath::create_fixed_rate_bond(
   settlement_days = settlement_days, face_amount = face_amount,
   effective_date = issue_date, termination_date = maturity_date, tenor = "6M", calendar = "japan",
   convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
   coupon_rate = coupon_rate, day_count = "thirty_360_bond_basis", payment_convention = "unadjusted",
   redemption = 100, issue_date = issue_date
 )
-settlement <- RiemannFinMath::settlement_date(bond, trade_date)
-riemann <- RiemannFinMath::bond_values(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+settlement <- RiemannFinMath::compute_settlement_date(bond, trade_date)
+riemann <- RiemannFinMath::compute_bond_values(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
 ```
 
 The single-measure functions read the same row:
@@ -74,13 +74,13 @@ The single-measure functions read the same row:
 ```{r}
 #| label: riemann-single-measures
 single <- list(
-  clean = RiemannFinMath::clean_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  dirty = RiemannFinMath::dirty_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  accrued = RiemannFinMath::accrued_amount(bond, settlement),
-  modified = RiemannFinMath::duration(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement, "modified"),
-  convexity = RiemannFinMath::convexity(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  bpv = RiemannFinMath::basis_point_value(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  yvbp = RiemannFinMath::yield_value_basis_point(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+  clean = RiemannFinMath::compute_clean_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  dirty = RiemannFinMath::compute_dirty_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  accrued = RiemannFinMath::compute_accrued_amount(bond, settlement),
+  modified = RiemannFinMath::compute_duration(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement, "modified"),
+  convexity = RiemannFinMath::compute_convexity(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  bpv = RiemannFinMath::compute_basis_point_value(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  yvbp = RiemannFinMath::compute_yield_value_basis_point(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
 )
 ```
 
@@ -120,7 +120,7 @@ show_inputs(list(clean_prices = price_inputs, compounding = "semiannual", day_co
 quantlib_yields <- map_dbl(price_inputs, \(p) {
   QuantLib::BondFunctions_yield(ql_bond, QuantLib::BondPrice(p, "Clean"), ql_day_count, "Compounded", "Semiannual", ql_settlement)
 })
-riemann_yields <- RiemannFinMath::yield_from_price(
+riemann_yields <- RiemannFinMath::compute_yield_from_price(
   bond, price_inputs, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement
 )
 ```
@@ -159,7 +159,7 @@ QuantLib holds them as a `Leg` of objects on the bond. RiemannFinMath returns a 
 
 ```{r}
 #| label: cashflows-riemann
-flows <- RiemannFinMath::bond_cashflows(bond)
+flows <- RiemannFinMath::get_bond_cashflows(bond)
 flows |>
   slice(1:2, (n() - 1):n()) |>
   knitr::kable(digits = 4, caption = "First and last cash flows")
@@ -193,8 +193,8 @@ RiemannFinMath:
 ```{r}
 #| label: spread-riemann
 flat_on_bond <- flat_curve(settlement, 2 * log1p(compound_yield / 2), "thirty_360_bond_basis")
-riemann_spread <- RiemannFinMath::value_with_zero_spread(bond, flat_on_bond, z_spread_value, "compounded", 2L, trade_date)
-riemann_z <- RiemannFinMath::z_spread_from_price(bond, flat_on_bond, quantlib_spread_npv, "dirty", "compounded", 2L, settlement)
+riemann_spread <- RiemannFinMath::compute_bond_value_with_zero_spread(bond, flat_on_bond, z_spread_value, "compounded", 2L, trade_date)
+riemann_z <- RiemannFinMath::compute_z_spread_from_price(bond, flat_on_bond, quantlib_spread_npv, "dirty", "compounded", 2L, settlement)
 ```
 
 ```{r}
@@ -208,7 +208,7 @@ bind_rows(
 
 ## Against LagrangeFinance
 
-The yield and the price are the unrounded values of the legacy text. The zero spread is the inverse of the legacy calculation: the legacy text gives the spread and the value, and `z_spread_from_price` recovers the spread from that value.
+The yield and the price are the unrounded values of the legacy text. The zero spread is the inverse of the legacy calculation: the legacy text gives the spread and the value, and `compute_z_spread_from_price` recovers the spread from that value.
 
 ```{r}
 #| label: lagrange
@@ -223,20 +223,20 @@ bind_rows(
   against_lagrange_max("Cash flow dates", "days, largest", str_replace(flow_keys, "amount", "date"), as.numeric(flows$payment_date)),
   against_lagrange(
     "NPV with a zero spread of 50 bp", "per 100", "bond.z_spread_npv",
-    RiemannFinMath::value_with_zero_spread(bond, lagrange_flat, lagrange_spread, "compounded", 2L, trade_date)$npv
+    RiemannFinMath::compute_bond_value_with_zero_spread(bond, lagrange_flat, lagrange_spread, "compounded", 2L, trade_date)$npv
   ),
   against_lagrange(
     "Zero spread of that value", "bp", "bond.z_spread_bp",
-    1e4 * RiemannFinMath::z_spread_from_price(bond, lagrange_flat, lagrange_value("bond.z_spread_npv"), "dirty", "compounded", 2L, settlement)
+    1e4 * RiemannFinMath::compute_z_spread_from_price(bond, lagrange_flat, lagrange_value("bond.z_spread_npv"), "dirty", "compounded", 2L, settlement)
   ),
   against_lagrange("Settlement date", "days", "bond.settlement", as.numeric(settlement)),
   against_lagrange(
     "Dirty price at the compound yield", "per 100", "bond.flat_dirty_price",
-    RiemannFinMath::dirty_price(bond, lagrange_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+    RiemannFinMath::compute_dirty_price(bond, lagrange_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
   ),
   against_lagrange(
     "Yield from the clean price", "percent", "bond.yield_pct",
-    100 * RiemannFinMath::yield_from_price(bond, lagrange_price, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement)
+    100 * RiemannFinMath::compute_yield_from_price(bond, lagrange_price, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement)
   )
 ) |>
   show_results()
@@ -253,7 +253,7 @@ tribble(
   "Wrapper", "Many yields",      "One call per measure and per yield",                    "One call returns a table, one row per yield",
   "Wrapper", "Evaluation date",  "`Settings` singleton, set before the call",             "Passed to `settlement_date`; no global state",
   "Wrapper", "Flat base curve",  "`FlatForward`",                                         "No constructor; quotes must be fitted",
-  "Wrapper", "Cash flows",       "A `Leg` of objects, read one by one",                   "`bond_cashflows` returns one table",
+  "Wrapper", "Cash flows",       "A `Leg` of objects, read one by one",                   "`get_bond_cashflows` returns one table",
   "Core",    "Zero spread",      "An observer of a quote and of the base curve",          "A new curve value, with the spread as a number",
   "Core",    "Spread's day count", "The base curve's; the day counter argument is ignored at v1.42", "The base curve's; there is no such argument",
   "Core",    "Search for the spread", "Brent from a guess, widening from a step of 0.01",  "The same steps, with the same limit on evaluations",

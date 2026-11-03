@@ -6,9 +6,9 @@ use riemann::curves::{CurveInput, LogDiscountInterpolation, YieldCurve};
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
 use riemann::interest_rate::{Compounding, InterestRate};
 use riemann::ois::{
-    build_ois_curve, estr, sofr, tonar, OisCurveInstrument, OisCurveSpec, OisInterpolation,
+    bootstrap_ois_curve, create_estr_index, create_sofr_index, create_tonar_index, OisCurveInstrument, OisCurveSpec, OisInterpolation,
 };
-use riemann::risk::{curve_sensitivity, quote_sensitivity, yield_sensitivity};
+use riemann::risk::{compute_curve_sensitivity, compute_quote_sensitivity, compute_yield_sensitivity};
 use riemann::time::{
     Actual365Kind, BusinessDayConvention, Calendar, Date, DateGenerationRule, DayCount,
     HolidayCalendar, Month, Period, ScheduleSpec, TimeUnit,
@@ -65,7 +65,7 @@ fn yield_derivatives_agree_with_duration_and_convexity() {
                 (Compounding::Continuous, 0),
             ] {
                 let y = InterestRate::new(rate, act365(), compounding, frequency).unwrap();
-                let s = yield_sensitivity(&b, &y, settlement).unwrap();
+                let s = compute_yield_sensitivity(&b, &y, settlement).unwrap();
                 let price = b.dirty_price(&y, settlement).unwrap();
                 assert_eq!(s.dirty_price, price);
                 let modified = b.duration(&y, DurationType::Modified, settlement).unwrap();
@@ -110,7 +110,7 @@ fn node_sensitivities_agree_with_numeric_differences() {
         LogDiscountInterpolation::MonotonicLogCubic,
     ] {
         let curve = discount_curve(&points, interpolation);
-        let (value, rows) = curve_sensitivity(&b, &curve, evaluation).unwrap();
+        let (value, rows) = compute_curve_sensitivity(&b, &curve, evaluation).unwrap();
         assert_eq!(value, b.value_on_curve(&curve, evaluation).unwrap());
         assert_eq!(rows.len(), points.len() - 1);
         for (i, row) in rows.iter().enumerate() {
@@ -152,7 +152,7 @@ fn flat_zero_and_spreaded_curves_agree_with_numeric_differences() {
         YieldCurve::zero_spreaded(zero, n[3], Compounding::Continuous, 0).unwrap()
     };
     let point = [0.01, 0.015, 0.02, 0.002];
-    let (_, rows) = curve_sensitivity(&b, &d(&point), evaluation).unwrap();
+    let (_, rows) = compute_curve_sensitivity(&b, &d(&point), evaluation).unwrap();
     assert_eq!(rows.len(), 4);
     assert_eq!(rows[3].input, CurveInput::ZeroSpread);
     for (i, row) in rows.iter().enumerate() {
@@ -168,7 +168,7 @@ fn flat_zero_and_spreaded_curves_agree_with_numeric_differences() {
     let flat = |r: f64| {
         YieldCurve::flat(reference, InterestRate::new(r, act365(), Compounding::Compounded, 2).unwrap())
     };
-    let (_, rows) = curve_sensitivity(&b, &flat(0.012), evaluation).unwrap();
+    let (_, rows) = compute_curve_sensitivity(&b, &flat(0.012), evaluation).unwrap();
     let numeric = (b.value_on_curve(&flat(0.012 + 1e-6), evaluation).unwrap().npv
         - b.value_on_curve(&flat(0.012 - 1e-6), evaluation).unwrap().npv)
         / 2e-6;
@@ -209,17 +209,17 @@ fn quote_sensitivities_agree_with_rebuilding_the_curve() {
     let b = bond(0.02, 8);
     let evaluation = date(2026, Month::November, 2);
     for interpolation in [OisInterpolation::LogLinear, OisInterpolation::MonotonicLogCubic] {
-        for index in [tonar(), estr(), sofr()] {
+        for index in [create_tonar_index(), create_estr_index(), create_sofr_index()] {
             let spec = ois_spec(index.clone(), &quotes, interpolation);
-            let ois = build_ois_curve(&spec).unwrap();
-            let (value, rows) = quote_sensitivity(&b, &ois, evaluation).unwrap();
+            let ois = bootstrap_ois_curve(&spec).unwrap();
+            let (value, rows) = compute_quote_sensitivity(&b, &ois, evaluation).unwrap();
             assert_eq!(value, b.value_on_curve(&ois.curve, evaluation).unwrap());
             assert_eq!(rows.len(), quotes.len());
             for row in &rows {
                 let npv_with = |h: f64| {
                     let mut q = quotes;
                     q[row.instrument].1 += h;
-                    let ois = build_ois_curve(&ois_spec(index.clone(), &q, interpolation)).unwrap();
+                    let ois = bootstrap_ois_curve(&ois_spec(index.clone(), &q, interpolation)).unwrap();
                     b.value_on_curve(&ois.curve, evaluation).unwrap()
                 };
                 let h = 1e-6;
@@ -239,8 +239,8 @@ fn quote_sensitivities_agree_with_rebuilding_the_curve() {
 fn the_jacobian_reproduces_a_shift_of_all_quotes() {
     // log-linear: the derivative of a node with respect to the quotes of later nodes is 0
     let quotes = [(0, 0.002), (1, 0.004), (2, 0.006), (5, 0.011)];
-    let spec = ois_spec(tonar(), &quotes, OisInterpolation::LogLinear);
-    let jacobian = build_ois_curve(&spec).unwrap().quote_jacobian().unwrap();
+    let spec = ois_spec(create_tonar_index(), &quotes, OisInterpolation::LogLinear);
+    let jacobian = bootstrap_ois_curve(&spec).unwrap().quote_jacobian().unwrap();
     for i in 0..jacobian.d_log_discount_d_quote.len() {
         for k in i + 1..jacobian.d_log_discount_d_quote.len() {
             assert!(jacobian.d_log_discount_d_quote[i][k].abs() < 1e-12);

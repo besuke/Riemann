@@ -83,28 +83,28 @@ RiemannFinMath:
 ```{r}
 #| label: riemann-call
 riemann_bonds <- pmap(list(basket$issue_date, basket$maturity_date, basket$coupon_pct), \(issue, maturity, coupon) {
-  RiemannFinMath::fixed_rate_bond(
+  RiemannFinMath::create_fixed_rate_bond(
     settlement_days = 0L, face_amount = 100, effective_date = issue, termination_date = maturity, tenor = "6M", calendar = "japan",
     convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
     coupon_rate = coupon / 100, day_count = "actual_365_fixed", payment_convention = "following", redemption = 100, issue_date = issue
   )
 })
-riemann <- RiemannFinMath::future_basket(
+riemann <- RiemannFinMath::compute_future_basket(
   riemann_bonds, basket$bb_price, futures_price, basket$conversion_factor, funding_rate, valuation_date, delivery_date
 )
 riemann_yields <- map2_dbl(riemann_bonds, basket$bb_price, \(b, p) {
-  RiemannFinMath::yield_from_price(b, p, "clean", "actual_365_fixed", "compounded", 2L, valuation_date)
+  RiemannFinMath::compute_yield_from_price(b, p, "clean", "actual_365_fixed", "compounded", 2L, valuation_date)
 })
 riemann_durations <- map2_dbl(riemann_bonds, riemann_yields, \(b, y) {
-  RiemannFinMath::duration(b, y, "actual_365_fixed", "compounded", 2L, valuation_date, "modified")
+  RiemannFinMath::compute_duration(b, y, "actual_365_fixed", "compounded", 2L, valuation_date, "modified")
 })
 ```
 
-`future_basis` is the same calculation for one bond:
+`compute_future_basis` is the same calculation for one bond:
 
 ```{r}
 #| label: riemann-one
-one <- RiemannFinMath::future_basis(
+one <- RiemannFinMath::compute_future_basis(
   riemann_bonds[[1]], basket$bb_price[1], futures_price, basket$conversion_factor[1], funding_rate, valuation_date, delivery_date
 )
 ```
@@ -145,14 +145,14 @@ ql_stress_price <- function(b) QuantLib::BondFunctions_cleanPrice(b, stress_yiel
 stress_futures_baseline <- ql_stress_price(ql_standard)
 stress_baseline <- basis_table(ql_bonds, map_dbl(ql_bonds, ql_stress_price), stress_futures_baseline, stress_funding)
 
-riemann_standard <- RiemannFinMath::fixed_rate_bond(
+riemann_standard <- RiemannFinMath::create_fixed_rate_bond(
   settlement_days = 0L, face_amount = 100, effective_date = "2026-09-10", termination_date = "2036-09-10", tenor = "6M", calendar = "japan",
   convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
   coupon_rate = 0.06, day_count = "actual_365_fixed", payment_convention = "following", redemption = 100, issue_date = "2026-09-10"
 )
-riemann_stress_price <- function(b) RiemannFinMath::clean_price(b, stress_yield, "actual_365_fixed", "compounded", 2L, valuation_date)
+riemann_stress_price <- function(b) RiemannFinMath::compute_clean_price(b, stress_yield, "actual_365_fixed", "compounded", 2L, valuation_date)
 stress_futures_riemann <- riemann_stress_price(riemann_standard)
-stress_riemann <- RiemannFinMath::future_basket(
+stress_riemann <- RiemannFinMath::compute_future_basket(
   riemann_bonds, map_dbl(riemann_bonds, riemann_stress_price), stress_futures_riemann, basket$conversion_factor,
   stress_funding, valuation_date, delivery_date
 )
@@ -202,7 +202,7 @@ bind_rows(
 #| label: design
 tribble(
   ~Layer,    ~Aspect,            ~Baseline,                                       ~RiemannFinMath,
-  "Wrapper", "Basket",           "A pipeline written by the caller",              "`future_basket` with a list of bonds",
+  "Wrapper", "Basket",           "A pipeline written by the caller",              "`compute_future_basket` with a list of bonds",
   "Wrapper", "Coupon income",    "Read from a cash flow table and filtered",      "A column of the result",
   "Core",    "Basis arithmetic", "R, in the chapter",                             "Rust",
   "Core",    "Conversion factor", "An input",                                     "An input; set by the exchange"

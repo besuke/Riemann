@@ -116,9 +116,9 @@ pub(crate) fn previous_twentieth(d: Date) -> Result<Date, Error> {
 
 /// The maturity of a standard CDS traded on `trade_date` (QuantLib `cdsMaturity`, for the Cds and
 /// Cds2015 rules). A 0 tenor on a Cds2015 roll month has no maturity, and is an error here.
-pub fn cds_maturity(trade_date: Date, tenor: Period, rule: DateGenerationRule) -> Result<Date, Error> {
+pub fn compute_cds_maturity(trade_date: Date, tenor: Period, rule: DateGenerationRule) -> Result<Date, Error> {
     if !matches!(rule, DateGenerationRule::Cds | DateGenerationRule::Cds2015) {
-        return Err(invalid(format!("cds_maturity needs a CDS rule, not {rule:?}")));
+        return Err(invalid(format!("compute_cds_maturity needs a CDS rule, not {rule:?}")));
     }
     let multiple_of_3 = match tenor.unit {
         TimeUnit::Years => true,
@@ -126,7 +126,7 @@ pub fn cds_maturity(trade_date: Date, tenor: Period, rule: DateGenerationRule) -
         _ => false,
     };
     if !multiple_of_3 {
-        return Err(invalid("cds_maturity expects a tenor that is a multiple of 3 months".into()));
+        return Err(invalid("compute_cds_maturity expects a tenor that is a multiple of 3 months".into()));
     }
     let mut anchor = previous_twentieth(trade_date)?;
     let (_, month, _) = anchor.ymd();

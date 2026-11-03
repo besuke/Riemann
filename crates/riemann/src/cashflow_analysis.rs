@@ -15,7 +15,7 @@ use crate::autodiff::Operand;
 use crate::cashflows::CashFlow;
 use crate::curves::YieldCurve;
 use crate::interest_rate::{Compounding, InterestRate};
-use crate::math::solver1d::newton_safe;
+use crate::math::solver1d::solve_newton_safe;
 use crate::time::{Date, DayCount, Period, TimeUnit};
 use crate::Error;
 
@@ -91,7 +91,7 @@ fn alive(leg: &[CashFlow], settlement: Date, include_settlement_date_flows: bool
 }
 
 /// Present value at `npv_date` of the cash flows after `settlement`, discounted at `y`.
-pub fn npv<T: Operand>(leg: &[CashFlow], y: &InterestRate<T>, incl: bool, settlement: Date, npv_date: Date) -> Result<T, Error> {
+pub fn compute_npv<T: Operand>(leg: &[CashFlow], y: &InterestRate<T>, incl: bool, settlement: Date, npv_date: Date) -> Result<T, Error> {
     let (mut npv, mut discount, mut last_date) = (y.rate.like(0.0), y.rate.like(1.0), npv_date);
     for (cf, amount) in alive(leg, settlement, incl)? {
         let b = y.discount_factor(stepwise_discount_time(cf, &y.day_count, npv_date, last_date)?)?;
@@ -104,7 +104,7 @@ pub fn npv<T: Operand>(leg: &[CashFlow], y: &InterestRate<T>, incl: bool, settle
 
 /// Present value at `npv_date` of the cash flows after `settlement`, discounted on `curve`
 /// (QuantLib `CashFlows::npv` with a yield term structure).
-pub fn npv_on_curve<T: Operand>(
+pub fn compute_npv_on_curve<T: Operand>(
     leg: &[CashFlow],
     curve: &YieldCurve<T>,
     incl: bool,
@@ -151,7 +151,7 @@ fn modified_duration(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement:
 }
 
 /// Duration of the cash flows after `settlement` at yield `y`.
-pub fn duration(
+pub fn compute_duration(
     leg: &[CashFlow],
     y: &InterestRate,
     kind: DurationType,
@@ -175,7 +175,7 @@ pub fn duration(
 }
 
 /// Convexity of the cash flows after `settlement` at yield `y`.
-pub fn convexity(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
+pub fn compute_convexity(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
     if leg.is_empty() {
         return Ok(0.0);
     }
@@ -196,13 +196,13 @@ pub fn convexity(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Dat
 }
 
 /// Price change for a 1bp yield increase, second order (QuantLib `basisPointValue`).
-pub fn basis_point_value(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
+pub fn compute_basis_point_value(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
     if leg.is_empty() {
         return Ok(0.0);
     }
-    let npv = npv(leg, y, incl, settlement, npv_date)?;
-    let modified = duration(leg, y, DurationType::Modified, incl, settlement, npv_date)?;
-    let convexity = convexity(leg, y, incl, settlement, npv_date)?;
+    let npv = compute_npv(leg, y, incl, settlement, npv_date)?;
+    let modified = compute_duration(leg, y, DurationType::Modified, incl, settlement, npv_date)?;
+    let convexity = compute_convexity(leg, y, incl, settlement, npv_date)?;
     let mut delta = -modified * npv;
     let mut gamma = (convexity / 100.0) * npv;
     let shift = 0.0001;
@@ -212,12 +212,12 @@ pub fn basis_point_value(leg: &[CashFlow], y: &InterestRate, incl: bool, settlem
 }
 
 /// Yield change for a price change of 0.01 (QuantLib `yieldValueBasisPoint`).
-pub fn yield_value_basis_point(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
+pub fn compute_yield_value_basis_point(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement: Date, npv_date: Date) -> Result<f64, Error> {
     if leg.is_empty() {
         return Ok(0.0);
     }
-    let npv = npv(leg, y, incl, settlement, npv_date)?;
-    let modified = duration(leg, y, DurationType::Modified, incl, settlement, npv_date)?;
+    let npv = compute_npv(leg, y, incl, settlement, npv_date)?;
+    let modified = compute_duration(leg, y, DurationType::Modified, incl, settlement, npv_date)?;
     let shift = 0.01;
     Ok((1.0 / (-npv * modified)) * shift)
 }
@@ -233,7 +233,7 @@ fn sign(x: f64) -> i32 {
 }
 
 /// Internal rate of return giving present value `target` (QuantLib `CashFlows::yield` with NewtonSafe).
-pub fn irr(
+pub fn compute_irr(
     leg: &[CashFlow],
     target: f64,
     convention: &YieldConvention,
@@ -261,7 +261,7 @@ pub fn irr(
     // QuantLib v1.42 IrrFinder: the objective is target - NPV and the "derivative" passed to
     // NewtonSafe is the modified duration itself (later versions use NPV - target and
     // -duration * NPV). The v1.42 form is kept so that the iterations match.
-    let f = |r: f64| Ok(target - npv(leg, &convention.rate(r)?, incl, settlement, npv_date)?);
+    let f = |r: f64| Ok(target - compute_npv(leg, &convention.rate(r)?, incl, settlement, npv_date)?);
     let df = |r: f64| modified_duration(leg, &convention.rate(r)?, incl, settlement, npv_date);
-    newton_safe(f, df, solver.accuracy, solver.guess, solver.guess / 10.0, solver.max_iterations)
+    solve_newton_safe(f, df, solver.accuracy, solver.guess, solver.guess / 10.0, solver.max_iterations)
 }

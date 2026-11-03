@@ -19,7 +19,7 @@
 //! Second derivatives come from [`Recorder::gradient_vars`], which records the backward pass itself
 //! as new nodes, so that a derivative can be differentiated again.
 
-use crate::math::normal::{normal_cdf, normal_pdf};
+use crate::math::normal::{compute_normal_cdf, compute_normal_pdf};
 use crate::Error;
 use rayon::prelude::*;
 use std::cell::RefCell;
@@ -155,10 +155,10 @@ impl Operand for f64 {
         f64::min(self, other)
     }
     fn normal_pdf(self) -> f64 {
-        normal_pdf(self)
+        compute_normal_pdf(self)
     }
     fn normal_cdf(self) -> f64 {
-        normal_cdf(self)
+        compute_normal_cdf(self)
     }
 }
 
@@ -464,7 +464,7 @@ fn pull_back_values(nodes: &[Node], i: usize, a: &Value, adjoints: &mut [Option<
             add_value(adjoints, nodes, x, a.zip(&d, |a, d| a * d));
         }
         Op::NormalCdf => {
-            let d = vx.map(normal_pdf);
+            let d = vx.map(compute_normal_pdf);
             add_value(adjoints, nodes, x, a.zip(&d, |a, d| a * d));
         }
         Op::Average => add_value(adjoints, nodes, x, a.clone()),
@@ -542,10 +542,10 @@ impl<'t> Operand for Var<'t> {
         self.binary(other, Op::Min, f64::min)
     }
     fn normal_pdf(self) -> Var<'t> {
-        self.unary(Op::NormalPdf, normal_pdf)
+        self.unary(Op::NormalPdf, compute_normal_pdf)
     }
     fn normal_cdf(self) -> Var<'t> {
-        self.unary(Op::NormalCdf, normal_cdf)
+        self.unary(Op::NormalCdf, compute_normal_cdf)
     }
 }
 
@@ -605,7 +605,7 @@ impl<'t> Div<f64> for Var<'t> {
 }
 
 /// The value and first derivatives of a scalar function at `point`.
-pub fn value_and_gradient<F>(point: &[f64], f: F) -> Result<(f64, Vec<f64>), Error>
+pub fn compute_value_and_gradient<F>(point: &[f64], f: F) -> Result<(f64, Vec<f64>), Error>
 where
     F: for<'t> Fn(&[Var<'t>]) -> Result<Var<'t>, Error>,
 {
@@ -620,7 +620,7 @@ where
 pub type ValueGradientHessian = (f64, Vec<f64>, Vec<Vec<f64>>);
 
 /// The value, first and second derivatives of a scalar function at `point`.
-pub fn value_gradient_hessian<F>(point: &[f64], f: F) -> Result<ValueGradientHessian, Error>
+pub fn compute_value_gradient_hessian<F>(point: &[f64], f: F) -> Result<ValueGradientHessian, Error>
 where
     F: for<'t> Fn(&[Var<'t>]) -> Result<Var<'t>, Error>,
 {
@@ -666,7 +666,7 @@ mod tests {
     #[test]
     fn every_operation_against_numeric_differences() {
         for point in [[0.7, 1.3, 0.4], [1.1, 0.2, 0.9], [2.0, 1.7, 3.0]] {
-            let (value, gradient) = value_and_gradient(&point, |v| Ok(generic(v))).unwrap();
+            let (value, gradient) = compute_value_and_gradient(&point, |v| Ok(generic(v))).unwrap();
             assert_eq!(value, generic(&point));
             let numeric = numeric_gradient(generic::<f64>, &point);
             for (g, n) in gradient.iter().zip(&numeric) {
@@ -678,19 +678,19 @@ mod tests {
     #[test]
     fn numbers_and_recorded_backward_pass_agree() {
         let point = [0.7, 1.3, 0.4];
-        let (_, by_numbers) = value_and_gradient(&point, |v| Ok(generic(v))).unwrap();
-        let (_, by_graph, _) = value_gradient_hessian(&point, |v| Ok(generic(v))).unwrap();
+        let (_, by_numbers) = compute_value_and_gradient(&point, |v| Ok(generic(v))).unwrap();
+        let (_, by_graph, _) = compute_value_gradient_hessian(&point, |v| Ok(generic(v))).unwrap();
         assert_eq!(by_numbers, by_graph);
     }
 
     #[test]
     fn second_derivatives_against_numeric_differences() {
         for point in [[0.7, 1.3, 0.4], [1.1, 0.2, 0.9]] {
-            let (_, _, hessian) = value_gradient_hessian(&point, |v| Ok(generic(v))).unwrap();
+            let (_, _, hessian) = compute_value_gradient_hessian(&point, |v| Ok(generic(v))).unwrap();
             for i in 0..3 {
                 let row = numeric_gradient(
                     |x| {
-                        let (_, g) = value_and_gradient(x, |v| Ok(generic(v))).unwrap();
+                        let (_, g) = compute_value_and_gradient(x, |v| Ok(generic(v))).unwrap();
                         g[i]
                     },
                     &point,

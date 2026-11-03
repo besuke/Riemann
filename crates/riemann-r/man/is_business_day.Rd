@@ -2,12 +2,12 @@
 % Please edit documentation in R/calendars.R
 \name{is_business_day}
 \alias{is_business_day}
-\alias{holidays}
+\alias{generate_holidays}
 \title{Business days and holidays}
 \usage{
 is_business_day(calendar, date, on_error = "stop")
 
-holidays(calendar, from, to, include_weekends = FALSE)
+generate_holidays(calendar, from, to, include_weekends = FALSE)
 }
 \arguments{
 \item{calendar}{A calendar name.}
@@ -20,7 +20,7 @@ that it is a holiday.}
 \item{include_weekends}{\code{TRUE} or \code{FALSE}. \code{NA} is an error.}
 }
 \value{
-\code{is_business_day()} returns a logical vector. \code{holidays()} returns a \code{Date} vector.
+\code{is_business_day()} returns a logical vector. \code{generate_holidays()} returns a \code{Date} vector.
 }
 \description{
 Every calendar and market of QuantLib C++ v1.42 except the joint and bespoke calendars.
@@ -52,5 +52,5 @@ Calendar names: \code{null_calendar}, \code{weekends_only}, \code{argentina_merv
 }
 \examples{
 is_business_day("turkey", c("2026-05-19", "2026-05-20"))
-holidays("brazil_settlement", "2026-01-01", "2026-12-31")
+generate_holidays("brazil_settlement", "2026-01-01", "2026-12-31")
 }

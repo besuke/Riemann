@@ -42,7 +42,7 @@ pub struct QuoteSensitivity {
 /// First and second derivatives of the dirty price with respect to the yield. Agrees with the
 /// duration and convexity formulas where they are the derivatives of the price: compounded and
 /// continuous yields (`docs/spec_autodiff.md` 5 章).
-pub fn yield_sensitivity(
+pub fn compute_yield_sensitivity(
     bond: &FixedRateBond,
     y: &InterestRate,
     settlement: Date,
@@ -51,7 +51,7 @@ pub fn yield_sensitivity(
     let recorder = Recorder::new();
     let rate = recorder.input(y.rate);
     let lifted = InterestRate::new(rate, y.day_count.clone(), y.compounding, y.frequency)?;
-    let price = analysis::npv(&bond.cashflows, &lifted, false, settlement, settlement)? * 100.0 / notional;
+    let price = analysis::compute_npv(&bond.cashflows, &lifted, false, settlement, settlement)? * 100.0 / notional;
     let first = recorder.gradient_vars(price, &[rate])?[0];
     let second = recorder.gradient(first, &[rate])?;
     Ok(YieldSensitivity {
@@ -73,7 +73,7 @@ fn tradable_notional(bond: &FixedRateBond, settlement: Date) -> Result<f64, Erro
 
 /// The bond's value on `curve` and its derivatives with respect to each input of the curve, in the
 /// same terms as [`FixedRateBond::value_on_curve`].
-pub fn curve_sensitivity(
+pub fn compute_curve_sensitivity(
     bond: &FixedRateBond,
     curve: &YieldCurve,
     evaluation_date: Date,
@@ -96,14 +96,14 @@ pub fn curve_sensitivity(
     }
     let settlement = bond.settlement_date(evaluation_date)?;
     let valuation_date = curve.reference_date();
-    let npv = analysis::npv_on_curve(
+    let npv = analysis::compute_npv_on_curve(
         &bond.cashflows,
         &lifted.curve,
         false,
         valuation_date,
         valuation_date,
     )?;
-    let settlement_value = analysis::npv_on_curve(
+    let settlement_value = analysis::compute_npv_on_curve(
         &bond.cashflows,
         &lifted.curve,
         false,
@@ -130,12 +130,12 @@ pub fn curve_sensitivity(
 /// The bond's value on an OIS curve and its derivatives with respect to the quotes, with the
 /// curve rebuilt in the limit: the derivatives on the nodes times [`OisCurve::quote_jacobian`].
 /// Instruments dropped from the bootstrap have no row.
-pub fn quote_sensitivity(
+pub fn compute_quote_sensitivity(
     bond: &FixedRateBond,
     ois: &OisCurve,
     evaluation_date: Date,
 ) -> Result<(BondCurveValue, Vec<QuoteSensitivity>), Error> {
-    let (value, nodes) = curve_sensitivity(bond, &ois.curve, evaluation_date)?;
+    let (value, nodes) = compute_curve_sensitivity(bond, &ois.curve, evaluation_date)?;
     let jacobian = ois.quote_jacobian()?;
     let n = jacobian.instruments.len();
     if nodes.len() != n {

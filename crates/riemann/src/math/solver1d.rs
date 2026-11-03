@@ -1,7 +1,7 @@
 //! One-dimensional root finding: QuantLib's bracketing search followed by NewtonSafe.
 //!
 //! Derived from QuantLib v1.42 `ql/math/solver1d.hpp`, `ql/math/solvers1d/newtonsafe.hpp` and
-//! `ql/math/solvers1d/brent.hpp` (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl),
+//! `ql/math/solvers1d/solve_brent.hpp` (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl),
 //! `ql/math/solvers1d/finitedifferencenewtonsafe.hpp` (Copyright (C) 2011 Ferdinando Ametrano)
 //! and `ql/math/comparison.hpp` (Copyright (C) 2003, 2004, 2005, 2007 StatPro Italia srl);
 //! modified BSD license.
@@ -12,8 +12,8 @@
 
 use crate::Error;
 
-/// QuantLib `close(x, y)` with the default tolerance of 42 machine epsilons.
-pub fn close(x: f64, y: f64) -> bool {
+/// QuantLib `is_close(x, y)` with the default tolerance of 42 machine epsilons.
+pub fn is_close(x: f64, y: f64) -> bool {
     if x == y {
         return true;
     }
@@ -25,8 +25,8 @@ pub fn close(x: f64, y: f64) -> bool {
     diff <= tolerance * x.abs() && diff <= tolerance * y.abs()
 }
 
-/// QuantLib `close(x, y, n)`, with a tolerance of `n` machine epsilons.
-pub fn close_with(x: f64, y: f64, n: u32) -> bool {
+/// QuantLib `is_close(x, y, n)`, with a tolerance of `n` machine epsilons.
+pub fn is_close_with(x: f64, y: f64, n: u32) -> bool {
     if x == y {
         return true;
     }
@@ -38,9 +38,9 @@ pub fn close_with(x: f64, y: f64, n: u32) -> bool {
     diff <= tolerance * x.abs() && diff <= tolerance * y.abs()
 }
 
-/// QuantLib `close_enough(x, y)` with the default tolerance of 42 machine epsilons: like
+/// QuantLib `is_close_enough(x, y)` with the default tolerance of 42 machine epsilons: like
 /// [`close`], but one of the two relative tests is enough.
-pub fn close_enough(x: f64, y: f64) -> bool {
+pub fn is_close_enough(x: f64, y: f64) -> bool {
     if x == y {
         return true;
     }
@@ -54,8 +54,8 @@ pub fn close_enough(x: f64, y: f64) -> bool {
 
 /// Finds a root of `f` inside the bracket `[x_min, x_max]` (QuantLib
 /// `Solver1D::solve(f, accuracy, guess, xMin, xMax)` with `Brent`). The same steps are taken so
-/// that the iterations match QuantLib. Reproduces QuantLib v1.42 `ql/math/solvers1d/brent.hpp`.
-pub fn brent<F>(f: F, accuracy: f64, guess: f64, x_min: f64, x_max: f64, max_evaluations: usize) -> Result<f64, Error>
+/// that the iterations match QuantLib. Reproduces QuantLib v1.42 `ql/math/solvers1d/solve_brent.hpp`.
+pub fn solve_brent<F>(f: F, accuracy: f64, guess: f64, x_min: f64, x_max: f64, max_evaluations: usize) -> Result<f64, Error>
 where
     F: Fn(f64) -> Result<f64, Error>,
 {
@@ -67,11 +67,11 @@ where
         return Err(Error::InvalidInput { reason: format!("invalid range: xMin ({x_min}) >= xMax ({x_max})") });
     }
     let fx_min = f(x_min)?;
-    if close(fx_min, 0.0) {
+    if is_close(fx_min, 0.0) {
         return Ok(x_min);
     }
     let fx_max = f(x_max)?;
-    if close(fx_max, 0.0) {
+    if is_close(fx_max, 0.0) {
         return Ok(x_max);
     }
     if fx_min * fx_max >= 0.0 {
@@ -91,8 +91,8 @@ where
 /// Finds a root of `f` near `guess`, widening a bracket from `step` first (QuantLib
 /// `Solver1D::solve(f, accuracy, guess, step)` with `Brent`). The same steps are taken so that the
 /// iterations match QuantLib, and evaluations count as in QuantLib. Reproduces QuantLib v1.42
-/// `ql/math/solver1d.hpp` and `ql/math/solvers1d/brent.hpp`.
-pub fn brent_with_step<F>(f: F, accuracy: f64, guess: f64, step: f64, max_evaluations: usize) -> Result<f64, Error>
+/// `ql/math/solver1d.hpp` and `ql/math/solvers1d/solve_brent.hpp`.
+pub fn solve_brent_with_step<F>(f: F, accuracy: f64, guess: f64, step: f64, max_evaluations: usize) -> Result<f64, Error>
 where
     F: Fn(f64) -> Result<f64, Error>,
 {
@@ -104,7 +104,7 @@ where
     let mut flipflop = -1;
 
     let first = f(guess)?;
-    if close(first, 0.0) {
+    if is_close(first, 0.0) {
         return Ok(guess);
     }
     let (mut x_min, mut fx_min, mut x_max, mut fx_max);
@@ -123,10 +123,10 @@ where
     let mut evaluations = 2;
     while evaluations <= max_evaluations {
         if fx_min * fx_max <= 0.0 {
-            if close(fx_min, 0.0) {
+            if is_close(fx_min, 0.0) {
                 return Ok(x_min);
             }
-            if close(fx_max, 0.0) {
+            if is_close(fx_max, 0.0) {
                 return Ok(x_max);
             }
             let root = (x_max + x_min) / 2.0;
@@ -210,7 +210,7 @@ where
         }
         let x_acc1 = 2.0 * f64::EPSILON * root.abs() + 0.5 * accuracy;
         let x_mid = (x_max - root) / 2.0;
-        if x_mid.abs() <= x_acc1 || close(froot, 0.0) {
+        if x_mid.abs() <= x_acc1 || is_close(froot, 0.0) {
             // as in QuantLib, so that the last value passed to `f` is the root
             f(root)?;
             return Ok(root);
@@ -219,7 +219,7 @@ where
             // attempt inverse quadratic interpolation
             let s = froot / fx_min;
             let (mut p, mut q);
-            if close(x_min, x_max) {
+            if is_close(x_min, x_max) {
                 p = 2.0 * x_mid * s;
                 q = 1.0 - s;
             } else {
@@ -263,7 +263,7 @@ where
 /// `Solver1D::solve(f, accuracy, guess, xMin, xMax)` with `FiniteDifferenceNewtonSafe`).
 /// Reproduces QuantLib v1.42 `ql/math/solvers1d/finitedifferencenewtonsafe.hpp`. As in QuantLib,
 /// the root returned on convergence has not been passed to `f`.
-pub fn finite_difference_newton_safe<F>(
+pub fn solve_finite_difference_newton_safe<F>(
     f: F,
     accuracy: f64,
     guess: f64,
@@ -282,11 +282,11 @@ where
         return Err(Error::InvalidInput { reason: format!("invalid range: xMin ({x_min}) >= xMax ({x_max})") });
     }
     let fx_min = f(x_min)?;
-    if close(fx_min, 0.0) {
+    if is_close(fx_min, 0.0) {
         return Ok(x_min);
     }
     let fx_max = f(x_max)?;
-    if close(fx_max, 0.0) {
+    if is_close(fx_max, 0.0) {
         return Ok(x_max);
     }
     if fx_min * fx_max >= 0.0 {
@@ -325,7 +325,7 @@ where
             root = xl + dx;
             // when the new root is close to the previous one, the derivative is taken at
             // the root and xh instead
-            if close_with(root, rootold, 2500) {
+            if is_close_with(root, rootold, 2500) {
                 rootold = xh;
                 frootold = f(xh)?;
             }
@@ -351,7 +351,7 @@ where
 
 /// Finds a root of `f` near `guess` (QuantLib `Solver1D::solve(f, accuracy, guess, step)`
 /// with `NewtonSafe`). `f` returns the value and `df` the derivative.
-pub fn newton_safe<F, D>(
+pub fn solve_newton_safe<F, D>(
     f: F,
     df: D,
     accuracy: f64,
@@ -373,7 +373,7 @@ where
     let mut fx_max = f(root)?;
     let (mut x_min, mut fx_min, mut x_max);
     // monotonically crescent bias, as in optionValue(volatility)
-    if close(fx_max, 0.0) {
+    if is_close(fx_max, 0.0) {
         return Ok(root);
     } else if fx_max > 0.0 {
         x_min = root - step;
@@ -388,10 +388,10 @@ where
     let mut evaluations = 2;
     while evaluations <= max_evaluations {
         if fx_min * fx_max <= 0.0 {
-            if close(fx_min, 0.0) {
+            if is_close(fx_min, 0.0) {
                 return Ok(x_min);
             }
-            if close(fx_max, 0.0) {
+            if is_close(fx_max, 0.0) {
                 return Ok(x_max);
             }
             root = (x_max + x_min) / 2.0;
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn finds_square_root_of_two() {
-        let r = newton_safe(|x| Ok(x * x - 2.0), |x| Ok(2.0 * x), 1e-12, 1.0, 0.1, 100).unwrap();
+        let r = solve_newton_safe(|x| Ok(x * x - 2.0), |x| Ok(2.0 * x), 1e-12, 1.0, 0.1, 100).unwrap();
         assert!((r - 2f64.sqrt()).abs() < 1e-12);
     }
 }
