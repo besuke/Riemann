@@ -84,7 +84,7 @@ a flat curve; its numbers are this package's, not R's.
 mbs <- create_mbs_pass_through(100, 0.05, 0.045, refinancing_cost_rate = 0.005)
 head(compute_mbs_cashflows(mbs, 0.035))
 r <- generate_hull_white_monthly_rates(20, 360, 0.02, 0.15, 0.012)
-values <- compute_mbs_path_values(mbs, r, pmax(0, r + 0.03))
+values <- compute_mbs_path_values(mbs, r, pmax(r + 0.03, 0))
 mean(values$price)
-compute_mbs_oas(mbs, 110, r, pmax(0, r + 0.03))
+compute_mbs_oas(mbs, 110, r, pmax(r + 0.03, 0))
 }

@@ -19,8 +19,8 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | II-4.5 | Barone-Adesi-Whaley and Bjerksund-Stensland approximations | Not implemented; the tree is compared |
 | II-4.6 | Sobol sequences beyond 32 dimensions, scrambling | Not implemented; Sobol and Longstaff-Schwartz otherwise are |
 | II-5.2.5, II-5.6.4 | CDS cash flow and probability tables | Not returned |
-| II-6.5, II-7.3 to II-7.5 | BGM/LMM, HJM, FMM | Not implemented |
-| II-7.2 | Simulated Hull-White paths | Not returned |
+| II-6.5, II-7.3 to II-7.5 | A full BGM/LMM (drift under a common measure, joint paths, calibration), HJM, FMM | Not implemented; the caplet and correlated shocks of II-7.4 are |
+| II-7.2 | Simulated Hull-White paths on a fitted curve | Only monthly short rates on a flat curve (`generate_hull_white_monthly_rates`) |
 | II-8.4.3 | Exercise decisions of the callable bond | Not returned |
 | II-8.8 | CMO tranches, burnout, seasonality, default | Not implemented; the pass-through, its prepayment rule and the OAS are |
 | II-9.1.2 | Coupon schedule | Not exported; the dates are inputs |

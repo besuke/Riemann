@@ -15,6 +15,7 @@ ch3 <- values_of("ch03_ois_swaps_multicurve")
 ch4 <- values_of("ch04_black_model")
 ch5 <- values_of("ch05_credit_risk_cds")
 ch6 <- values_of("ch06_irs_calibration")
+ch7 <- values_of("ch07_irs_rate_models")
 ch8 <- values_of("ch08_early_redemption_models")
 ch9 <- values_of("ch09_exotic_derivatives_prdc")
 option_greeks <- values_of("ch05_option_greeks_autodiff")
@@ -164,7 +165,11 @@ model_rows <- bind_rows(
   row(sprintf("mbs.path.price.%d", ch8$tbl_mbs_mc$path), "II-8.8", ch8$tbl_mbs_mc$price),
   row(sprintf("mbs.path.wal.%d", ch8$tbl_mbs_mc$path), "II-8.8", ch8$tbl_mbs_mc$weighted_average_life),
   row("mbs.path.mean_price", "II-8.8", mean(ch8$tbl_mbs_mc$price)),
-  row(sprintf("mbs.static_oas_bp.%g.%g", ch8$tbl_psa_oas$psa_percent, ch8$tbl_psa_oas$assumed_price), "II-8.8.1", ch8$tbl_psa_oas$oas_bp)
+  row(sprintf("mbs.static_oas_bp.%g.%g", ch8$tbl_psa_oas$psa_percent, ch8$tbl_psa_oas$assumed_price), "II-8.8.1", ch8$tbl_psa_oas$oas_bp),
+  row("lmm.caplet.black_bp", "II-7.4.2", 1e4 * ch7$tbl_caplet_check$black_price),
+  row("lmm.caplet.simulated_bp", "II-7.4.2", 1e4 * ch7$tbl_caplet_check$simulated_price),
+  row("lmm.caplet.standard_error_bp", "II-7.4.2", 1e4 * ch7$tbl_caplet_check$mc_standard_error),
+  row(sprintf("lmm.correlation.%s.%s", ch7$tbl_shock_correlation$forward_1, ch7$tbl_shock_correlation$forward_2), "II-7.4.3", ch7$tbl_shock_correlation$simulated)
 )
 
 prdc_rows <- bind_rows(

@@ -23,6 +23,7 @@ use riemann::longstaff_schwartz::{
     self, CalibrationPaths, FewInTheMoney, LongstaffSchwartzSettings, PathSequence,
 };
 use riemann::math::sobol::SobolSequence;
+use riemann::lmm::{self, CapletTerms};
 use riemann::mbs::{self, Amortization, PassThroughTerms, RatePaths};
 use riemann::interest_rate::Compounding;
 use riemann::curves::CurveInput;
@@ -1952,6 +1953,74 @@ fn compute_implied_volatility(
     value_list(rows)
 }
 
+// ---- LMM building blocks ----------------------------------------------------------------------------
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_caplet_value(
+    model: &str,
+    forward: Vec<f64>,
+    strike: Vec<f64>,
+    volatility: Vec<f64>,
+    expiry: Vec<f64>,
+    accrual: Vec<f64>,
+    discount_factor: Vec<f64>,
+    notional: Vec<f64>,
+) -> List {
+    let model = match names::parse_forward_model(model) {
+        Ok(m) => m,
+        Err(e) => return failure(e),
+    };
+    let rows = (0..forward.len())
+        .map(|i| {
+            let terms = CapletTerms {
+                forward: forward[i],
+                strike: strike[i],
+                volatility: volatility[i],
+                expiry: expiry[i],
+                accrual: accrual[i],
+                discount_factor: discount_factor[i],
+                notional: notional[i],
+            };
+            lmm::compute_caplet_value(model, &terms)
+        })
+        .collect();
+    value_list(rows)
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_caplet_from_normals(
+    normals: Vec<f64>,
+    forward: f64,
+    strike: f64,
+    volatility: f64,
+    expiry: f64,
+    accrual: f64,
+    discount_factor: f64,
+    notional: f64,
+) -> List {
+    let terms = CapletTerms { forward, strike, volatility, expiry, accrual, discount_factor, notional };
+    outcome(lmm::compute_caplet_from_normals(&terms, &normals).map(|s| {
+        list!(value = s.value, standard_error = s.standard_error, paths = s.paths as i32)
+    }))
+}
+
+/// Normals and the correlation come by rows.
+#[extendr]
+fn compute_correlated_normals(normals: Vec<f64>, correlation: Vec<f64>, dimension: i32) -> List {
+    outcome(lmm::compute_correlated_normals(&normals, &correlation, dimension.max(0) as usize).map(|v| list!(values = v)))
+}
+
+#[extendr]
+fn generate_correlated_normals(correlation: Vec<f64>, dimension: i32, count: f64, seed: f64) -> List {
+    let run = || -> Core<List> {
+        let v = lmm::generate_correlated_normals(&correlation, dimension.max(0) as usize, count.max(0.0) as usize, seed as u64)?;
+        Ok(list!(values = v))
+    };
+    outcome(run())
+}
+
 // ---- mortgage-backed securities --------------------------------------------------------------------
 
 /// The terms in the order of `create_mbs_pass_through()`: balance, mortgage rate, pass-through rate,
@@ -2503,6 +2572,10 @@ extendr_module! {
     fn compute_forward_option_value;
     fn compute_implied_volatility;
     fn compute_monte_carlo_european_value;
+    fn compute_caplet_value;
+    fn compute_caplet_from_normals;
+    fn compute_correlated_normals;
+    fn generate_correlated_normals;
     fn check_mbs_pass_through;
     fn compute_mbs_cashflows;
     fn compute_mbs_path_values;

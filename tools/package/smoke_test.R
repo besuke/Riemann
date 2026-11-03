@@ -89,6 +89,7 @@ hw_options$price <- compute_hull_white_bond_option_value(hw_options$option_type,
 check("P11 Hull-White calibration recovers its own prices", abs(calibrate_hull_white(jpy, bond_options = hw_options)$mean_reversion - 0.08) < 1e-7)
 check("P11 Longstaff-Schwartz reproduces the legacy value", abs(compute_longstaff_schwartz_value("put", 100, 100, 0.05, 0, 0.2, 367 / 365, 12, 2048)$value - 6.2924853437827819) < 1e-12)
 check("P11 MBS principal adds up", abs(sum(with(compute_mbs_cashflows(create_mbs_pass_through(100, 0.05, 0.045), 0.035), scheduled_principal + prepaid_principal)) - 100) < 1e-9)
+check("P11 caplet is the Black formula", abs(compute_caplet_value(0.025, 0.0275, 0.24, 2, 0.5, exp(-0.05)) - 0.5 * exp(-0.05) * QuantLib::blackFormula("Call", 0.0275, 0.025, 0.24 * sqrt(2))) < 1e-15)
 
 # P8: credit default swaps, with both engines
 maturity <- as.Date(c("2027-12-20", "2029-12-20", "2031-12-20"))

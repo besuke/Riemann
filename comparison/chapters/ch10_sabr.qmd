@@ -143,6 +143,50 @@ bind_rows(
   show_results()
 ```
 
+## Caplets and correlated shocks
+
+The two examples of the legacy text's BGM/LMM section (II-7.4): one caplet from the marginal distribution of its forward rate, and correlated normal shocks. They are building blocks, not a LIBOR market model: neither side drifts several forward rates under a common measure. The random numbers are R's, drawn with the legacy seeds and passed to RiemannFinMath, so that both sides use the same draws. Values are in basis points of the notional.
+
+```{r}
+#| label: lmm-inputs
+caplet <- list(forward = 0.025, strike = 0.0275, volatility = 0.24, expiry = 2, accrual = 0.5, rate = 0.02, paths = 50000L, seed = 618L)
+caplet$discount_factor <- exp(-caplet$rate * (caplet$expiry + caplet$accrual))
+target_correlation <- matrix(c(1, 0.8, 0.5, 0.8, 1, 0.7, 0.5, 0.7, 1), 3, byrow = TRUE)
+show_inputs(c(caplet, list(correlation = "0.8, 0.5, 0.7", shocks = "30000 rows of 3, seed 619")))
+```
+
+```{r}
+#| label: lmm-calls
+set.seed(caplet$seed)
+caplet_normals <- stats::rnorm(caplet$paths)
+set.seed(619L)
+independent_shocks <- matrix(stats::rnorm(90000), ncol = 3)
+riemann_black <- RiemannFinMath::compute_caplet_value(caplet$forward, caplet$strike, caplet$volatility, caplet$expiry, caplet$accrual, caplet$discount_factor)
+riemann_simulated <- RiemannFinMath::compute_caplet_from_normals(caplet_normals, caplet$forward, caplet$strike, caplet$volatility, caplet$expiry,
+                                                                caplet$accrual, caplet$discount_factor)
+riemann_shocks <- RiemannFinMath::compute_correlated_normals(independent_shocks, target_correlation)
+ql_black <- QuantLib::blackFormula("Call", caplet$strike, caplet$forward, caplet$volatility * sqrt(caplet$expiry), caplet$accrual * caplet$discount_factor)
+own_shocks <- RiemannFinMath::generate_correlated_normals(30000, target_correlation, seed = 619)
+pairs <- expand.grid(i = 1:3, j = 1:3)
+pair_names <- LETTERS[1:3]
+```
+
+```{r}
+#| label: lmm-results
+bind_rows(
+  compare_values("Caplet, Black formula", "bp of notional", 1e4 * ql_black, 1e4 * riemann_black),
+  compare_max("Correlated shocks, against R's Z %*% chol(C)", "normal variate", independent_shocks %*% chol(target_correlation), riemann_shocks, "R"),
+  against_lagrange("Caplet, Black formula", "bp of notional", "lmm.caplet.black_bp", 1e4 * riemann_black),
+  against_lagrange("Caplet, simulated marginal", "bp of notional", "lmm.caplet.simulated_bp", 1e4 * riemann_simulated$value),
+  against_lagrange("Caplet, standard error", "bp of notional", "lmm.caplet.standard_error_bp", 1e4 * riemann_simulated$standard_error),
+  against_lagrange(sprintf("Sample correlation %s-%s", pair_names[pairs$i], pair_names[pairs$j]), "correlation",
+                   sprintf("lmm.correlation.%s.%s", pair_names[pairs$i], pair_names[pairs$j]), as.vector(stats::cor(riemann_shocks))),
+  lagrange_not_comparable("Sample correlation A-B, this package's numbers", "correlation", "lmm.correlation.B.A", stats::cor(own_shocks)[2, 1],
+                          "Different random numbers")
+) |>
+  show_results()
+```
+
 ## Differences of wrapper and core
 
 ```{r}

@@ -23,3 +23,18 @@ ch10_sabr,Strike 2.56 percent,percent of volatility,LagrangeFinance II-6.3.2,64.
 ch10_sabr,alpha,decimal,LagrangeFinance II-6.3.2,0.03058290415034555,0.030591473134568278,8.568984222728088e-6,NA,N/C,Different optimizers; not the same calculation
 ch10_sabr,nu,decimal,LagrangeFinance II-6.3.2,0.7284888602520638,0.7282491393695768,-2.3972088248702672e-4,NA,N/C,Different optimizers; not the same calculation
 ch10_sabr,rho,decimal,LagrangeFinance II-6.3.2,0.44938459247505413,0.44935817031826086,-2.642215679327098e-5,NA,N/C,Different optimizers; not the same calculation
+ch10_sabr,"Caplet, Black formula",bp of notional,QuantLib C++,11.531339582811759,11.531339582811759,0,NA,REF,NA
+ch10_sabr,"Correlated shocks, against R's Z %*% chol(C)",normal variate,R,NA,NA,0,NA,REF,NA
+ch10_sabr,"Caplet, Black formula",bp of notional,LagrangeFinance II-7.4.2,11.53133958281176,11.531339582811759,-1.7763568394002505e-15,1e-4,PASS,NA
+ch10_sabr,"Caplet, simulated marginal",bp of notional,LagrangeFinance II-7.4.2,11.513800946023837,11.51380094602382,-1.5987211554602254e-14,1e-4,PASS,NA
+ch10_sabr,"Caplet, standard error",bp of notional,LagrangeFinance II-7.4.2,0.11292128665020708,0.11292128665020751,4.3021142204224816e-16,1e-4,PASS,NA
+ch10_sabr,Sample correlation A-A,correlation,LagrangeFinance II-7.4.3,1,1,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation B-A,correlation,LagrangeFinance II-7.4.3,0.7993099530194545,0.7993099530194545,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation C-A,correlation,LagrangeFinance II-7.4.3,0.4994469034139383,0.4994469034139383,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation A-B,correlation,LagrangeFinance II-7.4.3,0.7993099530194545,0.7993099530194545,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation B-B,correlation,LagrangeFinance II-7.4.3,1,1,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation C-B,correlation,LagrangeFinance II-7.4.3,0.6985239377536464,0.6985239377536464,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation A-C,correlation,LagrangeFinance II-7.4.3,0.4994469034139383,0.4994469034139383,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation B-C,correlation,LagrangeFinance II-7.4.3,0.6985239377536464,0.6985239377536464,0,1e-4,PASS,NA
+ch10_sabr,Sample correlation C-C,correlation,LagrangeFinance II-7.4.3,1,1,0,1e-4,PASS,NA
+ch10_sabr,"Sample correlation A-B, this package's numbers",correlation,LagrangeFinance II-7.4.3,0.7993099530194545,0.8029760001569879,0.003666047137533379,NA,N/C,Different random numbers

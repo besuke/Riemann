@@ -142,6 +142,33 @@ pub fn solve_least_squares(design: &[f64], columns: usize, target: &[f64]) -> Re
     Ok(solution)
 }
 
+/// The lower-triangular `L` with `L L^T = a`, for a symmetric positive definite `a`. A pivot at or
+/// below `n * EPSILON` times the largest diagonal entry is an error: the matrix is not positive definite.
+#[allow(clippy::needless_range_loop)]
+pub fn compute_cholesky(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, Error> {
+    let n = a.len();
+    if n == 0 || a.iter().any(|row| row.len() != n) {
+        return Err(invalid("Cholesky needs a square matrix"));
+    }
+    let largest = (0..n).map(|i| a[i][i].abs()).fold(0.0, f64::max);
+    let mut l = vec![vec![0.0; n]; n];
+    for i in 0..n {
+        for j in 0..=i {
+            let sum: f64 = (0..j).map(|k| l[i][k] * l[j][k]).sum();
+            if i == j {
+                let pivot = a[i][i] - sum;
+                if pivot.is_nan() || pivot <= n as f64 * f64::EPSILON * largest {
+                    return Err(invalid("the matrix is not positive definite"));
+                }
+                l[i][i] = pivot.sqrt();
+            } else {
+                l[i][j] = (a[i][j] - sum) / l[j][j];
+            }
+        }
+    }
+    Ok(l)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +212,20 @@ mod tests {
         assert!(residual.iter().sum::<f64>().abs() < 1e-13);
         assert!(xs.iter().zip(&residual).map(|(x, r)| x * r).sum::<f64>().abs() < 1e-12);
         assert!(solve_least_squares(&full, 3, &target[..2]).is_err());
+    }
+
+    #[test]
+    fn cholesky_rebuilds_the_matrix() {
+        let a = vec![vec![1.0, 0.8, 0.5], vec![0.8, 1.0, 0.7], vec![0.5, 0.7, 1.0]];
+        let l = compute_cholesky(&a).unwrap();
+        for i in 0..3 {
+            assert_eq!(l[i][(i + 1)..].iter().filter(|v| **v != 0.0).count(), 0);
+            for j in 0..3 {
+                let product: f64 = (0..3).map(|k| l[i][k] * l[j][k]).sum();
+                assert!((product - a[i][j]).abs() < 1e-15, "{i} {j} {product}");
+            }
+        }
+        assert!(compute_cholesky(&[vec![1.0, 2.0], vec![2.0, 1.0]]).is_err());
     }
 
     #[test]
