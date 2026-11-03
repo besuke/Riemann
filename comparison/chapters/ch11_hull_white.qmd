@@ -425,9 +425,70 @@ bind_rows(
 
 The objective rises steadily from a mean reversion of zero, so the minimum lies on the boundary of the allowed range and neither library can reach it: QuantLib excludes zero and `ln(a)` cannot represent it. RiemannFinMath stops at its lower limit, 0.000018 percent above the objective at zero. QuantLib stops at a small positive value with a different volatility, so in this case the parameters, the objective and the repricing errors do not agree. Its objective is above the rise that its mean reversion alone explains, which shows that its volatility has not reached the minimum either. Which of its rounding error and its penalty causes that was not separated.
 
+## Mortgage-backed securities
+
+A pass-through pool with the prepayment rule of the legacy text. QuantLib has no counterpart, so every baseline is the legacy text. Prepayment here is a rule of the borrowers' behaviour, driven by the age of the loans and the refinancing incentive; it is not an optimal exercise, and nothing is regressed. The legacy text keeps the original level payment after prepayments, and so does `amortization = "fixed_payment"`.
+
+```{r}
+#| label: mbs-inputs
+mbs_legacy <- lagrange_objects("part2_quantive_riemann/ch08_early_redemption_models.qmd", c("simulate_mbs_rates_LRL", "mbs_short_rates"))
+mbs_months <- 360L
+mbs_terms <- list(original_balance = 100, mortgage_rate = 0.05, pass_through_rate = 0.045, maturity_months = mbs_months,
+                  psa_multiplier = 1, incentive_sensitivity = 20, refinancing_cost_rate = 0.005, cpr_cap = 0.6, amortization = "fixed_payment")
+show_inputs(c(mbs_terms, list(
+  scenarios = "refinancing rate 5% for 24 months, then 3.5%, 5% or 6.5%",
+  discount = "fixed 4%, or the refinancing rate minus 1%, summed monthly",
+  hull_white_paths = "the legacy text's 20 paths; refinancing rate = max(0, short rate + 3%)"
+)))
+```
+
+```{r}
+#| label: mbs-calls
+mbs <- do.call(RiemannFinMath::create_mbs_pass_through, mbs_terms)
+refinance_paths <- list(c(rep(0.05, 24), rep(0.035, mbs_months - 24)), rep(0.05, mbs_months), c(rep(0.05, 24), rep(0.065, mbs_months - 24)))
+scenario_values <- map_dfr(refinance_paths, \(f) {
+  fixed <- RiemannFinMath::compute_mbs_path_values(mbs, matrix(0.04, 1, mbs_months), matrix(f, 1))
+  path <- RiemannFinMath::compute_mbs_path_values(mbs, matrix(f - 0.01, 1), matrix(f, 1))
+  flows <- RiemannFinMath::compute_mbs_cashflows(mbs, f)
+  tibble(wal = fixed$weighted_average_life, price_fixed = fixed$price, price_path = path$price,
+         principal = sum(flows$scheduled_principal + flows$prepaid_principal))
+})
+legacy_rates <- mbs_legacy$mbs_short_rates
+path_values <- RiemannFinMath::compute_mbs_path_values(mbs, legacy_rates, pmax(legacy_rates + 0.03, 0))
+own_rates <- RiemannFinMath::generate_hull_white_monthly_rates(20000, mbs_months, 0.02, 0.15, 0.012, seed = 48)
+own_values <- RiemannFinMath::compute_mbs_path_values(mbs, own_rates, pmax(own_rates + 0.03, 0))
+static_cases <- tidyr::crossing(psa_percent = c(0, 50, 100), assumed_price = c(95, 105))
+static_oas <- pmap_dbl(static_cases, \(psa_percent, assumed_price) {
+  pool <- RiemannFinMath::create_mbs_pass_through(100, 0.05, 0.045, psa_multiplier = psa_percent / 100, incentive_sensitivity = 0)
+  1e4 * RiemannFinMath::compute_mbs_oas(pool, assumed_price, matrix(0.04, 1, mbs_months), matrix(0.05, 1, mbs_months))
+})
+```
+
+```{r}
+#| label: mbs-results
+scenario_names <- c("falling", "flat", "rising")
+solver_reason <- "Different solver accuracy: the legacy R uniroot stops at about 1.2e-4 in the spread, here 1e-12"
+bind_rows(
+  against_lagrange(sprintf("Weighted average life, %s refinancing rates", scenario_names), "years", sprintf("mbs.scenario.wal.%d", 1:3), scenario_values$wal),
+  against_lagrange(sprintf("Price at a fixed 4%%, %s", scenario_names), "per 100", sprintf("mbs.scenario.price_fixed.%d", 1:3), scenario_values$price_fixed),
+  against_lagrange(sprintf("Price on the path rates, %s", scenario_names), "per 100", sprintf("mbs.scenario.price_path.%d", 1:3), scenario_values$price_path),
+  against_lagrange(sprintf("Principal repaid, %s", scenario_names), "per 100", sprintf("mbs.scenario.principal.%d", 1:3), scenario_values$principal),
+  against_lagrange_max("Price on each of the 20 Hull-White paths", "per 100", sprintf("mbs.path.price.%d", 1:20), path_values$price),
+  against_lagrange_max("Weighted average life on each path", "years", sprintf("mbs.path.wal.%d", 1:20), path_values$weighted_average_life),
+  against_lagrange("Mean price over the 20 paths", "per 100", "mbs.path.mean_price", mean(path_values$price)),
+  lagrange_not_comparable("Mean price, 20000 paths of this package's own numbers", "per 100", "mbs.path.mean_price", mean(own_values$price),
+                          "Different random numbers and number of paths: the legacy text uses R's 20 antithetic paths"),
+  lagrange_not_comparable(sprintf("Static OAS, %g%% PSA, price %g", static_cases$psa_percent, static_cases$assumed_price), "bp",
+                          sprintf("mbs.static_oas_bp.%g.%g", static_cases$psa_percent, static_cases$assumed_price), static_oas, solver_reason)
+) |>
+  show_results()
+```
+
+The static spreads differ by up to 0.26 bp because the legacy text solves with R's `uniroot` at its default tolerance. Priced back at the legacy spread, the 105 cases come out up to 0.033 below 105. The option-adjusted spread over the Hull-White paths is defined in the legacy text but not computed there; `compute_mbs_oas()` gives it, by the same pathwise discounting.
+
 ## Not available
 
-The exercise decisions of the callable bond, the simulated short-rate paths, HJM, BGM/LMM, FMM and MBS are in the legacy text and not in RiemannFinMath. See @sec-gaps.
+The exercise decisions of the callable bond, HJM, BGM/LMM, and FMM are in the legacy text and not in RiemannFinMath. See @sec-gaps.
 
 ## Differences of wrapper and core
 
@@ -443,7 +504,8 @@ tribble(
   "Core",    "Model values", "The model holds its parameters and observes the curve",  "Parameters are arguments; no model object",
   "Core",    "Derivatives",  "Not exposed",                                            "Automatic differentiation for the European swaption",
   "Wrapper", "Calibration",  "Helpers, a method, end criteria; the model changes in place", "Data frames of quotes; returns the parameters and the repricing",
-  "Core",    "Small a",      "Subtracts nearly equal exponentials; takes the limit below 1.49e-8", "The same expression factored, accurate down to a = 0"
+  "Core",    "Small a",      "Subtracts nearly equal exponentials; takes the limit below 1.49e-8", "The same expression factored, accurate down to a = 0",
+  "Core",    "MBS",          "None",                                                  "Pass-through cash flows, values on given rate paths, OAS; the legacy text's rule"
 ) |>
   show_design()
 ```

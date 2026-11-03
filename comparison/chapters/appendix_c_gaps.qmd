@@ -22,7 +22,7 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | II-6.5, II-7.3 to II-7.5 | BGM/LMM, HJM, FMM | Not implemented |
 | II-7.2 | Simulated Hull-White paths | Not returned |
 | II-8.4.3 | Exercise decisions of the callable bond | Not returned |
-| II-8.8 | MBS prepayment and OAS | Not implemented |
+| II-8.8 | CMO tranches, burnout, seasonality, default | Not implemented; the pass-through, its prepayment rule and the OAS are |
 | II-9.1.2 | Coupon schedule | Not exported; the dates are inputs |
 | II-9.1.3 | A discount curve separate from the FX drift | One domestic curve. The same model is reached by moving both curves |
 | II-9.3.4, II-9.4 | Expected coupons, cap and floor probabilities, coupon distribution | Not returned |

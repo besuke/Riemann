@@ -19,6 +19,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_prdc.md` | P10 の PRDC（簡略モデルの範囲は 1 章、未対応は 4 章） |
 | `docs/spec_ois_swap.md` | P11-2 の OIS スワップ本体（QuantLib の仕様は 2 章、旧版について気づいた点は 5 章） |
 | `docs/spec_longstaff_schwartz.md` | P11-4 の Sobol 列と Longstaff–Schwartz（比較条件と seed は 1・2 章、関数の形の比較は 7 章） |
+| `docs/spec_mbs.md` | P11-5 のパススルー MBS（LagrangeFinance の条件は 1 章、違いは 2 章） |
 | `docs/design_distributed.md` | 分散計算基盤（Azure・Slurm・R と Rust の並列の区別）、開発方針（入口は厳格に、計算コアは単純に）、GPU の構想 |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
 
@@ -90,8 +91,8 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P11-2 | OIS スワップ本体（レグ、NPV、日次複利、Fixing。LagrangeFinance II-3.2〜II-3.4） | **完了**（`docs/spec_ois_swap.md`）。QuantLib と 300 件照合。旧版について気づいた点は同 5 章 |
 | P11-3 | Hull-White の校正（II-6.4） | **完了**（`docs/spec_hull_white.md` 1.1 節）。QuantLib の校正 60 件と照合。`ln(a)`、`ln(sigma)` などの独自の選択と、比較元との違いを同節に明記 |
 | P11-4 | Longstaff–Schwartz、Sobol 列（II-4.6） | **完了**（`docs/spec_longstaff_schwartz.md`）。Sobol・パス・価格を QuantLib と照合、LagrangeFinance II-4.6.2 を再現。基底・パス共有・パス数の比較は `tools/experiments/p11_ls_function_shape.R` |
-| P11-5 | MBS のプリペイメントと OAS（II-8.8） | **次にやる** |
-| P11-6 | LMM。**当面は LagrangeFinance の Caplet と相関の例（II-7.4）を再現する範囲**（ユーザーの指示）。本格的なモデルへの拡張は別途判断 | 未着手 |
+| P11-5 | MBS のプリペイメントと OAS（II-8.8） | **完了**（`docs/spec_mbs.md`）。LagrangeFinance のシナリオ表と 20 経路を再現。静的 OAS は比較元の `uniroot` の精度で最大 0.26 bp の差（N/C） |
+| P11-6 | LMM。**当面は LagrangeFinance の Caplet と相関の例（II-7.4）を再現する範囲**（ユーザーの指示）。本格的なモデルへの拡張は別途判断 | **次にやる** |
 
 **配布ファイルの更新が未了（機能追加の後）**：`dist/` は 0.2.0 のままで、P11-1 と CDS の新しい引数が入っていない。機能追加が一区切りついた後にまとめて更新する。版の番号は未決（新しい関数があるので 0.3.0 を想定）。変える場所は `Cargo.toml`、`crates/riemann-r/src/rust/Cargo.toml`、`DESCRIPTION`、`README.md`、`docs/spec_r.md` 8 章、`tools/package/smoke_test.R`。手順は `crates/riemann-r/README.md`。
 
@@ -126,6 +127,7 @@ LagrangeFinance の入力と計算例で、RiemannFinMath（Rust）を基準と�
 - 照合用の値は Riemann のルートから `tools/golden/*.R` を実行し、`tests/golden/` に書き出す。仕様が変わらなければ作り直さない。
 - 検証レポート：`tools/verify/verify_riemann.qmd`（`quarto render`）と `verify_common.R`、`verify_bonds.R`、`verify_ois.R`、`verify_calendars.R`。R の入口（P4）ができるまで、`crates/riemann/examples/` の `verify_bonds.rs`、`verify_ois.rs`、`verify_calendars.rs` と CSV で受け渡す。OIS は 4 指標の `MonotonicLogCubic` と対数線形を比べる。
 - **アプリ制御**：Smart App Control が有効で、新しくビルドした未署名の実行ファイルを止めることがある（`os error 4551`、`Permission denied`）。起動元によらず、同じファイルでも判定が変わる。イベントログは `Microsoft-Windows-CodeIntegrity/Operational`（ID 3033、3077）。回避しない。レポートで止まった例だけ、環境変数 `RIEMANN_VERIFY_SKIP_EXAMPLES`（例：`verify_bonds`）で飛ばす。その CSV 経路は「not run」と表示される。
+- **比較文書の描画の中断**：`quarto render` が途中の章で終了コード 1 になり、メッセージなしで止まることがある（2026-11-04 に 2 回、3 章と 10 章）。その章は単独では描画でき、同じ時刻にアプリ制御の記録はなく、再実行で全 14 章が通った。原因は未確認。止まったら再実行し、結果の CSV が 14 章分あることを確かめてからコミットする。
 - `Rscript -e` は引用符で失敗しやすいので、スクリプトファイルにする。パッケージのインストールは `devtools::install` ではなく `R CMD INSTALL`（pak の DLL がアプリ制御で止められる）。
 - `rustfmt` にファイルを渡すと `mod` 先まで整形する。テストのファイルでは `tests/common/mod.rs` まで変わるので、`--config skip_children=true` を付けて確かめる。
 - CRLF のファイルは MSYS の sed で CR が消える。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。

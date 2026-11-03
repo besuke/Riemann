@@ -83,3 +83,25 @@ ch11_hull_white,"Repricing error, swaption 2",bp of the notional,QuantLib C++,36
 ch11_hull_white,"Repricing error, swaption 3",bp of the notional,QuantLib C++,-4.35580407479888,-6.149194578450555,-1.7933905036516746,NA,REF,NA
 ch11_hull_white,"Repricing error, swaption 4",bp of the notional,QuantLib C++,-2.616144537889581,-4.7303208464812005,-2.1141763085916194,NA,REF,NA
 ch11_hull_white,"Repricing error, swaption 5",bp of the notional,QuantLib C++,-40.417354388183405,-41.88349716671868,-1.4661427785352785,NA,REF,NA
+ch11_hull_white,"Weighted average life, falling refinancing rates",years,LagrangeFinance II-8.8,7.364866948570316,7.364866948570334,1.865174681370263e-14,1e-4,PASS,NA
+ch11_hull_white,"Weighted average life, flat refinancing rates",years,LagrangeFinance II-8.8,8.314221373189731,8.314221373189747,1.5987211554602254e-14,1e-4,PASS,NA
+ch11_hull_white,"Weighted average life, rising refinancing rates",years,LagrangeFinance II-8.8,9.289543157429678,9.289543157429712,3.375077994860476e-14,1e-4,PASS,NA
+ch11_hull_white,"Price at a fixed 4%, falling",per 100,LagrangeFinance II-8.8,103.03487878738864,103.03487878738866,2.842170943040401e-14,1e-4,PASS,NA
+ch11_hull_white,"Price at a fixed 4%, flat",per 100,LagrangeFinance II-8.8,103.34973152514608,103.34973152514597,-1.1368683772161603e-13,1e-4,PASS,NA
+ch11_hull_white,"Price at a fixed 4%, rising",per 100,LagrangeFinance II-8.8,103.65939341024507,103.659393410245,-7.105427357601002e-14,1e-4,PASS,NA
+ch11_hull_white,"Price on the path rates, falling",per 100,LagrangeFinance II-8.8,109.98191987140184,109.9819198714019,5.684341886080802e-14,1e-4,PASS,NA
+ch11_hull_white,"Price on the path rates, flat",per 100,LagrangeFinance II-8.8,103.34973152514608,103.34973152514597,-1.1368683772161603e-13,1e-4,PASS,NA
+ch11_hull_white,"Price on the path rates, rising",per 100,LagrangeFinance II-8.8,95.67572426292044,95.67572426292033,-1.1368683772161603e-13,1e-4,PASS,NA
+ch11_hull_white,"Principal repaid, falling",per 100,LagrangeFinance II-8.8,100.00000000000009,100.00000000000007,-1.4210854715202004e-14,1e-4,PASS,NA
+ch11_hull_white,"Principal repaid, flat",per 100,LagrangeFinance II-8.8,100.00000000000009,100.00000000000001,-7.105427357601002e-14,1e-4,PASS,NA
+ch11_hull_white,"Principal repaid, rising",per 100,LagrangeFinance II-8.8,99.99999999999994,99.99999999999997,2.842170943040401e-14,1e-4,PASS,NA
+ch11_hull_white,Price on each of the 20 Hull-White paths,per 100,LagrangeFinance II-8.8,NA,NA,1.7053025658242404e-13,1e-4,PASS,NA
+ch11_hull_white,Weighted average life on each path,years,LagrangeFinance II-8.8,NA,NA,5.861977570020827e-14,1e-4,PASS,NA
+ch11_hull_white,Mean price over the 20 paths,per 100,LagrangeFinance II-8.8,117.49391308235388,117.49391308235393,4.263256414560601e-14,1e-4,PASS,NA
+ch11_hull_white,"Mean price, 20000 paths of this package's own numbers",per 100,LagrangeFinance II-8.8,117.49391308235388,117.31654637223058,-0.17736671012330874,NA,N/C,Different random numbers and number of paths: the legacy text uses R's 20 antithetic paths
+ch11_hull_white,"Static OAS, 0% PSA, price 95",bp,LagrangeFinance II-8.8.1,92.68562256278896,92.66542087398646,-0.020201688802501394,NA,N/C,"Different solver accuracy: the legacy R uniroot stops at about 1.2e-4 in the spread, here 1e-12"
+ch11_hull_white,"Static OAS, 0% PSA, price 105",bp,LagrangeFinance II-8.8.1,9.033250123953447,8.773039216982433,-0.26021090697101457,NA,N/C,"Different solver accuracy: the legacy R uniroot stops at about 1.2e-4 in the spread, here 1e-12"
+ch11_hull_white,"Static OAS, 50% PSA, price 95",bp,LagrangeFinance II-8.8.1,113.39435844300418,113.36574994696709,-0.028608496037094255,NA,N/C,"Different solver accuracy: the legacy R uniroot stops at about 1.2e-4 in the spread, here 1e-12"
+ch11_hull_white,"Static OAS, 50% PSA, price 105",bp,LagrangeFinance II-8.8.1,-10.5489098569278,-10.614143581454254,-0.06523372452645404,NA,N/C,"Different solver accuracy: the legacy R uniroot stops at about 1.2e-4 in the spread, here 1e-12"
+ch11_hull_white,"Static OAS, 100% PSA, price 95",bp,LagrangeFinance II-8.8.1,130.1085394819889,130.0171597862288,-0.09137969576011074,NA,N/C,"Different solver accuracy: the legacy R uniroot stops at about 1.2e-4 in the spread, here 1e-12"
+ch11_hull_white,"Static OAS, 100% PSA, price 105",bp,LagrangeFinance II-8.8.1,-26.010199593171425,-26.200396073788767,-0.19019648061734173,NA,N/C,"Different solver accuracy: the legacy R uniroot stops at about 1.2e-4 in the spread, here 1e-12"

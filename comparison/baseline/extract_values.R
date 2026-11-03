@@ -156,7 +156,15 @@ model_rows <- bind_rows(
   row("callable.callable", "II-8.4.2", ch8$tbl_price_comparison$callable_from_model),
   row("callable.call_value", "II-8.4.2", ch8$tbl_price_comparison$issuer_call_value),
   row(sprintf("callable.volatility.%g", ch8$tbl_volatility_sensitivity$short_rate_volatility), "II-8.5", ch8$tbl_volatility_sensitivity$callable_price),
-  row(sprintf("callable.grid.%d", ch8$tbl_grid_convergence$number_of_grid_points), "II-8.6", ch8$tbl_grid_convergence$callable_price)
+  row(sprintf("callable.grid.%d", ch8$tbl_grid_convergence$number_of_grid_points), "II-8.6", ch8$tbl_grid_convergence$callable_price),
+  row(sprintf("mbs.scenario.wal.%d", 1:3), "II-8.8", ch8$tbl_mbs_scenarios$weighted_average_life),
+  row(sprintf("mbs.scenario.price_fixed.%d", 1:3), "II-8.8", ch8$tbl_mbs_scenarios$price_fixed_discount),
+  row(sprintf("mbs.scenario.price_path.%d", 1:3), "II-8.8", ch8$tbl_mbs_scenarios$price_path_discount),
+  row(sprintf("mbs.scenario.principal.%d", 1:3), "II-8.8", ch8$tbl_mbs_scenarios$total_principal),
+  row(sprintf("mbs.path.price.%d", ch8$tbl_mbs_mc$path), "II-8.8", ch8$tbl_mbs_mc$price),
+  row(sprintf("mbs.path.wal.%d", ch8$tbl_mbs_mc$path), "II-8.8", ch8$tbl_mbs_mc$weighted_average_life),
+  row("mbs.path.mean_price", "II-8.8", mean(ch8$tbl_mbs_mc$price)),
+  row(sprintf("mbs.static_oas_bp.%g.%g", ch8$tbl_psa_oas$psa_percent, ch8$tbl_psa_oas$assumed_price), "II-8.8.1", ch8$tbl_psa_oas$oas_bp)
 )
 
 prdc_rows <- bind_rows(

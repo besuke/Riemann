@@ -23,6 +23,7 @@ use riemann::longstaff_schwartz::{
     self, CalibrationPaths, FewInTheMoney, LongstaffSchwartzSettings, PathSequence,
 };
 use riemann::math::sobol::SobolSequence;
+use riemann::mbs::{self, Amortization, PassThroughTerms, RatePaths};
 use riemann::interest_rate::Compounding;
 use riemann::curves::CurveInput;
 use riemann::names;
@@ -1951,6 +1952,96 @@ fn compute_implied_volatility(
     value_list(rows)
 }
 
+// ---- mortgage-backed securities --------------------------------------------------------------------
+
+/// The terms in the order of `create_mbs_pass_through()`: balance, mortgage rate, pass-through rate,
+/// months, PSA multiplier, sensitivity, refinancing cost, CPR cap.
+fn mbs_terms(values: &[f64], amortization: &str) -> Core<PassThroughTerms> {
+    let invalid = |reason: String| riemann::Error::InvalidInput { reason };
+    if values.len() != 8 {
+        return Err(invalid(format!("a pass-through needs 8 numbers, not {}", values.len())));
+    }
+    let amortization = match amortization {
+        "fixed_payment" => Amortization::FixedPayment,
+        "reamortized" => Amortization::Reamortized,
+        other => return Err(invalid(format!("amortization must be fixed_payment or reamortized, not {other}"))),
+    };
+    if !(values[3] >= 1.0) || values[3].fract() != 0.0 {
+        return Err(invalid(format!("months must be a whole number, not {}", values[3])));
+    }
+    let terms = PassThroughTerms {
+        original_balance: values[0],
+        mortgage_rate: values[1],
+        pass_through_rate: values[2],
+        months: values[3] as usize,
+        psa_multiplier: values[4],
+        incentive_sensitivity: values[5],
+        refinancing_cost: values[6],
+        cpr_cap: values[7],
+        amortization,
+    };
+    terms.check()?;
+    Ok(terms)
+}
+
+#[extendr]
+fn check_mbs_pass_through(terms: Vec<f64>, amortization: &str) -> List {
+    outcome(mbs_terms(&terms, amortization).map(|_| list!(valid = true)))
+}
+
+#[extendr]
+fn compute_mbs_cashflows(terms: Vec<f64>, amortization: &str, refinance_rates: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        let c = mbs::compute_mbs_cashflows(&mbs_terms(&terms, amortization)?, &refinance_rates)?;
+        Ok(list!(
+            begin_balance = c.begin_balance,
+            refinance_rate = c.refinance_rate,
+            cpr = c.cpr,
+            smm = c.smm,
+            interest = c.interest,
+            scheduled_principal = c.scheduled_principal,
+            prepaid_principal = c.prepaid_principal,
+            end_balance = c.end_balance,
+            cashflow = c.cashflow
+        ))
+    };
+    outcome(run())
+}
+
+/// Rates come by rows: path 1's months, then path 2's.
+#[extendr]
+fn compute_mbs_path_values(terms: Vec<f64>, amortization: &str, short_rates: Vec<f64>, refinance_rates: Vec<f64>, paths: i32, oas: f64) -> List {
+    let run = || -> Core<List> {
+        let terms = mbs_terms(&terms, amortization)?;
+        let rates = RatePaths { short_rates: &short_rates, refinance_rates: &refinance_rates, paths: paths.max(0) as usize };
+        let v = mbs::compute_mbs_path_values(&terms, &rates, oas)?;
+        Ok(list!(price = v.prices, weighted_average_life = v.weighted_average_lives))
+    };
+    outcome(run())
+}
+
+#[extendr]
+fn compute_mbs_oas(terms: Vec<f64>, amortization: &str, short_rates: Vec<f64>, refinance_rates: Vec<f64>, paths: i32, price: f64) -> List {
+    let run = || -> Core<List> {
+        let terms = mbs_terms(&terms, amortization)?;
+        let rates = RatePaths { short_rates: &short_rates, refinance_rates: &refinance_rates, paths: paths.max(0) as usize };
+        Ok(list!(value = mbs::compute_mbs_oas(&terms, &rates, price)?))
+    };
+    outcome(run())
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn generate_hull_white_monthly_rates(paths: i32, months: i32, flat_rate: f64, mean_reversion: f64, volatility: f64, seed: f64, antithetic: bool) -> List {
+    let run = || -> Core<List> {
+        let rates = mbs::generate_hull_white_monthly_rates(
+            paths.max(0) as usize, months.max(0) as usize, flat_rate, mean_reversion, volatility, seed as u64, antithetic,
+        )?;
+        Ok(list!(rates = rates))
+    };
+    outcome(run())
+}
+
 fn path_sequence(sequence: &str, brownian_bridge: bool, seed: f64) -> Core<PathSequence> {
     match sequence {
         "sobol" => Ok(PathSequence::Sobol { brownian_bridge }),
@@ -2412,6 +2503,11 @@ extendr_module! {
     fn compute_forward_option_value;
     fn compute_implied_volatility;
     fn compute_monte_carlo_european_value;
+    fn check_mbs_pass_through;
+    fn compute_mbs_cashflows;
+    fn compute_mbs_path_values;
+    fn compute_mbs_oas;
+    fn generate_hull_white_monthly_rates;
     fn generate_sobol_sequence;
     fn generate_black_scholes_paths;
     fn compute_longstaff_schwartz_value;

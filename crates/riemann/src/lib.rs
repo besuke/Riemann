@@ -15,6 +15,7 @@ pub mod error;
 pub mod hull_white;
 pub mod instruments;
 pub mod longstaff_schwartz;
+pub mod mbs;
 pub mod interest_rate;
 pub mod math;
 pub mod names;
