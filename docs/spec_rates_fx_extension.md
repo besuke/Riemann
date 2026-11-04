@@ -51,3 +51,22 @@ LagrangeFinance の該当節を読み、RiemannFinMath の実装と突き合わ�
 - 案 2：FX フォワードの期待値が `S × Pf / Pd` に一致すること（国内リスク中立測度での外国金利のクオント調整を含む無裁定の検査）。ゼロクーポン債の価格が初期カーブを再現すること。
 - 案 3：FX のヨーロピアン・オプションには、3 因子のガウス型モデルで解析式がある（対数 FX の分散が金利の寄与を含む）。モンテカルロをこの式と比べる。
 - 案 4：QuantLib には 3 因子の FX・金利モデルがない（v1.42）。外部の比較先は、文献の数値例か、別実装（R で小さく書いた Euler 法）との比較になる。
+
+## 5. 段階 1：通貨ベーシスの期間構造（2026-11-04）【ソース確認・実行照合済み】
+
+実装は `crates/riemann/src/xccy.rs`（ブートストラップの 1 回の走査は `crates/riemann/src/bootstrap.rs` に切り出し、債券のカーブと共有）、R の入口は `crates/riemann-r/R/xccy.R`。
+
+**計算**（QuantLib v1.42 の `FxSwapRateHelper`、`ConstNotionalCrossCurrencyBasisSwapRateHelper`、`MtMCrossCurrencyBasisSwapRateHelper`、`PiecewiseLogLinearDiscount`）：
+
+- 通貨の組は base/quote で、FX は base 1 単位あたりの quote 通貨の額。担保でない通貨の割引カーブを、割引係数の対数線形でブートストラップする。担保通貨は `collateral_curve` で割り引く。
+- FX スワップ：`(担保の比 / 解く曲線の比 - 1) × スポット`（担保が base なら逆）。日付は評価日を営業日に直し、決済日数だけ進め、期間を足す。
+- ベーシス・スワップ：両レグとも名目 1 で、開始と満期に名目を交換する。翌日物レグのクーポンは各指数のカーブで `P(開始) / P(終了) - 1`（同じカーブでの日次複利）。名目リセット型は、各期の開始に名目を FX フォワード（相手通貨の割引係数との比）に直し、期首に貸して期末に利息付きで受け取る。ベーシスはどちらのレグにも付けられる。
+- 結合カレンダー：Riemann には QuantLib の `JointCalendar` がないので、`HolidayCalendar::joined_with` で一方の休日を期間内だけ他方に加える。R の既定は二つの指数のカレンダーの結合。
+
+**照合**（QuantLib R パッケージ 1.42、`tools/golden/p12_xccy_curves.R`、`crates/riemann/tests/golden_xccy_curves.rs`）：USD/JPY（円担保、名目一定と base リセット、ドル担保で quote リセット）と EUR/USD（ドル担保、名目一定と base リセット）の 5 ケース、計 21 節点の割引係数が差 3.3e-16 以内で一致した。指数の予測カーブはフラットな連続複利で与えた。
+
+**円ベーシス込み ASW の拡張**（`compute_yen_asset_swap_on_basis_curve`）：II-3.7.4 の一定の `z` の代わりに、ブートストラップした「円担保の外貨の割引カーブ」`Pb` から FX フォワード `S [Pb(t)/Pb(t0)] / [Pj(t)/Pj(t0)]` を作る。名目一定、担保の選択なしは従来と同じ。
+
+**無裁定の検査**：外貨のカーブを一定の `z`（Actual/365 の連続複利）だけずらしたカーブを `Pb` として渡すと、従来の簡略化モデル（GaussQuant と照合済み）の円 ASW スプレッドと差 1e-13 以内で一致する（GaussQuant の 45 件すべてで確認、`golden_asset_swaps.rs`）。ブートストラップしたベーシス・カーブでは、ベーシスを 10bp 動かすと円 ASW スプレッドがほぼ 10bp 動く（R のテスト）。
+
+**未対応**：固定対変動の通貨スワップ（`ConstNotionalCrossCurrencySwapRateHelper`）、支払いの遅延のあるベーシス・スワップ、評価日前の fixing、名目リセット型の ASW、気配についての感応度（カーブは与えたカーブとして扱う）。

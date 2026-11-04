@@ -501,6 +501,20 @@ impl HolidayCalendar {
         Ok(HolidayCalendar::new(self.calendar.clone(), adj))
     }
 
+    /// This calendar with the holidays of `other` between `from` and `to` added: a business day is
+    /// one for both (QuantLib `JointCalendar` with `JoinHolidays`, over that range only). Both
+    /// calendars must have the same weekend.
+    pub fn joined_with(&self, other: &HolidayCalendar, from: Date, to: Date) -> Result<HolidayCalendar, Error> {
+        let mut adj = (*self.adjustments).clone();
+        for d in other.holidays(from, to, false)? {
+            if self.is_business_day(d)? {
+                adj.removed.remove(&d);
+                adj.added.insert(d);
+            }
+        }
+        Ok(HolidayCalendar::new(self.calendar.clone(), adj))
+    }
+
     /// Holidays between `from` and `to` inclusive (QuantLib `holidayList`).
     pub fn holidays(&self, from: Date, to: Date, include_weekends: bool) -> Result<Vec<Date>, Error> {
         let mut list = Vec::new();

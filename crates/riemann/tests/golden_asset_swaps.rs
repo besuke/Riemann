@@ -6,10 +6,11 @@ mod common;
 
 use common::golden_rows;
 use riemann::asset_swap::{
-    compute_asset_swap_quote_sensitivity, compute_future_basis, compute_ois_asset_swap, compute_yen_asset_swap, FutureBasisTerms,
+    compute_asset_swap_quote_sensitivity, compute_future_basis, compute_ois_asset_swap, compute_yen_asset_swap, compute_yen_asset_swap_on_basis_curve, FutureBasisTerms,
     OisAssetSwapTerms, YenBasisTerms,
 };
 use riemann::curves::{LogDiscountInterpolation, YieldCurve};
+use riemann::interest_rate::Compounding;
 use riemann::instruments::{FixedRateBond, FixedRateBondSpec};
 use riemann::names;
 use riemann::ois::{bootstrap_ois_curve, create_estr_index, create_sofr_index, create_sonia_index, create_tonar_index, OisCurveInstrument, OisCurveSpec, OisInterpolation, OvernightIndex};
@@ -140,6 +141,15 @@ fn yen_asset_swaps_against_gaussquant() {
         close("base leg per annuity", v.yen_base_leg_pv / scale, n(12) / scale, 1e-9, &mut worst);
         close("upfront per annuity", v.upfront_pv / scale, n(13) / scale, 1e-9, &mut worst);
         close("annuity", v.spread_annuity, scale, 1e-7, &mut worst);
+        // no arbitrage between the two forms: the foreign curve spread by the constant z (Actual/365,
+        // as the model's years) as the basis curve gives the same swap
+        let basis_curve = YieldCurve::zero_spreaded(curve_of(&r[0]), v.calibrated_discount_spread, Compounding::Continuous, 0).unwrap();
+        let on_curve = compute_yen_asset_swap_on_basis_curve(
+            &bond, &curve_of(&r[0]), &index_of(&r[0]), &terms, &yen, &create_tonar_index(), &terms, &basis_curve, n(4), n(6) / 1e4, evaluation,
+        )
+        .unwrap();
+        assert!((on_curve.yen_fair_spread - v.yen_fair_spread).abs() < 1e-13, "{r:?}: {} against {}", on_curve.yen_fair_spread, v.yen_fair_spread);
+        assert!((on_curve.npv - v.npv).abs() < 1e-9 * scale, "{r:?}");
     }
     println!("Yen asset swaps: worst absolute difference {worst:e}");
 }

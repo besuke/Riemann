@@ -43,8 +43,11 @@ used for verification:
   ql/termstructures/yield/{zeroyieldstructure,flatforward,zerocurve,discountcurve,
   zerospreadedtermstructure,piecewisezerospreadedtermstructure}.hpp,
   ql/math/interpolations/loginterpolation.hpp
-- crates/riemann/src/bond_curve.rs: ql/termstructures/yield/bondhelpers.cpp,
-  ql/termstructures/yield/bootstraptraits.hpp and ql/termstructures/iterativebootstrap.hpp
+- crates/riemann/src/bond_curve.rs: ql/termstructures/yield/bondhelpers.cpp
+- crates/riemann/src/bootstrap.rs: ql/termstructures/yield/bootstraptraits.hpp and
+  ql/termstructures/iterativebootstrap.hpp
+- crates/riemann/src/xccy.rs: ql/termstructures/yield/ratehelpers.cpp (FxSwapRateHelper) and
+  ql/experimental/termstructures/crosscurrencyratehelpers.cpp
 - crates/riemann/src/math/interpolation.rs: ql/math/interpolations/linearinterpolation.hpp,
   ql/math/interpolation.hpp
 - crates/riemann/src/cashflow_analysis.rs (npv_on_curve): CashFlows::npv with a yield term

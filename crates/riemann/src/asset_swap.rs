@@ -283,28 +283,100 @@ pub fn compute_yen_asset_swap(
         Ok((fx_spot * yen_start * sum - base_jpy_pv - basis * jpy_annuity) / (fx_spot * foreign.nominal))
     };
     let z = solve_brent(objective, 1e-12, 0.0, -1.0, 1.0, 200)?;
+    let forward = |d: Date| -> Result<f64, Error> {
+        Ok(fx_spot * (foreign_curve.discount(d)? / foreign_start) / (yen_curve.discount(d)? / yen_start) * (-z * years(d)).exp())
+    };
+    let mut value = hedged_value(bond, start, yen_curve, &forward, base_jpy_pv, fx_spot * yen.upfront_pv, jpy_annuity, spread)?;
+    value.native_fair_spread = foreign.fair_spread;
+    value.simple_sum = foreign.fair_spread + basis;
+    value.calibrated_discount_spread = z;
+    Ok(value)
+}
 
+/// The yen asset swap once the FX forward is known: the bond's flows converted at the forward and
+/// discounted on the yen curve, against the yen overnight leg, the upfront and the spread annuity.
+#[allow(clippy::too_many_arguments)]
+fn hedged_value(
+    bond: &FixedRateBond,
+    start: Date,
+    yen_curve: &YieldCurve,
+    forward: &dyn Fn(Date) -> Result<f64, Error>,
+    base_jpy_pv: f64,
+    upfront_pv: f64,
+    jpy_annuity: f64,
+    spread: f64,
+) -> Result<YenAssetSwapValue, Error> {
     let mut bond_pv = 0.0;
     for cf in bond.cashflows.iter().filter(|cf| cf.date() > start) {
         let d = cf.date();
-        let forward = fx_spot * (foreign_curve.discount(d)? / foreign_start)
-            / (yen_curve.discount(d)? / yen_start)
-            * (-z * years(d)).exp();
-        bond_pv += cf.amount()? * forward * yen_curve.discount(d)?;
+        bond_pv += cf.amount()? * forward(d)? * yen_curve.discount(d)?;
     }
-    let upfront_pv = fx_spot * yen.upfront_pv;
-    let fair = (bond_pv - base_jpy_pv - upfront_pv) / jpy_annuity;
     Ok(YenAssetSwapValue {
-        native_fair_spread: foreign.fair_spread,
-        yen_fair_spread: fair,
-        simple_sum: foreign.fair_spread + basis,
+        native_fair_spread: f64::NAN,
+        yen_fair_spread: (bond_pv - base_jpy_pv - upfront_pv) / jpy_annuity,
+        simple_sum: f64::NAN,
         npv: base_jpy_pv + upfront_pv + spread * jpy_annuity - bond_pv,
         hedged_bond_pv: bond_pv,
         yen_base_leg_pv: base_jpy_pv,
         upfront_pv,
         spread_annuity: jpy_annuity,
-        calibrated_discount_spread: z,
+        calibrated_discount_spread: f64::NAN,
     })
+}
+
+/// A foreign bond swapped into yen on a basis term structure: `basis_curve` discounts the foreign
+/// currency under yen collateral (from [`crate::xccy::bootstrap_xccy_curve`]), and the FX forward is
+/// `S [Pb(t)/Pb(t0)] / [Pj(t)/Pj(t0)]`, the forward that the curve's FX and basis swaps imply. This
+/// replaces the one constant spread `z` of [`compute_yen_asset_swap`]. Notionals are constant; there
+/// is no collateral choice and no credit or funding adjustment. `simple_sum` and
+/// `calibrated_discount_spread` are NaN.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_yen_asset_swap_on_basis_curve(
+    bond: &FixedRateBond,
+    foreign_curve: &YieldCurve,
+    foreign_index: &OvernightIndex,
+    foreign_terms: &OisAssetSwapTerms,
+    yen_curve: &YieldCurve,
+    yen_index: &OvernightIndex,
+    yen_terms: &OisAssetSwapTerms,
+    basis_curve: &YieldCurve,
+    fx_spot: f64,
+    spread: f64,
+    evaluation_date: Date,
+) -> Result<YenAssetSwapValue, Error> {
+    if fx_spot <= 0.0 || fx_spot.is_nan() {
+        return invalid("the FX spot must be positive");
+    }
+    let foreign = compute_ois_asset_swap(bond, foreign_curve, foreign_index, foreign_terms, evaluation_date)?;
+    let yen = compute_ois_asset_swap(bond, yen_curve, yen_index, yen_terms, evaluation_date)?;
+    let start = foreign.effective_date;
+    if start < evaluation_date {
+        return invalid("the effective date precedes the evaluation date");
+    }
+    let (basis_start, yen_start) = (basis_curve.discount(start)?, yen_curve.discount(start)?);
+    let periods = overnight_leg(yen_index, start, foreign.maturity_date, yen_terms.payment_frequency, yen_terms.payment_lag)?;
+    let mut yen_base_value = 0.0;
+    for p in &periods {
+        let compound = yen_curve.discount(p.start)? / yen_curve.discount(p.end)?;
+        yen_base_value += (compound - 1.0) * foreign.nominal * yen_curve.discount(p.overnight_payment)?;
+    }
+    let last = periods.last().expect("a leg has periods").overnight_payment;
+    yen_base_value += foreign.nominal * yen_curve.discount(last)?;
+    let forward = |d: Date| -> Result<f64, Error> {
+        Ok(fx_spot * (basis_curve.discount(d)? / basis_start) / (yen_curve.discount(d)? / yen_start))
+    };
+    let mut value = hedged_value(
+        bond,
+        start,
+        yen_curve,
+        &forward,
+        fx_spot * yen_base_value,
+        fx_spot * yen.upfront_pv,
+        fx_spot * yen.spread_annuity,
+        spread,
+    )?;
+    value.native_fair_spread = foreign.fair_spread;
+    Ok(value)
 }
 
 /// The basis of a deliverable bond against a bond future (LagrangeFinance II-2.6.3).

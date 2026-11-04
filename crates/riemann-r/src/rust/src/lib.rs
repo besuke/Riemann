@@ -37,6 +37,7 @@ use riemann::risk;
 use riemann::sabr::{self, SabrParameters};
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
 use riemann::yen_bond;
+use riemann::xccy::{bootstrap_xccy_curve as bootstrap_xccy_curve_core, ResettingLeg, XccyCurve, XccyCurveSpec, XccyInstrument, XccyLeg};
 type Core<T> = std::result::Result<T, riemann::Error>;
 fn failure(e: riemann::Error) -> List {
     list!(failure = e.to_string())
@@ -1303,6 +1304,137 @@ fn compute_yen_asset_swap(
         calibrated_discount_spread = columns[8].clone(),
         error = error
     )
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_yen_asset_swap_on_basis_curve(
+    bond: ExternalPtr<FixedRateBond>,
+    foreign_curve: ExternalPtr<OisCurve>,
+    yen_curve: ExternalPtr<OisCurve>,
+    basis_curve: ExternalPtr<OisCurve>,
+    clean_price: Vec<f64>,
+    fx_spot: Vec<f64>,
+    spread: Vec<f64>,
+    foreign_payment_frequency: i32,
+    yen_payment_frequency: i32,
+    foreign_payment_lag: i32,
+    yen_payment_lag: i32,
+    evaluation_date: i32,
+) -> List {
+    let (columns, error) = table(clean_price.len(), |i| {
+        let terms = |frequency: i32, lag: i32| OisAssetSwapTerms {
+            clean_price: clean_price[i],
+            payment_frequency: frequency as u32,
+            payment_lag: lag.max(0) as u32,
+            spread: 0.0,
+        };
+        let v = asset_swap::compute_yen_asset_swap_on_basis_curve(
+            &bond,
+            &foreign_curve.curve,
+            &foreign_curve.spec.index,
+            &terms(foreign_payment_frequency, foreign_payment_lag),
+            &yen_curve.curve,
+            &yen_curve.spec.index,
+            &terms(yen_payment_frequency, yen_payment_lag),
+            &basis_curve.curve,
+            fx_spot[i],
+            spread[i],
+            date(evaluation_date)?,
+        )?;
+        Ok([v.native_fair_spread, v.yen_fair_spread, v.npv, v.hedged_bond_pv, v.yen_base_leg_pv, v.upfront_pv, v.spread_annuity])
+    });
+    list!(
+        native_fair_spread = columns[0].clone(),
+        yen_fair_spread = columns[1].clone(),
+        npv = columns[2].clone(),
+        hedged_bond_pv = columns[3].clone(),
+        yen_base_leg_pv = columns[4].clone(),
+        upfront_pv = columns[5].clone(),
+        spread_annuity = columns[6].clone(),
+        error = error
+    )
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn bootstrap_xccy_curve(
+    evaluation_date: i32,
+    base_curve: ExternalPtr<OisCurve>,
+    quote_curve: ExternalPtr<OisCurve>,
+    collateral_curve: ExternalPtr<OisCurve>,
+    base_is_collateral: bool,
+    fx_spot: f64,
+    kind: Vec<String>,
+    tenor: Vec<String>,
+    quote: Vec<f64>,
+    fixing_days: Vec<i32>,
+    payment_frequency: Vec<i32>,
+    basis_on_base_leg: Vec<i32>,
+    resetting: Vec<String>,
+    calendar: &str,
+    convention: &str,
+    end_of_month: bool,
+    day_count: &str,
+    accuracy: f64,
+) -> List {
+    let build = || -> Core<XccyCurve> {
+        let today = date(evaluation_date)?;
+        let instruments = (0..kind.len())
+            .map(|i| {
+                let tenor = names::parse_period(&tenor[i])?;
+                let fixing_days = fixing_days[i].max(0) as u32;
+                Ok(match kind[i].as_str() {
+                    "fx_swap" => XccyInstrument::FxSwap { tenor, fixing_days, forward_points: quote[i] },
+                    "basis_swap" => XccyInstrument::BasisSwap {
+                        tenor,
+                        fixing_days,
+                        payment_frequency: payment_frequency[i].max(0) as u32,
+                        basis: quote[i],
+                        basis_on_base_leg: basis_on_base_leg[i] != 0,
+                        resetting: match resetting[i].as_str() {
+                            "none" => ResettingLeg::None,
+                            "base" => ResettingLeg::Base,
+                            "quote" => ResettingLeg::Quote,
+                            other => {
+                                return Err(riemann::Error::InvalidInput {
+                                    reason: format!("resetting must be none, base or quote, not {other}"),
+                                })
+                            }
+                        },
+                    },
+                    other => return Err(riemann::Error::InvalidInput { reason: format!("type must be fx_swap or basis_swap, not {other}") }),
+                })
+            })
+            .collect::<Core<Vec<_>>>()?;
+        let horizon = Date::from_serial(today.serial() as i64 + 366 * 61)?;
+        let calendar = if calendar.is_empty() {
+            base_curve.spec.index.calendar.joined_with(&quote_curve.spec.index.calendar, today, horizon)?
+        } else {
+            HolidayCalendar::from(names::parse_calendar(calendar)?)
+        };
+        bootstrap_xccy_curve_core(&XccyCurveSpec {
+            evaluation_date: today,
+            day_count: names::parse_day_count(day_count)?,
+            base: XccyLeg { index: base_curve.spec.index.clone(), forecast: base_curve.curve.clone() },
+            quote: XccyLeg { index: quote_curve.spec.index.clone(), forecast: quote_curve.curve.clone() },
+            base_is_collateral,
+            collateral_curve: collateral_curve.curve.clone(),
+            fx_spot,
+            calendar,
+            convention: names::parse_business_day_convention(convention)?,
+            end_of_month,
+            accuracy,
+            instruments,
+        })
+    };
+    let index = if base_is_collateral { quote_curve.spec.index.clone() } else { base_curve.spec.index.clone() };
+    outcome(build().map(|c| {
+        let curve = OisCurve::given(c.curve, index);
+        list!(
+            value = ExternalPtr::new(curve),
+            pillar_date = c.quote_repricing.iter().map(|r| r.pillar_date.serial() as f64).collect::<Vec<f64>>(),
+            implied_quote = c.quote_repricing.iter().map(|r| r.implied_quote).collect::<Vec<f64>>()
+        )
+    }))
 }
 #[extendr]
 fn compute_future_basis(
@@ -2706,6 +2838,8 @@ extendr_module! {
     fn compute_ois_asset_swap;
     fn compute_asset_swap_quote_sensitivity;
     fn compute_yen_asset_swap;
+    fn compute_yen_asset_swap_on_basis_curve;
+    fn bootstrap_xccy_curve;
     fn compute_future_basis;
     fn compute_hull_white_bond_option_value;
     fn compute_hull_white_swaption_value;
