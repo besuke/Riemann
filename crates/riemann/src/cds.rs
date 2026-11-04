@@ -1,14 +1,15 @@
-//! Credit default swaps: survival curves with piecewise flat hazard rates, the MidPoint and ISDA
-//! engines, and bootstrapping from running spreads.
+//! Credit default swaps: survival curves with piecewise flat hazard rates or linear survival
+//! probabilities, the MidPoint and ISDA engines, and bootstrapping from running spreads or upfronts.
 //!
 //! Reproduces QuantLib v1.42 (modified BSD license; see THIRD_PARTY_NOTICES):
 //! `ql/instruments/creditdefaultswap.cpp` (Copyright (C) 2008, 2009 Jose Aparicio; (C) 2008 Roland
 //! Lichters; (C) 2008 StatPro Italia srl), `ql/pricingengines/credit/midpointcdsengine.cpp`
 //! (Copyright (C) 2008, 2009 Jose Aparicio; (C) 2008 Roland Lichters; (C) 2008, 2009 StatPro Italia
 //! srl), `ql/pricingengines/credit/isdacdsengine.cpp` (Copyright (C) 2014 Jose Aparicio; (C) 2014
-//! Peter Caspers) and `ql/termstructures/credit/defaultprobabilityhelpers.cpp` (Copyright (C) 2008,
+//! Peter Caspers), `ql/termstructures/credit/defaultprobabilityhelpers.cpp` (Copyright (C) 2008,
 //! 2009 Jose Aparicio; (C) 2008 Chris Kenyon; (C) 2008 Roland Lichters; (C) 2008 StatPro Italia srl;
-//! (C) 2023 Andrea Pellegatta).
+//! (C) 2023 Andrea Pellegatta) and `ql/termstructures/credit/interpolatedsurvivalprobabilitycurve.hpp`
+//! (Copyright (C) 2009 Ferdinando Ametrano).
 //!
 //! The engines are generic over [`Operand`], so sensitivities come from automatic differentiation.
 
@@ -27,38 +28,82 @@ fn invalid<T>(reason: String) -> Result<T, Error> {
     Err(Error::InvalidInput { reason })
 }
 
-/// A survival curve with piecewise flat hazard rates: the rate at index `i` holds from the node
-/// before it up to its node (QuantLib `InterpolatedHazardRateCurve<BackwardFlat>`), and the last
-/// rate holds beyond the last node.
+/// What the node values of a [`HazardCurve`] are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CreditCurveShape {
+    /// Piecewise flat hazard rates: the rate at index `i` holds from the node before it up to its
+    /// node (QuantLib `InterpolatedHazardRateCurve<BackwardFlat>`), and the last rate holds beyond
+    /// the last node.
+    FlatHazard,
+    /// Survival probabilities, linear in time between the nodes, with 1 at the reference date.
+    /// Beyond the last node the hazard rate at that node holds (QuantLib
+    /// `InterpolatedSurvivalProbabilityCurve<Linear>`, `SurvivalProbabilityCurve` in Python).
+    LinearSurvival,
+}
+
+/// A survival curve given by nodes after its reference date.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HazardCurve<T = f64> {
     reference_date: Date,
     day_count: DayCount,
+    shape: CreditCurveShape,
     /// After the reference date, increasing.
     dates: Vec<Date>,
     times: Vec<f64>,
-    hazards: Vec<T>,
+    /// Hazard rates or survival probabilities, by `shape`.
+    values: Vec<T>,
 }
 
 impl<T: Operand> HazardCurve<T> {
-    /// A curve from its nodes after the reference date.
+    /// A curve with piecewise flat hazard rates, from its nodes after the reference date.
     pub fn new(
         reference_date: Date,
         day_count: DayCount,
         dates: Vec<Date>,
         hazards: Vec<T>,
     ) -> Result<HazardCurve<T>, Error> {
-        if dates.is_empty() || dates.len() != hazards.len() {
-            return invalid("a hazard curve needs as many rates as dates, at least one".into());
+        HazardCurve::with_shape(reference_date, day_count, CreditCurveShape::FlatHazard, dates, hazards)
+    }
+
+    /// A curve of survival probabilities linear in time, from its nodes after the reference date.
+    /// The probabilities must be positive and must not increase.
+    pub fn survival_probabilities(
+        reference_date: Date,
+        day_count: DayCount,
+        dates: Vec<Date>,
+        probabilities: Vec<T>,
+    ) -> Result<HazardCurve<T>, Error> {
+        let mut previous = 1.0;
+        for (d, p) in dates.iter().zip(&probabilities) {
+            let p = p.primal();
+            if !(p > 0.0 && p <= previous) {
+                return invalid(format!(
+                    "survival probabilities must be positive and must not increase: {p} at {d} after {previous}"
+                ));
+            }
+            previous = p;
+        }
+        HazardCurve::with_shape(reference_date, day_count, CreditCurveShape::LinearSurvival, dates, probabilities)
+    }
+
+    fn with_shape(
+        reference_date: Date,
+        day_count: DayCount,
+        shape: CreditCurveShape,
+        dates: Vec<Date>,
+        values: Vec<T>,
+    ) -> Result<HazardCurve<T>, Error> {
+        if dates.is_empty() || dates.len() != values.len() {
+            return invalid("a survival curve needs as many values as dates, at least one".into());
         }
         if dates[0] <= reference_date || dates.windows(2).any(|w| w[1] <= w[0]) {
-            return invalid("hazard curve dates must follow the reference date and increase".into());
+            return invalid("survival curve dates must follow the reference date and increase".into());
         }
         let times = dates
             .iter()
             .map(|&d| day_count.year_fraction(reference_date, d, None, None))
             .collect::<Result<Vec<_>, Error>>()?;
-        Ok(HazardCurve { reference_date, day_count, dates, times, hazards })
+        Ok(HazardCurve { reference_date, day_count, shape, dates, times, values })
     }
 
     /// One flat rate (QuantLib `FlatHazardRate`).
@@ -71,35 +116,112 @@ impl<T: Operand> HazardCurve<T> {
         self.reference_date
     }
 
+    pub fn shape(&self) -> CreditCurveShape {
+        self.shape
+    }
+
     pub fn dates(&self) -> &[Date] {
         &self.dates
     }
 
-    pub fn hazards(&self) -> &[T] {
-        &self.hazards
+    /// The node values: hazard rates or survival probabilities, by [`HazardCurve::shape`].
+    pub fn values(&self) -> &[T] {
+        &self.values
+    }
+
+    /// The hazard rates of a curve with piecewise flat hazard rates.
+    pub fn hazards(&self) -> Result<&[T], Error> {
+        match self.shape {
+            CreditCurveShape::FlatHazard => Ok(&self.values),
+            CreditCurveShape::LinearSurvival => invalid("the curve is given by survival probabilities".into()),
+        }
+    }
+
+    /// Times and survival probabilities of a linear survival curve, with the reference date.
+    fn survival_node(&self, i: usize) -> (f64, T) {
+        if i == 0 {
+            (0.0, self.values[0].like(1.0))
+        } else {
+            (self.times[i - 1], self.values[i - 1])
+        }
+    }
+
+    /// The segment of a linear survival curve that holds `t`: the one starting at the node on or
+    /// before it, the last one beyond the last node (QuantLib `Interpolation::locate`).
+    fn linear_segment(&self, t: f64) -> usize {
+        self.times.iter().take(self.times.len() - 1).take_while(|&&time| time <= t).count()
     }
 
     /// The probability of surviving to time `t`.
     pub fn survival_at(&self, t: f64) -> T {
-        let mut integral = self.hazards[0].like(0.0);
-        let mut previous = 0.0;
-        for (&time, &hazard) in self.times.iter().zip(&self.hazards) {
-            if t <= time {
-                return (-(integral + hazard * (t - previous))).exp();
+        match self.shape {
+            CreditCurveShape::FlatHazard => {
+                let mut integral = self.values[0].like(0.0);
+                let mut previous = 0.0;
+                for (&time, &hazard) in self.times.iter().zip(&self.values) {
+                    if t <= time {
+                        return (-(integral + hazard * (t - previous))).exp();
+                    }
+                    integral = integral + hazard * (time - previous);
+                    previous = time;
+                }
+                let last = self.values[self.values.len() - 1];
+                (-(integral + last * (t - previous))).exp()
             }
-            integral = integral + hazard * (time - previous);
-            previous = time;
+            CreditCurveShape::LinearSurvival => {
+                let last = self.times.len();
+                if t <= self.times[last - 1] {
+                    let i = self.linear_segment(t);
+                    let ((t0, s0), (t1, s1)) = (self.survival_node(i), self.survival_node(i + 1));
+                    s0 + (s1 - s0) * ((t - t0) / (t1 - t0))
+                } else {
+                    let (t_max, s_max) = self.survival_node(last);
+                    s_max * (-(self.hazard_rate_at(t_max) * (t - t_max))).exp()
+                }
+            }
         }
-        let last = self.hazards[self.hazards.len() - 1];
-        (-(integral + last * (t - previous))).exp()
+    }
+
+    /// The hazard rate at time `t`: the rate of the period holding `t`, or the default density
+    /// over the survival probability (QuantLib `hazardRate`).
+    pub fn hazard_rate_at(&self, t: f64) -> T {
+        match self.shape {
+            CreditCurveShape::FlatHazard => {
+                let i = self.times.iter().position(|&time| t <= time).unwrap_or(self.times.len() - 1);
+                self.values[i]
+            }
+            CreditCurveShape::LinearSurvival => {
+                let last = self.times.len();
+                let i = self.linear_segment(t.min(self.times[last - 1]));
+                let ((t0, s0), (t1, s1)) = (self.survival_node(i), self.survival_node(i + 1));
+                let slope = (s1 - s0) / (t1 - t0);
+                if t <= self.times[last - 1] {
+                    -slope / self.survival_at(t)
+                } else {
+                    -slope / s1
+                }
+            }
+        }
+    }
+
+    fn time_of(&self, d: Date) -> Result<f64, Error> {
+        self.day_count.year_fraction(self.reference_date, d, None, None)
     }
 
     /// The probability of surviving to `d`. Dates before the reference date count as 1.
     pub fn survival(&self, d: Date) -> Result<T, Error> {
         if d <= self.reference_date {
-            return Ok(self.hazards[0].like(1.0));
+            return Ok(self.values[0].like(1.0));
         }
-        Ok(self.survival_at(self.day_count.year_fraction(self.reference_date, d, None, None)?))
+        Ok(self.survival_at(self.time_of(d)?))
+    }
+
+    /// The hazard rate at `d`, which must not be before the reference date.
+    pub fn hazard_rate(&self, d: Date) -> Result<T, Error> {
+        if d < self.reference_date {
+            return invalid(format!("{d} is before the reference date {}", self.reference_date));
+        }
+        Ok(self.hazard_rate_at(self.time_of(d)?))
     }
 }
 
@@ -352,7 +474,7 @@ pub fn compute_isda_value<T: Operand>(
     let effective = cds.protection_start.max(day(today, 1)?);
     let mut nodes: Vec<Date> = curve.discount_nodes().map_or(Vec::new(), |(d, _)| d.to_vec());
     // a flat curve's single artificial node is one day after its reference date, and has no effect
-    if hazard.dates().len() > 1 {
+    if hazard.dates().len() > 1 || hazard.shape() == CreditCurveShape::LinearSurvival {
         nodes.extend(std::iter::once(hazard.reference_date()).chain(hazard.dates().iter().copied()));
     }
     nodes.sort();
@@ -478,11 +600,21 @@ pub fn compute_cds_value<T: Operand>(
     }
 }
 
-/// One running spread to fit (QuantLib `SpreadCdsHelper`).
+/// One quote to fit: a running spread or an upfront, by [`CdsCurveSpec::quote_type`].
 #[derive(Debug, Clone, PartialEq)]
-pub struct SpreadQuote {
+pub struct CdsQuote {
     pub maturity: Date,
-    pub spread: f64,
+    pub value: f64,
+}
+
+/// What the quotes of a curve are.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CdsQuoteType {
+    /// Running spreads (QuantLib `SpreadCdsHelper`).
+    RunningSpread,
+    /// Upfronts per unit of notional, paid by the buyer, on top of a fixed running spread, paid
+    /// `settlement_days` business days after the evaluation date (QuantLib `UpfrontCdsHelper`).
+    Upfront { running_spread: f64, settlement_days: i32 },
 }
 
 /// The conventions shared by the quotes of a curve.
@@ -501,7 +633,8 @@ pub struct CdsCurveSpec {
     pub engine: CdsEngine,
     pub curve_day_count: DayCount,
     pub accuracy: f64,
-    pub quotes: Vec<SpreadQuote>,
+    pub quote_type: CdsQuoteType,
+    pub quotes: Vec<CdsQuote>,
 }
 
 /// A bootstrapped hazard curve.
@@ -512,17 +645,23 @@ pub struct CdsCurve {
 }
 
 impl CdsCurveSpec {
-    /// The swap behind one quote: buyer, notional 100, running spread 1% (QuantLib `CdsHelper`).
+    /// The swap behind one quote: buyer, notional 100, running spread 1% for a spread quote
+    /// (QuantLib `CdsHelper`), the fixed running spread and the upfront settlement for an upfront
+    /// quote (QuantLib `UpfrontCdsHelper`, whose upfront is a placeholder for the fair upfront).
     fn helper(&self, maturity: Date) -> Result<Cds, Error> {
         let protection_start = Date::from_serial(self.evaluation_date.serial() as i64 + self.settlement_days as i64)?;
         let start = match self.rule {
             DateGenerationRule::Cds | DateGenerationRule::Cds2015 => protection_start,
             _ => self.calendar.adjust(protection_start, self.payment_convention)?,
         };
+        let (running_spread, upfront, cash_settlement_days) = match self.quote_type {
+            CdsQuoteType::RunningSpread => (0.01, None, 3),
+            CdsQuoteType::Upfront { running_spread, settlement_days } => (running_spread, Some(0.01), settlement_days),
+        };
         Cds::new(CdsSpec {
             side: ProtectionSide::Buyer,
             notional: 100.0,
-            running_spread: 0.01,
+            running_spread,
             schedule: ScheduleSpec {
                 effective_date: start,
                 termination_date: maturity,
@@ -538,12 +677,22 @@ impl CdsCurveSpec {
             payment_convention: self.payment_convention,
             day_count: self.day_count.clone(),
             last_period_day_count: self.last_period_day_count.clone(),
-            upfront: None,
+            upfront,
             protection_start: Some(protection_start),
             trade_date: Some(self.evaluation_date),
-            cash_settlement_days: 3,
+            cash_settlement_days,
             rebates_accrual: self.rebates_accrual,
         })
+    }
+
+    /// The quoted value implied by a curve: the fair spread or the fair upfront.
+    fn implied<T: Operand>(&self, v: &CdsValue<T>, maturity: Date) -> Result<T, Error> {
+        match self.quote_type {
+            CdsQuoteType::RunningSpread => Ok(v.fair_spread),
+            CdsQuoteType::Upfront { .. } => v.fair_upfront.ok_or_else(|| Error::InvalidInput {
+                reason: format!("the upfront of the quote at {maturity} is not paid after the evaluation date"),
+            }),
+        }
     }
 
     /// The node of a quote: its last date, one day later for the ISDA engine.
@@ -559,8 +708,8 @@ impl CdsCurveSpec {
 const AVERAGE_HAZARD: f64 = 0.01;
 const MAX_HAZARD: f64 = 1.0;
 
-/// Bootstraps piecewise flat hazard rates from running spreads, one Brent search per node from the
-/// shortest quote (QuantLib `PiecewiseFlatHazardRate`, whose interpolation needs a single pass).
+/// Bootstraps piecewise flat hazard rates from running spreads or upfronts, one Brent search per
+/// node from the shortest quote (QuantLib `PiecewiseFlatHazardRate`, whose interpolation needs a single pass).
 pub fn bootstrap_hazard_curve(spec: &CdsCurveSpec, curve: &YieldCurve) -> Result<CdsCurve, Error> {
     if spec.quotes.is_empty() {
         return invalid("no spreads given".into());
@@ -586,10 +735,10 @@ pub fn bootstrap_hazard_curve(spec: &CdsCurveSpec, curve: &YieldCurve) -> Result
             trial[at] = h;
             let curve_h = HazardCurve::new(today, spec.curve_day_count.clone(), dates.clone(), trial)?;
             let v = compute_cds_value(spec.engine, &cds, &curve_h, spec.recovery, curve, today)?;
-            Ok(quote.spread - v.fair_spread)
+            Ok(quote.value - spec.implied(&v, quote.maturity)?)
         };
         let root = solve_brent(objective, spec.accuracy, guess, f64::EPSILON, MAX_HAZARD, 100).map_err(|e| {
-            Error::NoConvergence { reason: format!("spread at {}: {e}", quote.maturity) }
+            Error::NoConvergence { reason: format!("quote at {}: {e}", quote.maturity) }
         })?;
         hazards[position] = root;
     }
@@ -605,11 +754,12 @@ pub struct CdsQuoteSensitivity {
     /// Position in `CdsCurveSpec::quotes`.
     pub quote: usize,
     pub maturity: Date,
-    pub spread: f64,
+    /// The quoted running spread or upfront.
+    pub value: f64,
     pub d_npv: f64,
 }
 
-/// A swap's value and its sensitivities: to each running spread of the curve, with the curve
+/// A swap's value and its sensitivities: to each quote of the curve, with the curve
 /// following by the implicit function theorem, and to the recovery rate with the hazard curve fixed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CdsSensitivity {
@@ -631,18 +781,19 @@ pub fn compute_cds_sensitivity(
     order.sort_by_key(|&i| spec.quotes[i].maturity);
     let n = order.len();
     let rec = Recorder::new();
-    let inputs: Vec<_> = curve_h.hazard.hazards().iter().map(|&h| rec.input(h)).collect();
+    let inputs: Vec<_> = curve_h.hazard.hazards()?.iter().map(|&h| rec.input(h)).collect();
     let lifted_hazard = HazardCurve::new(today, spec.curve_day_count.clone(), curve_h.hazard.dates().to_vec(), inputs.clone())?;
     let lifted_curve = curve.lift(&rec)?;
     let recovery = rec.input(spec.recovery);
     let value = compute_cds_value(engine, cds, &lifted_hazard, recovery, &lifted_curve.curve, today)?;
 
-    // d implied spread / d hazard: lower triangular
+    // d implied quote / d hazard: lower triangular
     let mut rows = Vec::with_capacity(n);
     for &i in &order {
-        let helper = spec.helper(spec.quotes[i].maturity)?;
+        let maturity = spec.quotes[i].maturity;
+        let helper = spec.helper(maturity)?;
         let v = compute_cds_value(spec.engine, &helper, &lifted_hazard, rec.constant(spec.recovery), &lifted_curve.curve, today)?;
-        rows.push(rec.gradient(v.fair_spread, &inputs)?.iter().map(|g| g.mean()).collect::<Vec<f64>>());
+        rows.push(rec.gradient(spec.implied(&v, maturity)?, &inputs)?.iter().map(|g| g.mean()).collect::<Vec<f64>>());
     }
     let inverse_rows = compute_inverse(&rows)?;
     let g = rec.gradient(value.npv, &inputs)?;
@@ -650,7 +801,7 @@ pub fn compute_cds_sensitivity(
         .map(|k| CdsQuoteSensitivity {
             quote: order[k],
             maturity: spec.quotes[order[k]].maturity,
-            spread: spec.quotes[order[k]].spread,
+            value: spec.quotes[order[k]].value,
             d_npv: (0..n).map(|i| g[i].mean() * inverse_rows[i][k]).sum(),
         })
         .collect();
@@ -753,6 +904,10 @@ mod tests {
     }
 
     fn curve_spec(engine: CdsEngine, spreads: &[(i32, f64)]) -> CdsCurveSpec {
+        quoted_spec(engine, CdsQuoteType::RunningSpread, spreads)
+    }
+
+    fn quoted_spec(engine: CdsEngine, quote_type: CdsQuoteType, quotes: &[(i32, f64)]) -> CdsCurveSpec {
         CdsCurveSpec {
             evaluation_date: d(2026, 11, 2),
             settlement_days: 0,
@@ -767,49 +922,102 @@ mod tests {
             engine,
             curve_day_count: act365(),
             accuracy: 1e-12,
-            quotes: spreads
-                .iter()
-                .map(|&(y, spread)| SpreadQuote { maturity: d(2026 + y, 12, 20), spread })
-                .collect(),
+            quote_type,
+            quotes: quotes.iter().map(|&(y, value)| CdsQuote { maturity: d(2026 + y, 12, 20), value }).collect(),
         }
     }
 
     #[test]
-    fn bootstrapping_reprices_the_spreads_and_sensitivities_agree_with_rebuilding() {
-        let spreads = [(1, 0.006), (3, 0.009), (5, 0.012), (10, 0.015)];
+    fn bootstrapping_reprices_the_quotes_and_sensitivities_agree_with_rebuilding() {
+        let upfront = CdsQuoteType::Upfront { running_spread: 0.01, settlement_days: 3 };
+        let cases = [
+            (CdsQuoteType::RunningSpread, [(1, 0.006), (3, 0.009), (5, 0.012), (10, 0.015)]),
+            (upfront, [(1, -0.002), (3, -0.008), (5, -0.004), (10, 0.011)]),
+        ];
         let rates = curve(0.02);
         let today = d(2026, 11, 2);
-        for engine in [CdsEngine::MidPoint, CdsEngine::Isda] {
-            let s = curve_spec(engine, &spreads);
-            let built = bootstrap_hazard_curve(&s, &rates).unwrap();
-            for q in &s.quotes {
-                let helper = s.helper(q.maturity).unwrap();
-                let v = compute_cds_value(engine, &helper, &built.hazard, 0.4, &rates, today).unwrap();
-                assert!((v.fair_spread - q.spread).abs() < 1e-9, "{engine:?}: {} {}", v.fair_spread, q.spread);
+        for (quote_type, quotes) in cases {
+            for engine in [CdsEngine::MidPoint, CdsEngine::Isda] {
+                let s = quoted_spec(engine, quote_type, &quotes);
+                let built = bootstrap_hazard_curve(&s, &rates).unwrap();
+                for q in &s.quotes {
+                    let helper = s.helper(q.maturity).unwrap();
+                    let v = compute_cds_value(engine, &helper, &built.hazard, 0.4, &rates, today).unwrap();
+                    let implied = s.implied(&v, q.maturity).unwrap();
+                    assert!((implied - q.value).abs() < 1e-9, "{engine:?} {quote_type:?}: {implied} {}", q.value);
+                }
+                // a coupon unlike the quotes', so that the value depends on more than the 5-year quote
+                let swap = Cds::new(CdsSpec { upfront: Some(0.0), ..spec(0.013, ProtectionSide::Buyer) }).unwrap();
+                sensitivities_agree_with_rebuilding(engine, quote_type, quotes, &swap, &built);
             }
-            let swap = Cds::new(CdsSpec { upfront: Some(0.0), ..spec(0.01, ProtectionSide::Buyer) }).unwrap();
-            let sens = compute_cds_sensitivity(engine, &swap, &built, &rates, today).unwrap();
+        }
+    }
+
+    fn sensitivities_agree_with_rebuilding(
+        engine: CdsEngine,
+        quote_type: CdsQuoteType,
+        quotes: [(i32, f64); 4],
+        swap: &Cds,
+        built: &CdsCurve,
+    ) {
+        let rates = curve(0.02);
+        let today = d(2026, 11, 2);
+        {
+            let sens = compute_cds_sensitivity(engine, swap, built, &rates, today).unwrap();
             assert_eq!(sens.quotes.len(), 4);
             for row in &sens.quotes {
                 let value_with = |bump: f64| {
-                    let mut bumped = spreads;
+                    let mut bumped = quotes;
                     bumped[row.quote].1 += bump;
-                    let b = bootstrap_hazard_curve(&curve_spec(engine, &bumped), &rates).unwrap();
-                    compute_cds_value(engine, &swap, &b.hazard, 0.4, &rates, today).unwrap().npv
+                    let b = bootstrap_hazard_curve(&quoted_spec(engine, quote_type, &bumped), &rates).unwrap();
+                    compute_cds_value(engine, swap, &b.hazard, 0.4, &rates, today).unwrap().npv
                 };
                 let h = 1e-6;
                 let numeric = (value_with(h) - value_with(-h)) / (2.0 * h);
                 assert!(
                     (row.d_npv - numeric).abs() < 1e-5 * numeric.abs().max(1.0),
-                    "{engine:?} {}: {} {numeric}",
+                    "{engine:?} {quote_type:?} {}: {} {numeric}",
                     row.quote,
                     row.d_npv
                 );
             }
-            let with_recovery = |r: f64| compute_cds_value(engine, &swap, &built.hazard, r, &rates, today).unwrap().npv;
+            let with_recovery = |r: f64| compute_cds_value(engine, swap, &built.hazard, r, &rates, today).unwrap().npv;
             let numeric = (with_recovery(0.4 + 1e-6) - with_recovery(0.4 - 1e-6)) / 2e-6;
             assert!((sens.d_npv_d_recovery - numeric).abs() < 1e-5 * numeric.abs().max(1.0));
         }
+    }
+
+    #[test]
+    fn a_linear_survival_curve_interpolates_probabilities_and_extrapolates_the_last_hazard() {
+        let today = d(2025, 9, 22);
+        let dates = vec![d(2026, 9, 22), d(2027, 9, 22), d(2030, 9, 22)];
+        let c = HazardCurve::survival_probabilities(today, act365(), dates.clone(), vec![0.995, 0.985, 0.97]).unwrap();
+        assert_eq!(c.survival(d(2027, 9, 22)).unwrap(), 0.985);
+        // halfway in time between the first two nodes
+        let t1 = 1.0;
+        let t2 = 730.0 / 365.0;
+        let mid = (t1 + t2) / 2.0;
+        assert!((c.survival_at(mid) - 0.99).abs() < 1e-15);
+        assert!((c.hazard_rate_at(mid) - (0.01 / (t2 - t1)) / 0.99).abs() < 1e-15);
+        // beyond the last node the hazard at that node holds
+        let t3 = c.times[2];
+        let h = (0.015 / (t3 - t2)) / 0.97;
+        assert!((c.hazard_rate_at(t3 + 1.0) - h).abs() < 1e-15);
+        assert!((c.survival_at(t3 + 1.0) - 0.97 * (-h).exp()).abs() < 1e-15);
+        assert!(c.hazards().is_err());
+        assert!(HazardCurve::survival_probabilities(today, act365(), dates.clone(), vec![0.995, 0.996, 0.97]).is_err());
+        assert!(HazardCurve::survival_probabilities(today, act365(), dates, vec![0.995, 0.985, 0.0]).is_err());
+    }
+
+    #[test]
+    fn a_flat_hazard_curve_reports_the_rate_of_each_period() {
+        let today = d(2026, 11, 2);
+        let c = HazardCurve::new(today, act365(), vec![d(2027, 11, 2), d(2028, 11, 2)], vec![0.01, 0.03]).unwrap();
+        assert_eq!(c.hazard_rate(today).unwrap(), 0.01);
+        assert_eq!(c.hazard_rate(d(2027, 11, 2)).unwrap(), 0.01);
+        assert_eq!(c.hazard_rate(d(2027, 11, 3)).unwrap(), 0.03);
+        assert_eq!(c.hazard_rate(d(2040, 1, 1)).unwrap(), 0.03);
+        assert!(c.hazard_rate(d(2026, 11, 1)).is_err());
     }
 
     #[test]

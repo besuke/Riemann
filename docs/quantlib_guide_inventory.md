@@ -79,8 +79,8 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 34 | Assessing duration risk | 債券ヘルパーで米国債カーブ、平行・ツイスト・ストレス | 未対応 | 債券ヘルパー、線形ゼロ補間、区分的スプレッド |
 | 36 | Inflation indexes and curves | HICP、ゼロインフレカーブ、季節性、ZCIIS | 未対応 | インフレ全般 |
 | 37 | Inflation bonds | CPI 債 | 未対応 | インフレ全般 |
-| 39 | Default-probability curves | Upfront・Spread の CDS ヘルパー、MidPoint・ISDA、生存確率カーブ | 一部対応 | Upfront ヘルパー、生存確率・密度のカーブ。Spread ヘルパーの曲線は再現した（`cds.R`。QuantLib 1.42 と一致、Guide のデフォルト確率の表示とは約 0.007 ポイント差） |
-| 40 | Bonds and CDS curves | 信用リスクを含む債券評価、スプレッド換算 | 未対応 | リスキー債券エンジン、Upfront ヘルパー |
+| 39 | Default-probability curves | Upfront・Spread の CDS ヘルパー、MidPoint・ISDA、生存確率カーブ | 一部対応 | デフォルト密度（`defaultDensity`）と `DefaultDensityCurve`。Upfront と Spread のヘルパーの曲線、確認用 CDS、ハザード率、生存確率カーブは再現した（`cds.R`。すべて QuantLib 1.42 と一致。Guide の表示とは版の差：確認用 CDS の NPV が Guide は -0.2777（プレミアム 1 日分）、ここと 1.42 は 0。デフォルト確率は最大 0.009 ポイント差） |
+| 40 | Bonds and CDS curves | 信用リスクを含む債券評価、スプレッド換算 | 未対応 | リスキー債券エンジン（Upfront ヘルパーは 2026-11-04 に追加） |
 
 章の導入（3、15、30、35、38）、表紙、Feedback には例がない。
 
@@ -113,10 +113,10 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 
 効果（使えるようになる例の数）と作業量で並べた。
 
-1. **R からカーブを作る関数**（フラット、ゼロ金利、割引係数、ゼロスプレッド）。Rust にはあり、公開するだけで済む。Guide 2、9、13、14、16、23、24、33 と Examples の一部の前提になる。
-2. **任意のキャッシュフローの NPV・BPS、`yearFraction`、カレンダーの `adjust`・`advance`、スケジュールの生成**の公開。Guide 5、6、14、22 が使う。いずれも内部にある。
-3. **SimpleThenCompounded** と、**ステップアップ・アモチ**の固定利付債。Guide 7、23、29 が使う。
-4. **CDS の Upfront ヘルパーと生存確率カーブ**。Guide 39、40 が使う。
+1. **R からカーブを作る関数**（フラット、ゼロ金利、割引係数、ゼロスプレッド）。Rust にはあり、公開するだけで済む。Guide 2、9、13、14、16、23、24、33 と Examples の一部の前提になる。**実装済み**。
+2. **任意のキャッシュフローの NPV・BPS、`yearFraction`、カレンダーの `adjust`・`advance`、スケジュールの生成**の公開。Guide 5、6、14、22 が使う。いずれも内部にある。**実装済み**。
+3. **SimpleThenCompounded** と、**ステップアップ・アモチ**の固定利付債。Guide 7、23、29 が使う。**実装済み**。
+4. **CDS の Upfront ヘルパーと生存確率カーブ**。Guide 39、40 が使う。**実装済み**（`bootstrap_hazard_curve(quote_type = "upfront")`、`create_survival_probability_curve`、`compute_hazard_rate`）。Guide 40 のリスキー債券エンジンは含まない。
 5. **債券ヘルパーのブートストラップと線形ゼロ補間**。Guide 34、Examples Bonds が使う。
 6. **American オプションの近似式**（Barone-Adesi–Whaley、Bjerksund–Stensland）。Examples EquityOption、LagrangeFinance II-4.5 が使う。
 
@@ -135,5 +135,5 @@ R パッケージの `inst/examples/quantlib_guide/` にある。一覧と主要
 | 固定利付債のキャッシュフロー、利回り、デュレーション、コンベクシティ、評価日の変更 | Guide 7、14、23（利回りで計算する部分） | `create_fixed_rate_bond`、`get_bond_cashflows`、`compute_bond_values`、`compute_yield_from_price`、`compute_duration`、`compute_convexity` |
 | SOFR の OIS カーブでの Z スプレッドと i スプレッド | Guide 29（SimpleThenCompounded の利回りを除く） | `bootstrap_ois_curve`、`compute_z_spread_from_price` |
 | European オプションの価格と Greeks、バリアの Greeks | Guide 10（Heston を除く）、31 | `compute_european_option_value`、`compute_barrier_option_value` |
-| Spread ヘルパーのハザードカーブと MidPoint・ISDA の CDS | Guide 39（旧規約の部分）、Examples CDS（ハザード部分） | `bootstrap_hazard_curve`、`create_credit_default_swap`、`compute_cds_value` |
+| Spread・Upfront ヘルパーのハザードカーブ、生存確率カーブと MidPoint・ISDA の CDS | Guide 39、Examples CDS（ハザード部分） | `bootstrap_hazard_curve`、`create_survival_probability_curve`、`compute_hazard_rate`、`create_credit_default_swap`、`compute_cds_value` |
 | カレンダーの休日と営業日 | Guide 5（`isHoliday`、`isBusinessDay`） | `is_business_day` |

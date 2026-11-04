@@ -8,10 +8,11 @@
 |---|---|---|
 | CDS の契約 | `create_credit_default_swap` | `CreditDefaultSwap` |
 | 評価（MidPoint、ISDA） | `compute_cds_value` | `MidPointCdsEngine`、`IsdaCdsEngine` |
-| 生存確率 | `create_hazard_curve`、`compute_survival_probability` | `FlatHazardRate`、`InterpolatedHazardRateCurve<BackwardFlat>` |
-| ハザードのブートストラップ | `bootstrap_hazard_curve` | `PiecewiseFlatHazardRate`、`SpreadCdsHelper` |
+| 生存確率、ハザード率 | `create_hazard_curve`、`compute_survival_probability`、`compute_hazard_rate` | `FlatHazardRate`、`InterpolatedHazardRateCurve<BackwardFlat>`、`hazardRate` |
+| 生存確率を与えたカーブ（線形補間） | `create_survival_probability_curve` | `SurvivalProbabilityCurve`（`InterpolatedSurvivalProbabilityCurve<Linear>`） |
+| ハザードのブートストラップ | `bootstrap_hazard_curve`（`quote_type = "spread"`、`"upfront"`） | `PiecewiseFlatHazardRate`、`SpreadCdsHelper`、`UpfrontCdsHelper` |
 | 標準 CDS の満期 | `compute_cds_maturity` | `cdsMaturity` |
-| スプレッドと回収率の感応度 | `compute_cds_quote_sensitivity` | なし（自動微分） |
+| 気配（スプレッドまたはアップフロント）と回収率の感応度 | `compute_cds_quote_sensitivity` | なし（自動微分） |
 
 スケジュールの規則 `cds` と `cds2015` を、この段階で実装した（`time/schedule.rs`）。
 
@@ -51,9 +52,21 @@ LagrangeFinance II-5.6 は、GaussQuant を通してこのビルダーで標準 
 
 **照合**（2026-11-02、QuantLib R パッケージ 1.42、`MakeCreditDefaultSwap` を直接呼ぶ合成入力 200 件、`tools/golden/p8_cds_builder.R`、`crates/riemann/tests/golden_cds.rs`）：NPV、coupon leg、default leg、rebate、fair spread、fair upfront の差は想定元本あたり最大 1.9e-16 である。
 
+## 3.2 Upfront の気配と生存確率のカーブ（2026-11-04）【ソース確認・実行照合済み】
+
+**Upfront の気配**（`UpfrontCdsHelper`、`defaultprobabilityhelpers.cpp`、v1.42）：各気配の CDS は、買い手、想定元本 100、固定のランニングスプレッド（`running_spread`）で、アップフロントは評価日から `upfront_settlement_days` 営業日後（支払いの営業日調整は `payment_convention`）に支払う。取引日は評価日、保護の開始日は評価日の `settlement_days` 暦日後である。ハザードは、エンジンの fair upfront が気配に等しくなるように節点ごとに Brent 法で解く（スプレッドの気配と同じ手順）。QuantLib はこの計算で `includeTodaysCashFlows` を真にする。ここではアップフロントの支払日が評価日より後のときだけ fair upfront を定義するので、支払日数が 0 の場合は扱わず、エラーにする。感応度は、陰関数定理の行列を fair upfront の微分で作る。
+
+**生存確率のカーブ**（`interpolatedsurvivalprobabilitycurve.hpp`、v1.42）：参照日に 1、節点の間は時間について線形に補間する。最後の節点の後は、その節点でのハザード率（最後の区間の傾き ÷ 生存確率）を一定とする。確率は正で、増えてはならない（QuantLib と同じ検査）。ハザード率は −傾き ÷ 生存確率で、節点ではその節点から始まる区間の傾きを使う（QuantLib の `locate`）。区分的に一定のハザードのカーブでは、節点ではその節点で終わる区間の率である（`BackwardFlat`）。ISDA エンジンにも渡せるが、ISDA エンジンは節点の間でハザードが一定と仮定して積分を分けるので、線形の生存確率のカーブでは近似になる。
+
+**照合**（2026-11-04、QuantLib R パッケージ 1.42、`crates/riemann-r/inst/examples/quantlib_guide/cds.R`）：QuantLib Guide「Default-probability curves」の条件で、Upfront の気配から作ったカーブ 4 本（3 つの評価日の MidPoint、ISDA）の 24 節点のハザード率とデフォルト確率は差 2.2e-15 以下（% 表示で）、確認用 CDS の NPV と fair upfront、ハザード率、生存確率のカーブの値は一致した（差 0）。最後の節点より後の生存確率とハザード率も一致した。
+
+**Guide の表示との差**（QuantLib の版の差）：Guide の確認用 CDS の NPV は -0.2777、fair upfront は -0.80278% で、気配 -0.8% からプレミアム 1 日分（10,000 × 1% ÷ 360 = 0.2778）ずれている。QuantLib 1.42 で Guide と同じ呼び方をすると、NPV は 0（3.98e-13）、fair upfront は -0.8% で、RiemannFinMath と一致する。v1.42 のヘルパーの最終期間の日数計算は、指定がなければ通常の日数計算である（ソース確認）。Guide の版で何が違ったかは確かめていない（未確認）。同じ理由と考えられる差として、デフォルト確率が Guide の 2 桁表示より最大 0.009 ポイント大きく、9 月 19 日の最初の節点のハザード率が 1.2309%（Guide は 1.22%）である。生存確率のカーブ（`SurvivalProbabilityCurve`）は Guide の表示と一致した。
+
 ## 4. 未対応
 
-- CDS オプション、インデックス、`UpfrontCdsHelper` の気配。
+- CDS オプション、インデックス。
+- デフォルト密度（`defaultDensity`）、`DefaultDensityCurve`、生存確率カーブの線形以外の補間。
+- スプレッドとアップフロントを混ぜた気配でのブートストラップ（QuantLib はヘルパーを混ぜられる）。
 - 請求の変更（額面以外）、デフォルト時以外の支払い。
 - ISDA エンジンの数値設定の切り替え。
 - 金利カーブの気配についての感応度。ノードの微分は計算の中で持っているので、必要になれば足せる。

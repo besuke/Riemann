@@ -103,8 +103,9 @@ used for verification:
 - crates/riemann/src/longstaff_schwartz.rs: ql/methods/montecarlo/longstaffschwartzpathpricer.hpp
   (Copyright (C) 2006 Klaus Spanderen; (C) 2015 Peter Caspers; (C) 2015 Thema Consulting SA)
 - crates/riemann/src/cds.rs: ql/instruments/creditdefaultswap.cpp,
-  ql/pricingengines/credit/midpointcdsengine.cpp, ql/pricingengines/credit/isdacdsengine.cpp and
-  ql/termstructures/credit/defaultprobabilityhelpers.cpp
+  ql/pricingengines/credit/midpointcdsengine.cpp, ql/pricingengines/credit/isdacdsengine.cpp,
+  ql/termstructures/credit/defaultprobabilityhelpers.cpp and
+  ql/termstructures/credit/interpolatedsurvivalprobabilitycurve.hpp
 - crates/riemann/src/time/schedule.rs (Cds and Cds2015 rules, cds_maturity):
   ql/time/schedule.cpp and ql/instruments/creditdefaultswap.cpp
 

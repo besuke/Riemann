@@ -33,11 +33,27 @@ test_that("the curve example reproduces the Guide's discount factors and prices"
   expect_lt(max(abs(r$riemann_minus_guide[r$note == "" | grepl("moves the reference date", r$note)])), 1e-12)
 })
 
-test_that("the CDS example rounds to the Guide's hazard rates", {
+test_that("the CDS example reproduces the Guide's nodes and survival curve, up to its version differences", {
   r <- NULL
   capture.output(r <- source(guide_script("cds.R"), local = new.env())$value)
-  expect_equal(round(r$riemann_hazard_pct, 2), r$guide_hazard_pct)
-  expect_equal(r$node, r$guide_node)
+  s <- r$spread_nodes
+  expect_equal(round(s$riemann_hazard_pct, 2), s$guide_hazard_pct)
+  expect_equal(s$node, s$guide_node)
+  u <- r$upfront_nodes
+  expect_equal(u$node, u$guide_node)
+  # the Guide's prints, 2 decimals; one hazard rate (19 September, first node) and the default
+  # probabilities differ from QuantLib 1.42 by up to 0.011 and 0.009 points
+  expect_lt(max(abs(u$riemann_hazard_pct - u$guide_hazard_pct)), 0.011)
+  expect_true(all(u$riemann_default_pct - u$guide_default_pct >= 0 & u$riemann_default_pct - u$guide_default_pct < 0.0095))
+  # the survival-probability curve matches the Guide's print
+  expect_equal(r$checks$riemann[8:9], r$checks$guide[8:9], tolerance = 1e-14)
+  # the check CDS is fair at the quote: worth 0 with its fair upfront the quote
+  expect_lt(max(abs(r$checks$riemann[c(1, 4)])), 1e-9)
+  expect_equal(r$checks$riemann[c(2, 5)], c(-0.008, -0.008), tolerance = 1e-12)
+  if (requireNamespace("QuantLib", quietly = TRUE)) {
+    expect_lt(max(abs(u$riemann_hazard_pct - u$quantlib_hazard_pct)), 1e-10)
+    expect_lt(max(abs(r$checks$riemann - r$checks$quantlib_local)), 1e-10)
+  }
 })
 
 test_that("the dates example matches every printed value", {

@@ -53,16 +53,21 @@ print.riemann_cds <- function(x, ...) {
 #' Survival curves and CDS values
 #'
 #' `create_hazard_curve()` makes a curve with piecewise flat hazard rates, where each rate holds up to its
-#' date, and the last rate holds beyond it. `bootstrap_hazard_curve()` fits the rates to running
-#' spreads. `compute_cds_value()` values a swap with the MidPoint or ISDA engine. The ISDA engine needs both
+#' date, and the last rate holds beyond it. `create_survival_probability_curve()` makes a curve of survival
+#' probabilities, linear in time between the nodes and 1 at the reference date; beyond the last node the
+#' hazard rate at that node holds (QuantLib `SurvivalProbabilityCurve`). `bootstrap_hazard_curve()` fits
+#' piecewise flat hazard rates to running spreads, or to upfronts on top of a fixed running spread
+#' (QuantLib `SpreadCdsHelper` and `UpfrontCdsHelper`). `compute_hazard_rate()` gives the hazard rate on
+#' dates. `compute_cds_value()` values a swap with the MidPoint or ISDA engine. The ISDA engine needs both
 #' curves on the evaluation date, on Actual/365 (Fixed).
 #'
-#' `compute_cds_quote_sensitivity()` gives the change of the value for +1bp on each spread, with the hazard
+#' `compute_cds_quote_sensitivity()` gives the change of the value for +1bp on each quote, with the hazard
 #' curve following, and the change for +1% of recovery with the hazard curve fixed. These derivatives
 #' come from automatic differentiation and the implicit function theorem.
 #'
 #' @param reference_date,evaluation_date Dates.
 #' @param dates,hazard Node dates and hazard rates.
+#' @param probability Survival probabilities at `dates`, positive and not increasing.
 #' @param day_count Day count of the hazard curve's times.
 #' @param curve A survival curve from `create_hazard_curve()` or `bootstrap_hazard_curve()`.
 #' @param date Dates.
@@ -70,18 +75,32 @@ print.riemann_cds <- function(x, ...) {
 #' @param recovery Recovery rate.
 #' @param rates A curve from [bootstrap_ois_curve()].
 #' @param engine `"midpoint"` or `"isda"`.
-#' @param maturity,spread Maturities and running spreads of the quotes.
+#' @param maturity,spread Maturities and quotes: running spreads, or upfronts per unit of notional paid
+#'   by the buyer when `quote_type = "upfront"`.
 #' @param settlement_days,calendar,tenor,payment_convention,rule,cds_day_count,accuracy Conventions of
 #'   the quotes and the accuracy of the search; the defaults are examples, not market conventions.
+#' @param quote_type `"spread"` or `"upfront"`.
+#' @param running_spread,upfront_settlement_days For upfront quotes: the fixed running spread, and the
+#'   business days from the evaluation date to the payment of the upfront.
 #' @param credit A curve from `bootstrap_hazard_curve()`.
-#' @return `create_hazard_curve()` returns a `riemann_hazard_curve`, and `bootstrap_hazard_curve()` also keeps
-#'   its `nodes` tibble. `compute_survival_probability()` returns a numeric vector. `compute_cds_value()` returns a
+#' @return `create_hazard_curve()` and `create_survival_probability_curve()` return a `riemann_hazard_curve`,
+#'   and `bootstrap_hazard_curve()` also keeps its `nodes` tibble. `compute_survival_probability()` and
+#'   `compute_hazard_rate()` return numeric vectors. `compute_cds_value()` returns a
 #'   one-row tibble with `npv`, `coupon_leg_npv`, `default_leg_npv`, `upfront_npv`,
 #'   `accrual_rebate_npv`, `fair_spread` and `fair_upfront`. `compute_cds_quote_sensitivity()` returns a tibble
-#'   with `maturity`, `spread`, `npv`, `npv_per_bp` and `npv_per_recovery_percent`.
+#'   with `maturity`, `spread` (the quote, also for upfronts), `npv`, `npv_per_bp` and
+#'   `npv_per_recovery_percent`.
 #' @export
 create_hazard_curve <- function(reference_date, dates, hazard, day_count = "actual_365_fixed") {
   pointer <- checked(.Call(wrap__create_hazard_curve, as_serial(reference_date), day_count, as_serial(dates), as.numeric(hazard)))$value
+  structure(list(pointer = pointer), class = "riemann_hazard_curve")
+}
+
+#' @rdname create_hazard_curve
+#' @export
+create_survival_probability_curve <- function(reference_date, dates, probability, day_count = "actual_365_fixed") {
+  pointer <- checked(.Call(wrap__create_survival_probability_curve, as_serial(reference_date), day_count, as_serial(dates),
+                           as.numeric(probability)))$value
   structure(list(pointer = pointer), class = "riemann_hazard_curve")
 }
 
@@ -98,6 +117,12 @@ compute_survival_probability <- function(curve, date, on_error = "stop") {
 }
 
 #' @rdname create_hazard_curve
+#' @export
+compute_hazard_rate <- function(curve, date, on_error = "stop") {
+  finish_values(.Call(wrap__compute_hazard_rate, curve$pointer, as_serial(date)), on_error)
+}
+
+#' @rdname create_hazard_curve
 #' @param on_error `"stop"` or `"na"`; see [RiemannFinMath-package].
 #' @export
 compute_cds_value <- function(cds, curve, recovery, rates, evaluation_date, engine = "midpoint") {
@@ -107,10 +132,13 @@ compute_cds_value <- function(cds, curve, recovery, rates, evaluation_date, engi
 #' @rdname create_hazard_curve
 #' @export
 bootstrap_hazard_curve <- function(evaluation_date, maturity, spread, recovery, rates, engine = "midpoint", settlement_days = 0L, calendar = "weekends_only", tenor = "3M",
-                                   payment_convention = "following", rule = "backward", cds_day_count = "actual_360", day_count = "actual_365_fixed", accuracy = 1e-12) {
+                                   payment_convention = "following", rule = "backward", cds_day_count = "actual_360", day_count = "actual_365_fixed", accuracy = 1e-12,
+                                   quote_type = "spread", running_spread = 0.01, upfront_settlement_days = 3L) {
+  quote_type <- match.arg(quote_type, c("spread", "upfront"))
   i <- tibble(maturity = as_serial(maturity), spread = as.numeric(spread))
   x <- checked(.Call(wrap__bootstrap_hazard_curve, as_serial(evaluation_date), i$maturity, i$spread, as.numeric(recovery), rates$pointer, engine, as.integer(settlement_days),
-                     calendar, tenor, payment_convention, rule, cds_day_count, day_count, as.numeric(accuracy)))
+                     calendar, tenor, payment_convention, rule, cds_day_count, day_count, as.numeric(accuracy), quote_type, as.numeric(running_spread),
+                     as.integer(upfront_settlement_days)))
   structure(list(pointer = x$hazard_curve, credit = x$value, nodes = tibble(date = as_date(x$node_date), hazard = x$hazard)), class = "riemann_hazard_curve")
 }
 

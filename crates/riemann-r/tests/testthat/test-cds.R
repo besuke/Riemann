@@ -49,6 +49,38 @@ test_that("quote sensitivities agree with rebuilding the curve", {
   expect_lt(abs(x$npv_per_recovery_percent[1] - (value(s, 0.41) - value(s, 0.39)) / 2), 1e-2)
 })
 
+test_that("a bootstrap from upfronts reprices them and its sensitivities agree with rebuilding", {
+  m <- as.Date(c("2027-12-20", "2029-12-20", "2031-12-20"))
+  u <- c(-0.004, 0.002, 0.009)
+  build <- function(q) bootstrap_hazard_curve("2026-11-02", m, q, 0.4, cds_rates(), "midpoint", quote_type = "upfront", running_spread = 0.01,
+                                              upfront_settlement_days = 3L)
+  curve <- build(u)
+  for (i in seq_along(m)) {
+    swap <- create_credit_default_swap("buyer", 100, 0.01, "2026-11-02", m[i], rule = "backward", trade_date = "2026-11-02",
+                                       protection_start = "2026-11-02")
+    expect_equal(compute_cds_value(swap, curve, 0.4, cds_rates(), "2026-11-02", "midpoint")$fair_upfront, u[i], tolerance = 1e-9)
+  }
+  cds <- create_credit_default_swap("buyer", 1e7, 0.013, "2026-11-03", "2030-12-20")
+  value <- function(q) compute_cds_value(cds, build(q), 0.4, cds_rates(), "2026-11-02", "midpoint")$npv
+  x <- compute_cds_quote_sensitivity(cds, curve, cds_rates(), "2026-11-02", "midpoint")
+  for (i in seq_along(u)) {
+    up <- u; up[i] <- up[i] + 1e-5
+    down <- u; down[i] <- down[i] - 1e-5
+    expect_lt(abs(x$npv_per_bp[i] - (value(up) - value(down)) / 2e-5 * 1e-4), 1e-3)
+  }
+  expect_error(bootstrap_hazard_curve("2026-11-02", m, u, 0.4, cds_rates(), quote_type = "price"), "should be one of")
+})
+
+test_that("a survival-probability curve interpolates linearly and gives hazard rates", {
+  curve <- create_survival_probability_curve("2025-09-22", as.Date(c("2026-09-22", "2027-09-22")), c(0.99, 0.97))
+  expect_equal(compute_survival_probability(curve, as.Date(c("2025-09-22", "2026-09-22", "2027-09-22"))), c(1, 0.99, 0.97))
+  expect_equal(compute_hazard_rate(curve, as.Date("2026-03-23")), 0.01 / compute_survival_probability(curve, as.Date("2026-03-23")), tolerance = 1e-14)
+  expect_equal(compute_hazard_rate(create_hazard_curve("2025-09-22", as.Date(c("2026-09-22", "2027-09-22")), c(0.01, 0.02)), as.Date(c("2026-09-22", "2027-01-01"))),
+               c(0.01, 0.02))
+  expect_error(create_survival_probability_curve("2025-09-22", as.Date(c("2026-09-22", "2027-09-22")), c(0.97, 0.99)), "must not increase")
+  expect_error(compute_hazard_rate(curve, as.Date("2025-09-21")), "before the reference date")
+})
+
 test_that("maturities are on the twentieth, and bad names fail", {
   expect_equal(format(compute_cds_maturity("2026-11-02", "5Y"), "%d"), "20")
   expect_error(create_credit_default_swap("broker", 1e7, 0.01, "2026-11-03", "2031-12-20"), "protection side")

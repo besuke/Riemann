@@ -12,7 +12,7 @@ use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTer
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::cashflow_analysis::{self, YieldConvention, YieldSolver};
 use riemann::cashflows::CashFlow;
-use riemann::cds::{self, Cds, CdsCurve, CdsCurveSpec, CdsSpec, CdsValue, HazardCurve, SpreadQuote};
+use riemann::cds::{self, Cds, CdsCurve, CdsCurveSpec, CdsQuote, CdsQuoteType, CdsSpec, CdsValue, HazardCurve};
 use riemann::hull_white::{
     self, CalibrationInstrument, CalibrationQuote, CalibrationSettings, CallableFlow, GridSettings, HullWhite, Quadrature,
     SwaptionFlows,
@@ -1581,8 +1581,22 @@ fn create_hazard_curve(reference_date: i32, day_count: &str, dates: Vec<i32>, ha
     outcome(build().map(|c| list!(value = ExternalPtr::new(c))))
 }
 #[extendr]
+fn create_survival_probability_curve(reference_date: i32, day_count: &str, dates: Vec<i32>, probabilities: Vec<f64>) -> List {
+    let build = || -> Core<HazardCurve> {
+        let reference = date(reference_date)?;
+        let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<Date>>>()?;
+        HazardCurve::survival_probabilities(reference, names::parse_day_count(day_count)?, dates, probabilities.clone())
+    };
+    outcome(build().map(|c| list!(value = ExternalPtr::new(c))))
+}
+#[extendr]
 fn compute_survival_probability(curve: ExternalPtr<HazardCurve>, date_serial: Vec<i32>) -> List {
     let rows = date_serial.iter().map(|&d| curve.survival(date(d)?)).collect();
+    value_list(rows)
+}
+#[extendr]
+fn compute_hazard_rate(curve: ExternalPtr<HazardCurve>, date_serial: Vec<i32>) -> List {
+    let rows = date_serial.iter().map(|&d| curve.hazard_rate(date(d)?)).collect();
     value_list(rows)
 }
 #[extendr]
@@ -1617,8 +1631,18 @@ fn bootstrap_hazard_curve(
     day_count: &str,
     curve_day_count: &str,
     accuracy: f64,
+    quote_type: &str,
+    running_spread: f64,
+    upfront_settlement_days: i32,
 ) -> List {
     let build = || -> Core<CdsCurve> {
+        let quote_type = match quote_type {
+            "spread" => CdsQuoteType::RunningSpread,
+            "upfront" => CdsQuoteType::Upfront { running_spread, settlement_days: upfront_settlement_days },
+            other => {
+                return Err(riemann::Error::InvalidInput { reason: format!("unknown quote type '{other}': use \"spread\" or \"upfront\"") })
+            }
+        };
         let spec = CdsCurveSpec {
             evaluation_date: date(evaluation_date)?,
             settlement_days: settlement_days.max(0) as u32,
@@ -1633,10 +1657,11 @@ fn bootstrap_hazard_curve(
             engine: names::parse_cds_engine(engine)?,
             curve_day_count: names::parse_day_count(curve_day_count)?,
             accuracy,
+            quote_type,
             quotes: maturity
                 .iter()
                 .zip(&spread)
-                .map(|(&m, &s)| Ok(SpreadQuote { maturity: date(m)?, spread: s }))
+                .map(|(&m, &s)| Ok(CdsQuote { maturity: date(m)?, value: s }))
                 .collect::<Core<Vec<_>>>()?,
         };
         cds::bootstrap_hazard_curve(&spec, &curve.curve)
@@ -1644,7 +1669,7 @@ fn bootstrap_hazard_curve(
     outcome(build().map(|c| {
         list!(
             node_date = c.hazard.dates().iter().map(|d| d.serial() as f64).collect::<Vec<f64>>(),
-            hazard = c.hazard.hazards().to_vec(),
+            hazard = c.hazard.values().to_vec(),
             hazard_curve = ExternalPtr::new(c.hazard.clone()),
             value = ExternalPtr::new(c)
         )
@@ -1665,7 +1690,7 @@ fn compute_cds_quote_sensitivity(
             d_npv_d_recovery = s.d_npv_d_recovery,
             quote = s.quotes.iter().map(|q| q.quote as i32 + 1).collect::<Vec<i32>>(),
             maturity = s.quotes.iter().map(|q| q.maturity.serial() as f64).collect::<Vec<f64>>(),
-            spread = s.quotes.iter().map(|q| q.spread).collect::<Vec<f64>>(),
+            spread = s.quotes.iter().map(|q| q.value).collect::<Vec<f64>>(),
             d_npv = s.quotes.iter().map(|q| q.d_npv).collect::<Vec<f64>>()
         ))
     };
@@ -2596,7 +2621,9 @@ extendr_module! {
     fn calibrate_sabr;
     fn create_credit_default_swap;
     fn create_hazard_curve;
+    fn create_survival_probability_curve;
     fn compute_survival_probability;
+    fn compute_hazard_rate;
     fn compute_cds_value;
     fn bootstrap_hazard_curve;
     fn compute_cds_quote_sensitivity;

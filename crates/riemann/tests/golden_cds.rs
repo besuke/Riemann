@@ -5,7 +5,7 @@ mod common;
 
 use common::golden_rows;
 use riemann::cds::{
-    bootstrap_hazard_curve, compute_cds_value, Cds, CdsCurveSpec, CdsEngine, CdsSpec, HazardCurve, ProtectionSide, SpreadQuote,
+    bootstrap_hazard_curve, compute_cds_value, Cds, CdsCurveSpec, CdsEngine, CdsSpec, HazardCurve, ProtectionSide, CdsQuote, CdsQuoteType,
 };
 use riemann::curves::YieldCurve;
 use riemann::interest_rate::{Compounding, InterestRate};
@@ -175,11 +175,12 @@ fn bootstrapped_hazards_against_quantlib() {
             engine,
             curve_day_count: act365(),
             accuracy: 1e-12,
+            quote_type: CdsQuoteType::RunningSpread,
             quotes: case
                 .iter()
-                .map(|r| SpreadQuote {
+                .map(|r| CdsQuote {
                     maturity: today().add_period(Period::new(number(&r[4]) as i32, TimeUnit::Years)).unwrap(),
-                    spread: number(&r[5]),
+                    value: number(&r[5]),
                 })
                 .collect(),
         };

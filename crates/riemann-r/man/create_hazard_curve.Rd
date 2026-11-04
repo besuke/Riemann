@@ -2,7 +2,9 @@
 % Please edit documentation in R/cds.R
 \name{create_hazard_curve}
 \alias{create_hazard_curve}
+\alias{create_survival_probability_curve}
 \alias{compute_survival_probability}
+\alias{compute_hazard_rate}
 \alias{compute_cds_value}
 \alias{bootstrap_hazard_curve}
 \alias{compute_cds_quote_sensitivity}
@@ -15,7 +17,16 @@ create_hazard_curve(
   day_count = "actual_365_fixed"
 )
 
+create_survival_probability_curve(
+  reference_date,
+  dates,
+  probability,
+  day_count = "actual_365_fixed"
+)
+
 compute_survival_probability(curve, date, on_error = "stop")
+
+compute_hazard_rate(curve, date, on_error = "stop")
 
 compute_cds_value(
   cds,
@@ -40,7 +51,10 @@ bootstrap_hazard_curve(
   rule = "backward",
   cds_day_count = "actual_360",
   day_count = "actual_365_fixed",
-  accuracy = 1e-12
+  accuracy = 1e-12,
+  quote_type = "spread",
+  running_spread = 0.01,
+  upfront_settlement_days = 3L
 )
 
 compute_cds_quote_sensitivity(
@@ -58,6 +72,8 @@ compute_cds_quote_sensitivity(
 
 \item{day_count}{Day count of the hazard curve's times.}
 
+\item{probability}{Survival probabilities at \code{dates}, positive and not increasing.}
+
 \item{curve}{A survival curve from \code{create_hazard_curve()} or \code{bootstrap_hazard_curve()}.}
 
 \item{date}{Dates.}
@@ -72,28 +88,40 @@ compute_cds_quote_sensitivity(
 
 \item{engine}{\code{"midpoint"} or \code{"isda"}.}
 
-\item{maturity, spread}{Maturities and running spreads of the quotes.}
+\item{maturity, spread}{Maturities and quotes: running spreads, or upfronts per unit of notional paid
+by the buyer when \code{quote_type = "upfront"}.}
 
 \item{settlement_days, calendar, tenor, payment_convention, rule, cds_day_count, accuracy}{Conventions of
 the quotes and the accuracy of the search; the defaults are examples, not market conventions.}
 
+\item{quote_type}{\code{"spread"} or \code{"upfront"}.}
+
+\item{running_spread, upfront_settlement_days}{For upfront quotes: the fixed running spread, and the
+business days from the evaluation date to the payment of the upfront.}
+
 \item{credit}{A curve from \code{bootstrap_hazard_curve()}.}
 }
 \value{
-\code{create_hazard_curve()} returns a \code{riemann_hazard_curve}, and \code{bootstrap_hazard_curve()} also keeps
-its \code{nodes} tibble. \code{compute_survival_probability()} returns a numeric vector. \code{compute_cds_value()} returns a
+\code{create_hazard_curve()} and \code{create_survival_probability_curve()} return a \code{riemann_hazard_curve},
+and \code{bootstrap_hazard_curve()} also keeps its \code{nodes} tibble. \code{compute_survival_probability()} and
+\code{compute_hazard_rate()} return numeric vectors. \code{compute_cds_value()} returns a
 one-row tibble with \code{npv}, \code{coupon_leg_npv}, \code{default_leg_npv}, \code{upfront_npv},
 \code{accrual_rebate_npv}, \code{fair_spread} and \code{fair_upfront}. \code{compute_cds_quote_sensitivity()} returns a tibble
-with \code{maturity}, \code{spread}, \code{npv}, \code{npv_per_bp} and \code{npv_per_recovery_percent}.
+with \code{maturity}, \code{spread} (the quote, also for upfronts), \code{npv}, \code{npv_per_bp} and
+\code{npv_per_recovery_percent}.
 }
 \description{
 \code{create_hazard_curve()} makes a curve with piecewise flat hazard rates, where each rate holds up to its
-date, and the last rate holds beyond it. \code{bootstrap_hazard_curve()} fits the rates to running
-spreads. \code{compute_cds_value()} values a swap with the MidPoint or ISDA engine. The ISDA engine needs both
+date, and the last rate holds beyond it. \code{create_survival_probability_curve()} makes a curve of survival
+probabilities, linear in time between the nodes and 1 at the reference date; beyond the last node the
+hazard rate at that node holds (QuantLib \code{SurvivalProbabilityCurve}). \code{bootstrap_hazard_curve()} fits
+piecewise flat hazard rates to running spreads, or to upfronts on top of a fixed running spread
+(QuantLib \code{SpreadCdsHelper} and \code{UpfrontCdsHelper}). \code{compute_hazard_rate()} gives the hazard rate on
+dates. \code{compute_cds_value()} values a swap with the MidPoint or ISDA engine. The ISDA engine needs both
 curves on the evaluation date, on Actual/365 (Fixed).
 }
 \details{
-\code{compute_cds_quote_sensitivity()} gives the change of the value for +1bp on each spread, with the hazard
+\code{compute_cds_quote_sensitivity()} gives the change of the value for +1bp on each quote, with the hazard
 curve following, and the change for +1\% of recovery with the hazard curve fixed. These derivatives
 come from automatic differentiation and the implicit function theorem.
 }
