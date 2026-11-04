@@ -55,19 +55,20 @@ test_that("a bootstrap from upfronts reprices them and its sensitivities agree w
   build <- function(q) bootstrap_hazard_curve("2026-11-02", m, q, 0.4, cds_rates(), "midpoint", quote_type = "upfront", running_spread = 0.01,
                                               upfront_settlement_days = 3L)
   curve <- build(u)
-  for (i in seq_along(m)) {
-    swap <- create_credit_default_swap("buyer", 100, 0.01, "2026-11-02", m[i], rule = "backward", trade_date = "2026-11-02",
+  fair <- purrr::map_dbl(m, \(maturity) {
+    swap <- create_credit_default_swap("buyer", 100, 0.01, "2026-11-02", maturity, rule = "backward", trade_date = "2026-11-02",
                                        protection_start = "2026-11-02")
-    expect_equal(compute_cds_value(swap, curve, 0.4, cds_rates(), "2026-11-02", "midpoint")$fair_upfront, u[i], tolerance = 1e-9)
-  }
+    compute_cds_value(swap, curve, 0.4, cds_rates(), "2026-11-02", "midpoint")$fair_upfront
+  })
+  expect_equal(fair, u, tolerance = 1e-9)
   cds <- create_credit_default_swap("buyer", 1e7, 0.013, "2026-11-03", "2030-12-20")
   value <- function(q) compute_cds_value(cds, build(q), 0.4, cds_rates(), "2026-11-02", "midpoint")$npv
   x <- compute_cds_quote_sensitivity(cds, curve, cds_rates(), "2026-11-02", "midpoint")
-  for (i in seq_along(u)) {
-    up <- u; up[i] <- up[i] + 1e-5
-    down <- u; down[i] <- down[i] - 1e-5
-    expect_lt(abs(x$npv_per_bp[i] - (value(up) - value(down)) / 2e-5 * 1e-4), 1e-3)
-  }
+  finite_difference <- purrr::map_dbl(seq_along(u), \(i) {
+    bump <- replace(numeric(length(u)), i, 1e-5)
+    (value(u + bump) - value(u - bump)) / 2e-5 * 1e-4
+  })
+  expect_lt(max(abs(x$npv_per_bp - finite_difference)), 1e-3)
   expect_error(bootstrap_hazard_curve("2026-11-02", m, u, 0.4, cds_rates(), quote_type = "price"), "should be one of")
 })
 

@@ -37,7 +37,8 @@ create_zero_spreaded_curve(
   curve,
   spread,
   compounding = "continuous",
-  frequency = 1L
+  frequency = 1L,
+  spread_dates = NULL
 )
 }
 \arguments{
@@ -61,7 +62,9 @@ swaps: \code{"tonar"}, \code{"estr"}, \code{"sofr"} or \code{"sonia"}. It does n
 
 \item{curve}{A curve from any of these functions or from \code{\link[=bootstrap_ois_curve]{bootstrap_ois_curve()}}.}
 
-\item{spread}{Spread added to the zero rates.}
+\item{spread}{Spread added to the zero rates: one number, or one per date of \code{spread_dates}.}
+
+\item{spread_dates}{\code{NULL}, or increasing dates for a spread that changes with time.}
 }
 \value{
 A curve, of class \code{riemann_ois_curve}.
@@ -80,7 +83,9 @@ continuous rates at each date.
 \item \code{create_discount_curve()}: discount factors at dates, the first of which is 1 on the reference date
 (QuantLib \code{DiscountCurve}).
 \item \code{create_zero_spreaded_curve()}: another curve with a spread added to its zero rates in the given
-compounding (QuantLib \code{ZeroSpreadedTermStructure}).
+compounding (QuantLib \code{ZeroSpreadedTermStructure}). With \code{dates}, the spreads are given on those
+dates, linear in time between them and flat outside (QuantLib \code{PiecewiseZeroSpreadedTermStructure});
+the curve then ends at the earlier of the base curve's last date and the last spread date.
 }
 
 The reference date is fixed: it does not move with an evaluation date, unlike QuantLib curves built

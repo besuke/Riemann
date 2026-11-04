@@ -16,6 +16,7 @@ BugReports: https://github.com/besuke/Riemann/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Imports:
+    purrr,
     tibble
 Suggests:
     testthat (>= 3.0.0)

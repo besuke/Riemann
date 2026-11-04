@@ -41,7 +41,10 @@ used for verification:
 - crates/riemann/src/curves.rs: ql/termstructure.cpp,
   ql/termstructures/yieldtermstructure.cpp, ql/termstructures/interpolatedcurve.hpp and
   ql/termstructures/yield/{zeroyieldstructure,flatforward,zerocurve,discountcurve,
-  zerospreadedtermstructure}.hpp, ql/math/interpolations/loginterpolation.hpp
+  zerospreadedtermstructure,piecewisezerospreadedtermstructure}.hpp,
+  ql/math/interpolations/loginterpolation.hpp
+- crates/riemann/src/bond_curve.rs: ql/termstructures/yield/bondhelpers.cpp,
+  ql/termstructures/yield/bootstraptraits.hpp and ql/termstructures/iterativebootstrap.hpp
 - crates/riemann/src/math/interpolation.rs: ql/math/interpolations/linearinterpolation.hpp,
   ql/math/interpolation.hpp
 - crates/riemann/src/cashflow_analysis.rs (npv_on_curve): CashFlows::npv with a yield term

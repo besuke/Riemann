@@ -10,6 +10,7 @@
 use extendr_api::prelude::*;
 use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
+use riemann::bond_curve::{self, BondCurve, BondCurveInterpolation, BondCurveQuote, BondCurveSpec};
 use riemann::cashflow_analysis::{self, YieldConvention, YieldSolver};
 use riemann::cashflows::CashFlow;
 use riemann::cds::{self, Cds, CdsCurve, CdsCurveSpec, CdsQuote, CdsQuoteType, CdsSpec, CdsValue, HazardCurve};
@@ -994,12 +995,76 @@ fn create_discount_curve(dates: Vec<i32>, discounts: Vec<f64>, day_count: &str, 
     )
 }
 #[extendr]
-fn create_zero_spreaded_curve(curve: ExternalPtr<OisCurve>, spread: f64, compounding: &str, frequency: i32) -> List {
+fn create_zero_spreaded_curve(curve: ExternalPtr<OisCurve>, spread: Vec<f64>, compounding: &str, frequency: i32, dates: Vec<i32>) -> List {
     let run = || -> Core<OisCurve> {
-        let spreaded = YieldCurve::zero_spreaded(curve.curve.clone(), spread, names::parse_compounding(compounding)?, frequency.max(0) as u32)?;
+        let (compounding, frequency) = (names::parse_compounding(compounding)?, frequency.max(0) as u32);
+        let spreaded = if dates.is_empty() {
+            match spread.as_slice() {
+                [s] => YieldCurve::zero_spreaded(curve.curve.clone(), *s, compounding, frequency)?,
+                _ => return Err(riemann::Error::InvalidInput { reason: "a spread without dates must be one number".into() }),
+            }
+        } else {
+            let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<_>>>()?;
+            YieldCurve::piecewise_zero_spreaded(curve.curve.clone(), dates, spread.clone(), compounding, frequency)?
+        };
         Ok(OisCurve::given(spreaded, curve.spec.index.clone()))
     };
     outcome(run().map(|c| list!(value = ExternalPtr::new(c))))
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn bootstrap_bond_curve(
+    evaluation_date: i32,
+    reference_date: i32,
+    bonds: List,
+    prices: Vec<f64>,
+    price_type: &str,
+    day_count: &str,
+    interpolation: &str,
+    accuracy: f64,
+    index: &str,
+) -> List {
+    let run = || -> Core<BondCurve> {
+        if bonds.len() != prices.len() {
+            return Err(riemann::Error::InvalidInput { reason: "one price per bond is needed".into() });
+        }
+        let price_type = names::parse_price_type(price_type)?;
+        let quotes = bonds
+            .values()
+            .zip(&prices)
+            .map(|(b, &price)| {
+                let bond = ExternalPtr::<FixedRateBond>::try_from(b)
+                    .map_err(|_| riemann::Error::InvalidInput { reason: "every bond must come from create_fixed_rate_bond()".into() })?;
+                Ok(BondCurveQuote { bond: (*bond).clone(), price, price_type })
+            })
+            .collect::<Core<Vec<_>>>()?;
+        let interpolation = match interpolation {
+            "linear_zero" => BondCurveInterpolation::LinearZero,
+            "log_linear_discount" => BondCurveInterpolation::LogLinearDiscount,
+            other => {
+                return Err(riemann::Error::InvalidInput {
+                    reason: format!("interpolation must be linear_zero or log_linear_discount, not {other}"),
+                })
+            }
+        };
+        bond_curve::bootstrap_bond_curve(&BondCurveSpec {
+            evaluation_date: date(evaluation_date)?,
+            reference_date: date(reference_date)?,
+            day_count: names::parse_day_count(day_count)?,
+            interpolation,
+            accuracy,
+            quotes,
+        })
+    };
+    let index = names::parse_overnight_index(index);
+    outcome(run().and_then(|c| {
+        let curve = OisCurve::given(c.curve, index?);
+        Ok(list!(
+            value = ExternalPtr::new(curve),
+            pillar_date = c.quote_repricing.iter().map(|r| r.pillar_date.serial() as f64).collect::<Vec<f64>>(),
+            implied_price = c.quote_repricing.iter().map(|r| r.implied_price).collect::<Vec<f64>>()
+        ))
+    }))
 }
 // ---- sensitivities ---------------------------------------------------------------------------
 #[extendr]
@@ -2665,6 +2730,7 @@ extendr_module! {
     fn create_zero_curve;
     fn create_discount_curve;
     fn create_zero_spreaded_curve;
+    fn bootstrap_bond_curve;
     fn is_business_day;
     fn get_curve_reference_date;
     fn compute_year_fraction;

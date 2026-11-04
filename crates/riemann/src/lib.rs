@@ -7,6 +7,7 @@
 pub mod asset_swap;
 pub mod autodiff;
 pub mod batch;
+pub mod bond_curve;
 pub mod cashflow_analysis;
 pub mod cds;
 pub mod cashflows;

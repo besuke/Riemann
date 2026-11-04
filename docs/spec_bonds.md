@@ -178,6 +178,16 @@ P2-1 の 1,500 本の債券それぞれに、乱数（種を固定）で評価�
 
 キャッシュフローの中核は 2 章の照合（`bond_cashflows.csv`）で確かめてある。R の関数は LagrangeFinance II-1.3.2 の 81 件と比較資料で照合した。
 
+### 4.5 債券価格からのブートストラップと区分線形のスプレッド（2026-11-04）【ソース確認・実行照合済み】
+
+**ブートストラップ**（`crates/riemann/src/bond_curve.rs`、R は `bootstrap_bond_curve`）：QuantLib v1.42 の `BondHelper`・`FixedRateBondHelper`（`bondhelpers.cpp`）、`ZeroYield`・`Discount` の traits（`bootstraptraits.hpp`）、`IterativeBootstrap`（`iterativebootstrap.hpp`）に従う。各債券の節点は最後の支払日（`latestDate`）で、短い順に一つずつ Brent 法で解く。目的関数は、気配の価格と、その時点までの節点で作ったカーブでの価格（`DiscountingBondEngine` と同じ評価。受渡日は評価日から債券の受渡日数とカレンダーで数える）の差である。線形ゼロ（`PiecewiseLinearZero`）では連続複利のゼロ金利を時間について線形に補間し、参照日の値は最初の節点の値とする（`ZeroYield::updateGuess`）。探索範囲は ±100%、初期値は最初の節点が 5%、それ以降は直前の 2 節点を通る直線の値である。対数線形の割引係数（`PiecewiseYieldCurve<Discount, LogLinear>`）は OIS カーブと同じ traits である。どちらも局所的な補間なので、反復は 1 回で終わる（`loopRequired_` が偽）。QuantLib と同じく、目的関数に最後に渡した値を節点の値とする。
+
+**区分線形のスプレッド**（`YieldCurve::piecewise_zero_spreaded`、R は `create_zero_spreaded_curve(spread_dates = )`）：QuantLib `PiecewiseZeroSpreadedTermStructure`（線形補間）。スプレッドは日付の間で時間について線形、最初の日付より前と最後の日付より後は端の値で一定。時間は元のカーブの参照日と日数計算で測る。カーブの最終日は、元のカーブと最後のスプレッドの日付の早いほうである。
+
+**照合**（2026-11-04、QuantLib R パッケージ 1.42、`crates/riemann-r/inst/examples/quantlib_guide/duration_risk.R`）：QuantLib Guide「Assessing duration risk」の条件で、12 本のパー利回りからのカーブ、18 銘柄のクリーン価格と、利回り +1bp、ゼロ金利 +1bp、フラット化、スティープ化、1 年後のカーブの 5 つの変化（計 108 値）が、QuantLib 1.42 と最大 7.1e-14 で一致した。利回り +1bp の行は、QuantLib の `Bond.yield` の既定の精度 1e-8 を `compute_yield_from_price` に渡して比べた（Riemann の既定 1e-10 のままでは QuantLib 1.42 との差 1.3e-5）。Guide の 6 桁表示との差は、利回り +1bp の行を除いて最大 5.3e-7 で、丸めの範囲である。利回り +1bp の行は Guide と最大 1.3e-5 違い、精度 1e-10 で解くと Guide と 5.3e-7 以内になる。Guide の版の利回りは 1.42 の既定より精しく解かれている。理由は確かめていない（未確認。QuantLib の版の差として扱う）。
+
+**未対応**：預金・先物のヘルパー、債券価格の気配についての感応度（`bootstrap_bond_curve` のカーブは与えたカーブとして扱い、気配の感応度の関数は受け付けない）、フラットフォワード・3 次の補間。
+
 ## 5. 日本式の利回り（P2-4）
 
 ### 5.1 採用した仕様【ソース確認】

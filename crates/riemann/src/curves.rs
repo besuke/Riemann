@@ -1,5 +1,6 @@
-//! Yield curves: flat, linear on zero rates, log-linear on discount factors and a zero spread
-//! over another curve. A curve is a value; discount factors and zero rates are functions of it.
+//! Yield curves: flat, linear on zero rates, log-linear on discount factors, and a constant or
+//! piecewise linear zero spread over another curve. A curve is a value; discount factors and zero rates
+//! are functions of it.
 //!
 //! Reproduces QuantLib v1.42 (the version used for verification):
 //! `ql/termstructure.cpp` (Copyright (C) 2004, 2005, 2006, 2007 StatPro Italia srl),
@@ -15,7 +16,9 @@
 //! `ql/termstructures/yield/discountcurve.hpp` (Copyright (C) 2002, 2003 Decillion Pty(Ltd);
 //! (C) 2005, 2006, 2008, 2009 StatPro Italia srl; (C) 2009, 2015 Ferdinando Ametrano;
 //! (C) 2015 Paolo Mazzocchi), `ql/termstructures/yield/zerospreadedtermstructure.hpp`
-//! (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl; (C) 2007, 2008 StatPro Italia srl) and
+//! (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl; (C) 2007, 2008 StatPro Italia srl),
+//! `ql/termstructures/yield/piecewisezerospreadedtermstructure.hpp` (Copyright (C) 2006 Roland
+//! Lichters; (C) 2006, 2008, 2014 StatPro Italia srl; (C) 2010 Robert Philipp) and
 //! `ql/math/interpolations/loginterpolation.hpp` (Copyright (C) 2002, 2003, 2008, 2009
 //! Ferdinando Ametrano; (C) 2004, 2007, 2008 StatPro Italia srl); modified BSD license.
 //! See THIRD_PARTY_NOTICES.
@@ -60,6 +63,15 @@ enum Shape<T> {
     ZeroSpreaded {
         base: Box<YieldCurve<T>>,
         spread: T,
+        compounding: Compounding,
+        frequency: u32,
+    },
+    /// QuantLib `PiecewiseZeroSpreadedTermStructure` with linear interpolation: spreads given on
+    /// dates, linear in time between them and flat outside, added to the base zero rate.
+    PiecewiseZeroSpreaded {
+        base: Box<YieldCurve<T>>,
+        dates: Vec<Date>,
+        spreads: Linear<T>,
         compounding: Compounding,
         frequency: u32,
     },
@@ -297,6 +309,44 @@ impl YieldCurve<f64> {
         })
     }
 
+    /// Spreads on `dates`, linear in time between them and flat before the first and after the
+    /// last, added to the zero rates of `base` in the given compounding (QuantLib
+    /// `PiecewiseZeroSpreadedTermStructure`). The times are from the base's reference date in its
+    /// day count. The last date is the earlier of the base's and the last spread date.
+    pub fn piecewise_zero_spreaded(
+        base: YieldCurve,
+        dates: Vec<Date>,
+        spreads: Vec<f64>,
+        compounding: Compounding,
+        frequency: u32,
+    ) -> Result<YieldCurve, Error> {
+        check_points(&dates, &spreads)?;
+        if compounding == Compounding::Compounded && frequency == 0 {
+            return Err(Error::InvalidInput {
+                reason: "compounded rate needs a frequency of at least 1".into(),
+            });
+        }
+        if dates.windows(2).any(|w| w[1] <= w[0]) {
+            return Err(Error::InvalidInput { reason: "spread dates must increase".into() });
+        }
+        let times = dates
+            .iter()
+            .map(|&d| base.time_from_reference(d))
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(YieldCurve {
+            reference_date: base.reference_date,
+            day_count: base.day_count.clone(),
+            extrapolate: base.extrapolate,
+            shape: Shape::PiecewiseZeroSpreaded {
+                base: Box::new(base),
+                dates,
+                spreads: Linear::new(times, spreads)?,
+                compounding,
+                frequency,
+            },
+        })
+    }
+
     /// The same curve with its inputs as independent variables of `recorder`, and those inputs.
     /// The dates, times and day count stay fixed. On a discount-factor curve the inputs are the
     /// logarithms of the discount factors after the reference date; on a zero curve, the
@@ -357,6 +407,21 @@ impl YieldCurve<f64> {
                     frequency: *frequency,
                 }
             }
+            Shape::PiecewiseZeroSpreaded { base, dates, spreads, compounding, frequency } => {
+                let lifted = base.lift(recorder)?;
+                inputs.extend(lifted.inputs);
+                let vars: Vec<Var<'t>> = spreads.ys().iter().map(|&s| recorder.input(s)).collect();
+                for (&date, &var) in dates.iter().zip(&vars) {
+                    inputs.push((CurveInput::ZeroSpreadAt { date }, var));
+                }
+                Shape::PiecewiseZeroSpreaded {
+                    base: Box::new(lifted.curve),
+                    dates: dates.clone(),
+                    spreads: Linear::new(spreads.xs().to_vec(), vars)?,
+                    compounding: *compounding,
+                    frequency: *frequency,
+                }
+            }
         };
         Ok(LiftedCurve {
             curve: YieldCurve {
@@ -378,6 +443,8 @@ pub enum CurveInput {
     /// The logarithm of the discount factor at `date`, `time` years from the reference date.
     LogDiscount { date: Date, time: f64 },
     ZeroSpread,
+    /// The spread of a piecewise zero-spreaded curve at `date`.
+    ZeroSpreadAt { date: Date },
 }
 
 /// A curve whose inputs are recorded variables.
@@ -395,6 +462,7 @@ impl<T: Operand> YieldCurve<T> {
             Shape::Zero { zeros, .. } => zeros.ys()[0].like(x),
             Shape::Discount { discounts, .. } => discounts[0].like(x),
             Shape::ZeroSpreaded { spread, .. } => spread.like(x),
+            Shape::PiecewiseZeroSpreaded { spreads, .. } => spreads.ys()[0].like(x),
         }
     }
 
@@ -428,6 +496,9 @@ impl<T: Operand> YieldCurve<T> {
                 *dates.last().expect("at least 2 dates")
             }
             Shape::ZeroSpreaded { base, .. } => base.max_date(),
+            Shape::PiecewiseZeroSpreaded { base, dates, .. } => {
+                base.max_date().min(*dates.last().expect("at least 2 dates"))
+            }
         }
     }
 
@@ -488,7 +559,7 @@ impl<T: Operand> YieldCurve<T> {
                 let inst_fwd_max = -derivative / d_max;
                 Ok(d_max * (-inst_fwd_max * (t - t_max)).exp())
             }
-            Shape::Zero { .. } | Shape::ZeroSpreaded { .. } => {
+            Shape::Zero { .. } | Shape::ZeroSpreaded { .. } | Shape::PiecewiseZeroSpreaded { .. } => {
                 // this acts as a safe guard in cases where the zero yield at 0 would fail
                 if t == 0.0 {
                     return Ok(self.like(1.0));
@@ -527,6 +598,19 @@ impl<T: Operand> YieldCurve<T> {
                 Ok(spreaded
                     .equivalent_rate(Compounding::Continuous, 0, t)?
                     .rate)
+            }
+            Shape::PiecewiseZeroSpreaded { base, spreads, compounding, frequency, .. } => {
+                let (first, last) = (spreads.xs()[0], *spreads.xs().last().expect("at least 2 points"));
+                let spread = if t <= first {
+                    spreads.ys()[0]
+                } else if t >= last {
+                    *spreads.ys().last().expect("at least 2 points")
+                } else {
+                    spreads.value(t)
+                };
+                let zero = base.zero_rate_at(t, *compounding, *frequency, true)?;
+                let spreaded = InterestRate::new(zero.rate + spread, zero.day_count, zero.compounding, zero.frequency)?;
+                Ok(spreaded.equivalent_rate(Compounding::Continuous, 0, t)?.rate)
             }
             Shape::Flat { .. } | Shape::Discount { .. } => unreachable!("not a zero-yield curve"),
         }
@@ -616,5 +700,38 @@ impl<T: Operand> YieldCurve<T> {
         let t = if t == 0.0 { DT } else { t };
         let compound = self.discount_at(t, extrapolate)?.recip();
         InterestRate::implied_rate(compound, self.day_count.clone(), compounding, frequency, t)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::time::Actual365Kind;
+
+    fn d(y: i32, m: u32, day: u32) -> Date {
+        Date::from_ymd(y, m, day).unwrap()
+    }
+
+    #[test]
+    fn a_piecewise_spread_is_linear_inside_flat_outside_and_lifts_one_input_per_date() {
+        let dc = DayCount::Actual365Fixed(Actual365Kind::Standard);
+        let base = YieldCurve::flat(d(2024, 1, 2), InterestRate::new(0.03, dc.clone(), Compounding::Continuous, 0).unwrap());
+        let dates = vec![d(2025, 1, 2), d(2027, 1, 2)];
+        let constant = YieldCurve::piecewise_zero_spreaded(base.clone(), dates.clone(), vec![0.01, 0.01], Compounding::Continuous, 0).unwrap();
+        let plain = YieldCurve::zero_spreaded(base.clone(), 0.01, Compounding::Continuous, 0).unwrap();
+        for t in [0.5, 2.0, 2.9] {
+            assert!((constant.discount_at(t, false).unwrap() - plain.discount_at(t, false).unwrap()).abs() < 1e-15);
+        }
+        assert_eq!(constant.max_date(), d(2027, 1, 2));
+        let tilted = YieldCurve::piecewise_zero_spreaded(base, dates, vec![0.01, -0.01], Compounding::Continuous, 0).unwrap();
+        let (t1, t2) = (366.0 / 365.0, 1096.0 / 365.0);
+        let middle = (t1 + t2) / 2.0;
+        assert!((tilted.zero_yield(middle).unwrap() - 0.03).abs() < 1e-15);
+        assert!((tilted.zero_yield(0.5).unwrap() - 0.04).abs() < 1e-15);
+        assert!((tilted.zero_yield(3.5).unwrap() - 0.02).abs() < 1e-15);
+        let rec = Recorder::new();
+        let lifted = tilted.lift(&rec).unwrap();
+        let spreads: Vec<_> = lifted.inputs.iter().filter(|(i, _)| matches!(i, CurveInput::ZeroSpreadAt { .. })).collect();
+        assert_eq!(spreads.len(), 2);
     }
 }

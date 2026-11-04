@@ -15,7 +15,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 |---|---|---|
 | Guide で取得したページ | 41 | 目次の 39 ページ、表紙、Feedback |
 | 　例のないページ | 7 | 章の導入 5（3、15、30、35、38）、表紙（1）、Feedback（41） |
-| 　例のあるページ（2 章の表） | 34 | 対応済み 1、一部対応 19、未対応 10、設計上対象外 4 |
+| 　例のあるページ（2 章の表） | 34 | 対応済み 5、一部対応 16、未対応 9、設計上対象外 4（2026-11-04 に表から数え直した） |
 | 公式 Examples（3 章の表） | 20 | 一部再現 7、未対応 10、対象外 3（再現済みは、サンプルを作るまで 0） |
 
 ページの番号は 2 章の表の `#` で、取得した順（表紙が 1、Feedback が 41）である。
@@ -37,9 +37,9 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | fixing | `addFixing`、欠けた fixing のエラー、当日の fixing の扱い | OIS スワップの `fixings` 引数 | 一部対応 | IBOR の fixing は対象外。当日 fixing を予測するかの切り替えはない |
 | キャッシュフロー表 | `cashflows()`、利率・期間・金額、`CashFlows.npv`、`CashFlows.bps` | `get_bond_cashflows`、`compute_ois_swap_cashflows`、`compute_cashflow_npv`（NPV と BPS、各フローの値） | 対応済み | 償還の BPS は QuantLib が `nan`、ここは 0 |
 | 既定のカーブ | `FlatForward`、`ZeroCurve`、`DiscountCurve`、`ZeroSpreadedTermStructure` | `create_flat_curve`、`create_zero_curve`、`create_discount_curve`、`create_zero_spreaded_curve`（2026-11-04 に公開） | 対応済み | 参照日は固定（評価日とともに動かない。設計上の違い） |
-| ブートストラップ | OIS、SOFR 先物、債券、IBOR スワップ、ベーシス、クロスカレンシー。補間は LogCubicDiscount、LinearZero、FlatForward、CubicZero | OIS（単調対数 3 次、対数線形） | 一部対応 | 先物、債券のヘルパー、線形ゼロ・フラットフォワード・3 次ゼロの補間、ジャンプがない |
+| ブートストラップ | OIS、SOFR 先物、債券、IBOR スワップ、ベーシス、クロスカレンシー。補間は LogCubicDiscount、LinearZero、FlatForward、CubicZero | OIS（単調対数 3 次、対数線形）、債券（線形ゼロ、対数線形の割引係数。`bootstrap_bond_curve`） | 一部対応 | 先物・預金のヘルパー、フラットフォワード・3 次ゼロの補間、ジャンプがない |
 | 外挿 | `enableExtrapolation` | `with_extrapolation` | 対応済み | |
-| カーブの加工 | `ZeroSpreaded`、`PiecewiseZeroSpreaded`、`ImpliedTermStructure` | 債券の Z スプレッド計算の内部のみ | 一部対応 | 区分的なスプレッド、参照日を移したカーブがない |
+| カーブの加工 | `ZeroSpreaded`、`PiecewiseZeroSpreaded`、`ImpliedTermStructure` | `create_zero_spreaded_curve`（一定のスプレッド、`spread_dates` で区分線形のスプレッド） | 一部対応 | 参照日を移したカーブがない |
 | 感応度 | 気配のバンプ、平行・ツイストのシフト、数値 Greeks、数値 Theta | 自動微分による気配・節点の感応度（債券、OIS スワップ、CDS）、オプションの Greeks | 一部対応 | 任意の形のカーブシフト、Theta の方式の切り替えはない |
 | 通知の仕組み | Observer、Handle、Relinkable、freeze | なし | 設計上対象外 | |
 
@@ -76,7 +76,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 31 | Numerical Greeks | バリアの数値 Greeks、European の差分 | 対応済み | Riemann は自動微分で Greeks を返す。数値差分の比較は可能 |
 | 32 | Approaches to numerical Theta | IBOR カーブの Theta の 3 方式 | 設計上対象外 | IBOR。方式の比較自体は OIS で行える |
 | 33 | Pricing over a range of days | 日ごとの再評価、過去・将来の fixing | 一部対応 | R のゼロカーブ、OIS 変動利付債。IBOR は対象外 |
-| 34 | Assessing duration risk | 債券ヘルパーで米国債カーブ、平行・ツイスト・ストレス | 未対応 | 債券ヘルパー、線形ゼロ補間、区分的スプレッド |
+| 34 | Assessing duration risk | 債券ヘルパーで米国債カーブ、平行・ツイスト・ストレス | 対応済み | 再現した（`duration_risk.R`。108 個の値がすべて QuantLib 1.42 と 7.1e-14 以内。Guide の 6 桁表示とは丸めの範囲内、ただし利回り +1bp の 18 行は版の差で最大 1.3e-5） |
 | 36 | Inflation indexes and curves | HICP、ゼロインフレカーブ、季節性、ZCIIS | 未対応 | インフレ全般 |
 | 37 | Inflation bonds | CPI 債 | 未対応 | インフレ全般 |
 | 39 | Default-probability curves | Upfront・Spread の CDS ヘルパー、MidPoint・ISDA、生存確率カーブ | 一部対応 | デフォルト密度（`defaultDensity`）と `DefaultDensityCurve`。Upfront と Spread のヘルパーの曲線、確認用 CDS、ハザード率、生存確率カーブは再現した（`cds.R`。すべて QuantLib 1.42 と一致。Guide の表示とは版の差：確認用 CDS の NPV が Guide は -0.2777（プレミアム 1 日分）、ここと 1.42 は 0。デフォルト確率は最大 0.009 ポイント差） |
@@ -90,7 +90,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 
 | Example | 内容 | 見込み | 不足 |
 |---|---|---|---|
-| Bonds | 預金・債券・IBOR スワップのカーブで割引債・固定利付債・IBOR 変動利付債 | 一部再現 | 債券ヘルパー、預金ヘルパー。IBOR は対象外 |
+| Bonds | 預金・債券・IBOR スワップのカーブで割引債・固定利付債・IBOR 変動利付債 | 一部再現 | 預金ヘルパー、割引債。債券ヘルパー（対数線形の割引係数）は 2026-11-04 に追加。IBOR は対象外 |
 | CDS | Spread ヘルパーでハザード、MidPoint・ISDA、ISDA 規約の金利カーブ | 一部再現 | ISDA 規約の金利カーブ（預金・IBOR スワップ） |
 | EquityOption | European・Bermudan・American を多数のエンジンで | 一部再現 | Barone-Adesi–Whaley、Bjerksund–Stensland、有限差分、QD+、JR・Tian などの木、積分エンジン |
 | FRA | Euribor の FRA | 対象外 | IBOR |
@@ -117,7 +117,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 2. **任意のキャッシュフローの NPV・BPS、`yearFraction`、カレンダーの `adjust`・`advance`、スケジュールの生成**の公開。Guide 5、6、14、22 が使う。いずれも内部にある。**実装済み**。
 3. **SimpleThenCompounded** と、**ステップアップ・アモチ**の固定利付債。Guide 7、23、29 が使う。**実装済み**。
 4. **CDS の Upfront ヘルパーと生存確率カーブ**。Guide 39、40 が使う。**実装済み**（`bootstrap_hazard_curve(quote_type = "upfront")`、`create_survival_probability_curve`、`compute_hazard_rate`）。Guide 40 のリスキー債券エンジンは含まない。
-5. **債券ヘルパーのブートストラップと線形ゼロ補間**。Guide 34、Examples Bonds が使う。
+5. **債券ヘルパーのブートストラップと線形ゼロ補間**。Guide 34、Examples Bonds が使う。**実装済み**（`bootstrap_bond_curve`、`create_zero_spreaded_curve(spread_dates = )`）。
 6. **American オプションの近似式**（Barone-Adesi–Whaley、Bjerksund–Stensland）。Examples EquityOption、LagrangeFinance II-4.5 が使う。
 
 後回しにするもの：当てはめカーブ、OIS 変動利付債、lookback・lockout、先物ヘルパー、Heston、インフレ、クロスカレンシー、転換社債、アジア型、G2、CVA。

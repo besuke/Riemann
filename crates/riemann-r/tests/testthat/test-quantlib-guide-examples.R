@@ -3,7 +3,8 @@
 guide_script <- function(name) system.file("examples", "quantlib_guide", name, package = "RiemannFinMath")
 
 test_that("the example scripts are installed with the package", {
-  for (name in c("bonds.R", "cds.R", "curves.R", "dates.R", "options.R", "spreads.R", "README.md")) expect_true(nzchar(guide_script(name)), info = name)
+  purrr::walk(c("bonds.R", "cds.R", "curves.R", "dates.R", "duration_risk.R", "options.R", "spreads.R", "README.md"),
+              \(name) expect_true(nzchar(guide_script(name)), info = name))
 })
 
 test_that("the bond example runs and its unrounded Guide values agree", {
@@ -60,4 +61,14 @@ test_that("the dates example matches every printed value", {
   r <- NULL
   capture.output(r <- source(guide_script("dates.R"), local = new.env())$value)
   expect_true(all(r$same))
+})
+
+test_that("the duration-risk example matches the Guide within its rounding", {
+  r <- NULL
+  capture.output(r <- source(guide_script("duration_risk.R"), local = new.env())$value)
+  expect_equal(nrow(r), 108)
+  # the +1 bp yield moves use QuantLib 1.42's yield accuracy, 1e-8; the Guide's prints differ by up to 1.3e-5
+  expect_lt(max(abs(r$riemann_minus_guide[r$item != "yield_bp"])), 6e-7)
+  expect_lt(max(abs(r$riemann_minus_guide[r$item == "yield_bp"])), 2e-5)
+  if (requireNamespace("QuantLib", quietly = TRUE)) expect_lt(max(abs(r$riemann - r$quantlib_local)), 1e-10)
 })

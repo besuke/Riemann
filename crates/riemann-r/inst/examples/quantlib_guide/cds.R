@@ -11,7 +11,7 @@
 # values and, when the QuantLib R package is installed, with the same calls to the local QuantLib.
 #
 # Run:   source(system.file("examples", "quantlib_guide", "cds.R", package = "RiemannFinMath"))
-# Needs: RiemannFinMath and tibble. QuantLib (the R package) is optional.
+# Needs: RiemannFinMath, purrr and tibble. QuantLib (the R package) is optional.
 #
 # Conditions. Upfront curves: upfronts -0.2%, -0.5%, -0.8%, -0.4%, 0.7% and 1.1% for 1, 2, 3, 5, 7 and 10
 # years, paid by the buyer 3 business days after the evaluation date, on a running spread of 100 bp;
@@ -43,7 +43,7 @@ if (has_quantlib) {
 tenors <- c(1L, 2L, 3L, 5L, 7L, 10L)
 upfronts <- c(-0.002, -0.005, -0.008, -0.004, 0.007, 0.011)
 upfront_curve <- function(today, engine) {
-  maturities <- do.call(c, lapply(paste0(tenors, "Y"), \(t) compute_cds_maturity(today, t, "cds2015")))
+  maturities <- purrr::map(paste0(tenors, "Y"), \(t) compute_cds_maturity(today, t, "cds2015")) |> purrr::list_c()
   bootstrap_hazard_curve(today, maturities, upfronts, 0.4, create_flat_curve(today, 0.03, "actual_365_fixed"), engine,
                          settlement_days = 1L, calendar = "us_government_bond", tenor = "3M", payment_convention = "modified_following",
                          rule = "cds2015", cds_day_count = "actual_360", day_count = "actual_365_fixed",
@@ -52,11 +52,11 @@ upfront_curve <- function(today, engine) {
 ql_upfront_curve <- function(today, model) {
   invisible(QuantLib::Settings_instance()$setEvaluationDate(ql_date(today)))
   helpers <- QuantLib::DefaultProbabilityHelperVector()
-  for (k in seq_along(tenors)) {
-    helpers$append(QuantLib::UpfrontCdsHelper(upfronts[k], 0.01, QuantLib::Period(tenors[k], "Years"), 1L, ql_calendar, "Quarterly",
+  purrr::walk2(upfronts, tenors, \(upfront, years) {
+    helpers$append(QuantLib::UpfrontCdsHelper(upfront, 0.01, QuantLib::Period(years, "Years"), 1L, ql_calendar, "Quarterly",
                                               "ModifiedFollowing", "CDS2015", QuantLib::Actual360(), 0.4, ql_risk_free(), 3L, TRUE, TRUE,
                                               QuantLib::Date(), QuantLib::Actual360(), TRUE, model))
-  }
+  })
   QuantLib::PiecewiseFlatHazardRate(0L, ql_calendar, helpers, QuantLib::Actual365Fixed())
 }
 # the Guide's tables, in %
@@ -70,25 +70,23 @@ guide_upfront <- list(
   "2025-09-22 isda" = list(date = c("2026-12-22", "2027-12-21", "2028-12-21", "2030-12-21", "2032-12-21", "2035-12-21"),
                            hazard = c(1.40, 1.14, 1.12, 2.09, 2.92, 2.03), default = c(1.73, 2.85, 3.94, 7.86, 13.09, 18.22))
 )
-curves <- list()
-upfront_nodes <- do.call(rbind, lapply(names(guide_upfront), \(case) {
-  today <- sub(" .*", "", case)
+curves <- purrr::map(purrr::set_names(names(guide_upfront)), \(case) upfront_curve(sub(" .*", "", case), sub(".* ", "", case)))
+upfront_nodes <- purrr::imap(curves, \(curve, case) {
   engine <- sub(".* ", "", case)
-  curve <- upfront_curve(today, engine)
-  curves[[case]] <<- curve
   nodes <- curve$nodes
   q_hazard <- q_default <- rep(NA_real_, nrow(nodes))
   if (has_quantlib) {
-    q <- ql_upfront_curve(today, if (engine == "isda") "ISDA" else "Midpoint")
-    q_hazard <- vapply(nodes$date, \(d) q$hazardRate(ql_date(d)), 1)
-    q_default <- vapply(nodes$date, \(d) q$defaultProbability(ql_date(d)), 1)
+    q <- ql_upfront_curve(sub(" .*", "", case), if (engine == "isda") "ISDA" else "Midpoint")
+    q_hazard <- purrr::map_dbl(nodes$date, \(d) q$hazardRate(ql_date(d)))
+    q_default <- purrr::map_dbl(nodes$date, \(d) q$defaultProbability(ql_date(d)))
   }
   g <- guide_upfront[[case]]
   tibble::tibble(case = case, node = nodes$date, guide_node = as.Date(g$date),
                  guide_hazard_pct = g$hazard, quantlib_hazard_pct = 100 * q_hazard, riemann_hazard_pct = 100 * nodes$hazard,
                  guide_default_pct = g$default, quantlib_default_pct = 100 * q_default,
                  riemann_default_pct = 100 * (1 - compute_survival_probability(curve, nodes$date)))
-}))
+}) |>
+  purrr::list_rbind()
 
 # ---- 2. and 3. the check CDS and the curve interface on 22 September 2025 ----------------------------
 today <- "2025-09-22"
@@ -123,7 +121,7 @@ if (has_quantlib) {
   }
   handle <- function(curve) QuantLib::DefaultProbabilityTermStructureHandle(curve)
   dv <- QuantLib::DateVector()
-  for (d in c(today, format(survival_dates))) dv$append(ql_date(d))
+  purrr::walk(c(today, format(survival_dates)), \(d) dv$append(ql_date(d)))
   q_survival <- QuantLib::SurvivalProbabilityCurve(dv, c(1, 0.995, 0.985, 0.97, 0.93), QuantLib::Actual365Fixed())
   q <- c(priced(QuantLib::MidPointCdsEngine(handle(q_mid), 0.4, ql_risk_free())),
          priced(QuantLib::MidPointCdsEngine(handle(q_isda), 0.4, ql_risk_free()))[1],
@@ -148,7 +146,7 @@ checks <- tibble::tibble(
 # ---- 5. the old-conventions curve from running spreads ----------------------------------------------
 spread_tenors <- c("1Y", "2Y", "3Y", "5Y", "7Y", "10Y")
 spreads <- c(70, 80, 100, 140, 170, 210) * 1e-4
-maturities <- do.call(c, lapply(spread_tenors, \(t) compute_cds_maturity(today, t, "cds")))
+maturities <- purrr::map(spread_tenors, \(t) compute_cds_maturity(today, t, "cds")) |> purrr::list_c()
 curve <- bootstrap_hazard_curve(today, maturities, spreads, 0.4, rates, "midpoint", settlement_days = 1L, calendar = "us_government_bond",
                                 tenor = "3M", payment_convention = "modified_following", rule = "cds", cds_day_count = "actual_360",
                                 day_count = "actual_360")
@@ -162,13 +160,13 @@ quantlib_hazard <- quantlib_default <- rep(NA_real_, 6)
 if (has_quantlib) {
   invisible(QuantLib::Settings_instance()$setEvaluationDate(ql_date(today)))
   helpers <- QuantLib::DefaultProbabilityHelperVector()
-  for (k in seq_along(spread_tenors)) {
-    helpers$append(QuantLib::SpreadCdsHelper(spreads[k], QuantLib::Period(as.integer(sub("Y", "", spread_tenors[k])), "Years"), 1L, ql_calendar,
+  purrr::walk2(spreads, spread_tenors, \(spread, tenor) {
+    helpers$append(QuantLib::SpreadCdsHelper(spread, QuantLib::Period(as.integer(sub("Y", "", tenor)), "Years"), 1L, ql_calendar,
                                              "Quarterly", "ModifiedFollowing", "CDS", QuantLib::Actual360(), 0.4, ql_risk_free()))
-  }
+  })
   ql_curve <- QuantLib::PiecewiseFlatHazardRate(0L, ql_calendar, helpers, QuantLib::Actual360())
-  quantlib_hazard <- vapply(guide$date, \(d) ql_curve$hazardRate(ql_date(d)), 1)
-  quantlib_default <- vapply(guide$date, \(d) ql_curve$defaultProbability(ql_date(d)), 1)
+  quantlib_hazard <- purrr::map_dbl(guide$date, \(d) ql_curve$hazardRate(ql_date(d)))
+  quantlib_default <- purrr::map_dbl(guide$date, \(d) ql_curve$defaultProbability(ql_date(d)))
 }
 spread_nodes <- tibble::tibble(
   node = nodes$date,
