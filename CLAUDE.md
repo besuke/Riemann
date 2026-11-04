@@ -98,6 +98,10 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 **配布版 0.3.0（2026-11-04）**：`dist/` に tar.gz と zip を作った（`docs/spec_r.md` 8.6 節、`dist/MANIFEST.txt`）。zip は別ライブラリー・Rust なしの PATH・リポジトリ外で smoke test 34 項目が成功。**tar.gz の `R CMD check` とソース導入は未完了**：新しいフォルダーでのビルドスクリプトを Smart App Control が 2 回ブロックした。zip は tar.gz からではなくリポジトリのパッケージから作った。設定は変えておらず、回避もしていない。
 
+## QuantLib Guide と公式 Examples（2026-11-04）
+
+`docs/quantlib_guide_inventory.md` 4 章の優先順位 1〜6 を実装した（カーブの作成関数、日付・スケジュール・キャッシュフローの NPV、SimpleThenCompounded とステップアップ・アモチ債、CDS の Upfront と生存確率カーブ、債券価格のブートストラップと区分線形スプレッド、American の近似式）。サンプルは `crates/riemann-r/inst/examples/quantlib_guide/`（Guide）と `quantlib_examples/`（公式 Examples）。Guide の表示との差は、QuantLib 1.42 と一致していれば「版の差」として記録する。R のコードは tidyverse の書き方（`purrr::map_*()`、`walk()`）にする（2026-11-04 のユーザーの指示）。残り：4 章の「後回し」の項目、公式 Examples のサンプルの追加、比較資料の全体の再描画（付録 A の新しい関数）。
+
 ## QuantLib との比較資料（`comparison/`、2026-11-01 完了）
 
 LagrangeFinance の入力と計算例で、RiemannFinMath（Rust）を基準と比べる英語の資料。翻訳した教材ではない（当初の英語教材の案はユーザーの指示でこの形に変わった）。
