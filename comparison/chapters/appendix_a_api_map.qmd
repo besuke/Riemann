@@ -48,7 +48,7 @@ counterparts <- tribble(
   "compute_clean_price", "BondFunctions_cleanPrice",
   "compute_compound_yield_from_price", "None; GaussQuant R",
   "compute_convexity", "BondFunctions_convexity",
-  "create_ctd_curve", "None; daily maximum of the collateral forwards",
+  "create_ctd_curve", "None; Cheapest to Deposit, the daily maximum of the collateral forwards",
   "create_credit_default_swap", "Schedule, CreditDefaultSwap",
   "compute_curve_node_sensitivity", "None; finite difference on DiscountCurve",
   "compute_curve_values", "YieldTermStructure_discount, _zeroRate, _forwardRate",

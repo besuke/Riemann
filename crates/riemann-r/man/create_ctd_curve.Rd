@@ -26,7 +26,7 @@ same chosen collateral (\code{start}, \code{end}, \code{collateral}, \code{days}
 minus the next highest, summed over the run (continuous, not annualized).
 }
 \description{
-The intrinsic value of the cheapest-to-deliver collateral (LagrangeFinance II-3.7.5): the same cash
+The intrinsic value of the Cheapest to Deposit (CTD) choice of collateral (LagrangeFinance II-3.7.5): the same cash
 flows have a discount curve under each eligible collateral currency, and the party that posts
 collateral picks, each day, the currency with the highest forward. The curve compounds the highest
 daily forward, so it is never above any of the curves. The choice uses today's forwards only; the

@@ -1,4 +1,4 @@
-//! The intrinsic value of the choice of collateral currency (cheapest to deliver collateral,
+//! The intrinsic value of the choice of collateral currency (Cheapest to Deposit, CTD,
 //! LagrangeFinance II-3.7.5, second step): discount curves of the same cash flows under each
 //! eligible collateral currency, joined day by day at the highest forward.
 //!

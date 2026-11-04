@@ -101,7 +101,7 @@ compute_yen_asset_swap_on_basis_curve <- function(bond, clean_price, foreign_cur
 
 #' Discount curve with the choice of collateral currency
 #'
-#' The intrinsic value of the cheapest-to-deliver collateral (LagrangeFinance II-3.7.5): the same cash
+#' The intrinsic value of the Cheapest to Deposit (CTD) choice of collateral (LagrangeFinance II-3.7.5): the same cash
 #' flows have a discount curve under each eligible collateral currency, and the party that posts
 #' collateral picks, each day, the currency with the highest forward. The curve compounds the highest
 #' daily forward, so it is never above any of the curves. The choice uses today's forwards only; the
@@ -131,7 +131,7 @@ create_ctd_curve <- function(reference_date, end_date, curves, day_count = "actu
     stop("`curves` must be a named list of curves.", call. = FALSE)
   }
   x <- checked(.Call(wrap__create_ctd_curve, as_serial(reference_date), as_serial(end_date), day_count, names(curves), purrr::map(curves, "pointer")))
-  curve <- given(x$value, "cheapest-to-deliver collateral", curves[[1]]$index)
+  curve <- given(x$value, "Cheapest to Deposit", curves[[1]]$index)
   curve$choices <- tibble(start = as_date(x$start), end = as_date(x$end), collateral = names(curves)[x$option],
                           days = as.integer(x$end - x$start), advantage = x$advantage)
   curve
