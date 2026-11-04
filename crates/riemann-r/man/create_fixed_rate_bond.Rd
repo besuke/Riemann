@@ -21,7 +21,8 @@ create_fixed_rate_bond(
   redemption,
   first_date = NULL,
   next_to_last_date = NULL,
-  issue_date = NULL
+  issue_date = NULL,
+  notionals = NULL
 )
 }
 \arguments{
@@ -42,7 +43,8 @@ of the termination date; see \link{RiemannFinMath-package}.}
 
 \item{end_of_month}{\code{TRUE} or \code{FALSE}. \code{NA} is an error.}
 
-\item{coupon_rate}{Coupon rate as a decimal: \code{0.015} is 1.5\%.}
+\item{coupon_rate}{Coupon rate as a decimal: \code{0.015} is 1.5\%. A vector gives a rate per coupon, for a
+step-up bond; a vector shorter than the coupons holds its last value.}
 
 \item{day_count}{Day count of the coupons; see \link{RiemannFinMath-package}.}
 
@@ -53,6 +55,10 @@ of the termination date; see \link{RiemannFinMath-package}.}
 \item{first_date, next_to_last_date}{Optional stub dates, or \code{NULL}.}
 
 \item{issue_date}{Optional issue date, or \code{NULL}.}
+
+\item{notionals}{\code{NULL} for a constant \code{face_amount}, or a notional per coupon for an amortizing bond:
+each fall is repaid on the payment date of the coupon before it, and the first value replaces
+\code{face_amount}. A vector shorter than the coupons holds its last value.}
 }
 \value{
 A \code{riemann_bond} value, to pass to the other bond functions.

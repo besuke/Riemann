@@ -15,7 +15,11 @@
 #'   of the termination date; see [RiemannFinMath-package].
 #' @param rule Date generation rule; see [RiemannFinMath-package].
 #' @param end_of_month `TRUE` or `FALSE`. `NA` is an error.
-#' @param coupon_rate Coupon rate as a decimal: `0.015` is 1.5%.
+#' @param coupon_rate Coupon rate as a decimal: `0.015` is 1.5%. A vector gives a rate per coupon, for a
+#'   step-up bond; a vector shorter than the coupons holds its last value.
+#' @param notionals `NULL` for a constant `face_amount`, or a notional per coupon for an amortizing bond:
+#'   each fall is repaid on the payment date of the coupon before it, and the first value replaces
+#'   `face_amount`. A vector shorter than the coupons holds its last value.
 #' @param day_count Day count of the coupons; see [RiemannFinMath-package].
 #' @param payment_convention Business day convention of the payment dates.
 #' @param redemption Redemption per 100 of notional.
@@ -36,12 +40,12 @@
 create_fixed_rate_bond <- function(settlement_days, face_amount, effective_date, termination_date, tenor, calendar,
                             convention, termination_convention, rule, end_of_month, coupon_rate, day_count,
                             payment_convention, redemption, first_date = NULL, next_to_last_date = NULL,
-                            issue_date = NULL) {
+                            issue_date = NULL, notionals = NULL) {
   pointer <- checked(.Call(
     wrap__create_fixed_rate_bond, as.integer(settlement_days), as.numeric(face_amount), as_serial(effective_date),
     as_serial(termination_date), tenor, calendar, convention, termination_convention, rule, as_flag(end_of_month),
     as_optional_serial(first_date), as_optional_serial(next_to_last_date), as.numeric(coupon_rate), day_count,
-    payment_convention, as.numeric(redemption), as_optional_serial(issue_date)
+    payment_convention, as.numeric(redemption), as_optional_serial(issue_date), if (is.null(notionals)) numeric() else as.numeric(notionals)
   ))$value
   structure(
     list(pointer = pointer, coupon_rate = coupon_rate, termination_date = as_date(as_serial(termination_date))),

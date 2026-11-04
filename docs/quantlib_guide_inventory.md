@@ -32,7 +32,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | カレンダー | `isHoliday`、`isBusinessDay`、`adjust`、`advance`、`endOfMonth`、`addHoliday`、`JointCalendar`、`BespokeCalendar` | `is_business_day`、`generate_holidays`、`compute_adjusted_date`、`compute_advanced_date`、`compute_end_of_month`（約 70 のカレンダー） | 一部対応 | 休日の追加、結合カレンダー、自作カレンダー |
 | スケジュール | `MakeSchedule`（前進・後退、月末、短期・長期の初回、CDS2015） | `generate_schedule`（同じ規則）と、債券・OIS スワップ・CDS の内部 | 対応済み | |
 | 日数計算 | 30/360 の各種、Act/Act ISMA（参照期間・スケジュールつき）、`yearFraction` | `compute_year_fraction`（参照期間つき、30 種類以上） | 一部対応 | Act/Act ISMA にスケジュール全体を渡す形はない（参照期間は渡せる） |
-| 複利・利率の換算 | Simple、Compounded、Continuous、**SimpleThenCompounded**、`InterestRate.equivalentRate` | Simple、Compounded、Continuous | 一部対応 | SimpleThenCompounded がない。利率の換算を R に公開していない |
+| 複利・利率の換算 | Simple、Compounded、Continuous、**SimpleThenCompounded**、`InterestRate.equivalentRate` | Simple、Compounded、Continuous、SimpleThenCompounded、CompoundedThenSimple（2026-11-04 に追加） | 一部対応 | 利率の換算を R に公開していない |
 | 評価日・参照日 | グローバルな評価日、参照日が動くカーブと固定のカーブ | 評価日と参照日を引数で明示する | 設計上の違い | 評価日を変えた再計算は、引数を変えて呼び直す |
 | fixing | `addFixing`、欠けた fixing のエラー、当日の fixing の扱い | OIS スワップの `fixings` 引数 | 一部対応 | IBOR の fixing は対象外。当日 fixing を予測するかの切り替えはない |
 | キャッシュフロー表 | `cashflows()`、利率・期間・金額、`CashFlows.npv`、`CashFlows.bps` | `get_bond_cashflows`、`compute_ois_swap_cashflows`、`compute_cashflow_npv`（NPV と BPS、各フローの値） | 対応済み | 償還の BPS は QuantLib が `nan`、ここは 0 |
@@ -51,7 +51,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 4 | Dates and periods | 日付・期間の演算 | 一部対応 | 期間の演算を R に公開していない（R の日付で代替できる例が多い） |
 | 5 | Calendars and holidays | TARGET、米国債、調整、前進、休日の追加、結合・自作カレンダー | 一部対応 | 休日の追加、結合・自作カレンダー。それ以外は再現した（`dates.R`） |
 | 6 | Schedules | 前進・後退、短期・長期の初回、月末、CDS2015 | 対応済み | 再現した（`dates.R`） |
-| 7 | Cash flows and bonds | 固定利付債のキャッシュフロー、利回り、**償還元本が変わる債券** | 一部対応 | 汎用の Bond、償還元本の変化（アモチ） |
+| 7 | Cash flows and bonds | 固定利付債のキャッシュフロー、利回り、償還元本が変わる債券 | 対応済み | 汎用の Bond の代わりに、`create_fixed_rate_bond` の `notionals` でアモチ債を作る |
 | 8 | The global evaluation date | 割引債、評価日の効果、Euribor の fixing | 一部対応 | 割引債の専用の作り方（クーポン 0 の固定利付債で表せるかは未確認）。IBOR は対象外 |
 | 9 | Handling dependencies | 割引債を発行体カーブで評価、カーブの差し替え | 一部対応 | R でゼロカーブを作れない。差し替えは呼び直しで代替 |
 | 10 | Instruments and pricing engines | European（解析解と Greeks）、Heston、MC | 一部対応 | Heston。評価日を変える再計算は呼び直し |
@@ -66,13 +66,13 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 20 | Interest-rate indexes | 指数の規約、fixing の登録 | 一部対応 | OIS の fixing は引数で渡す。IBOR は対象外 |
 | 21 | Effect of today's fixing | 当日 fixing の有無で IBOR カーブが変わる | 設計上対象外 | |
 | 22 | Dangerous day-count conventions | 30/360 の分割、Act/Act ISMA の参照期間 | 一部対応 | スケジュール全体を渡す Act/Act ISMA。それ以外は再現した（`dates.R`） |
-| 23 | Vanilla bonds | 固定利付債の価格・利回り・デュレーション・コンベクシティ、評価日の変更、ステップアップ、アモチ、割引債、IBOR 変動利付債、キャップ・フロア、**OIS 変動利付債** | 一部対応 | SimpleThenCompounded、ステップアップ、アモチ、OIS 変動利付債、R のフラットカーブ。IBOR は対象外 |
+| 23 | Vanilla bonds | 固定利付債の価格・利回り・デュレーション・コンベクシティ、評価日の変更、ステップアップ、アモチ、割引債、IBOR 変動利付債、キャップ・フロア、OIS 変動利付債 | 一部対応 | 割引債、OIS 変動利付債。IBOR は対象外。それ以外は再現した（`bonds.R`。SimpleThenCompounded の利回りは QuantLib 1.42 と一致し、Guide とは版の差で 1.1e-6） |
 | 24 | Different kinds of swaps | SOFR OIS（fair rate、BPS、varying notional、spread、payment lag、lookback・lockout）、IBOR スワップ、ベーシス | 一部対応 | 想定元本の変化、lookback・lockout・観測シフト、R のゼロカーブ。IBOR は対象外 |
 | 25 | Asset swaps | Euribor の par・market アセットスワップ | 設計上対象外 | Riemann は OIS のアセットスワップ（別の規約） |
 | 26 | Cross-currency swaps | 一定元本と MtM のクロスカレンシースワップ | 未対応 | Riemann の円建てアセットスワップは別の商品 |
 | 27 | Coupons with multiple resets | 複数回のリセットを持つクーポン | 未対応 | |
 | 28 | Payment-in-kind bonds | 元本に組み入れるクーポン | 未対応 | |
-| 29 | Spread calculations | i スプレッド、Z スプレッド（SOFR ブートストラップ）、利率の換算、コール債の OAS | 一部対応 | SimpleThenCompounded の利回り、利率の換算。OAS（Hull–White 木のコール債） |
+| 29 | Spread calculations | i スプレッド、Z スプレッド（SOFR ブートストラップ）、利率の換算、コール債の OAS | 一部対応 | 利率の換算、OAS（Hull–White 木のコール債）。i スプレッドと Z スプレッドは再現した（`spreads.R`） |
 | 31 | Numerical Greeks | バリアの数値 Greeks、European の差分 | 対応済み | Riemann は自動微分で Greeks を返す。数値差分の比較は可能 |
 | 32 | Approaches to numerical Theta | IBOR カーブの Theta の 3 方式 | 設計上対象外 | IBOR。方式の比較自体は OIS で行える |
 | 33 | Pricing over a range of days | 日ごとの再評価、過去・将来の fixing | 一部対応 | R のゼロカーブ、OIS 変動利付債。IBOR は対象外 |

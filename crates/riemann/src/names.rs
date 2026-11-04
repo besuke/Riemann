@@ -221,6 +221,8 @@ pub fn parse_compounding(name: &str) -> Result<Compounding, Error> {
         "simple" => Compounding::Simple,
         "compounded" => Compounding::Compounded,
         "continuous" => Compounding::Continuous,
+        "simple_then_compounded" => Compounding::SimpleThenCompounded,
+        "compounded_then_simple" => Compounding::CompoundedThenSimple,
         other => return unknown("compounding", other),
     })
 }

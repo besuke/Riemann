@@ -48,30 +48,65 @@ pub struct FixedRateBond {
     pub cashflows: Vec<CashFlow>,
     /// Payment date of the last coupon; the notional is repaid on this date.
     pub maturity_payment_date: Date,
+    /// The dates where the outstanding notional changes, with the notional from that date on; the last
+    /// is the maturity payment date with 0 (QuantLib `Bond::notionalSchedule` and `notionals`).
+    pub notional_changes: Vec<(Date, f64)>,
+    /// The notional before the first change.
+    pub initial_notional: f64,
 }
 
 impl FixedRateBond {
-    /// Builds the bond (QuantLib `FixedRateBond` constructor).
+    /// Builds the bond (QuantLib `FixedRateBond` constructor), with one coupon rate and one notional.
     pub fn new(spec: FixedRateBondSpec) -> Result<FixedRateBond, Error> {
+        let (rates, notionals) = (vec![spec.coupon_rate], vec![spec.face_amount]);
+        FixedRateBond::with_schedules(spec, rates, notionals)
+    }
+
+    /// Builds the bond with a coupon rate and a notional per coupon; a shorter list holds its last value
+    /// for the remaining coupons. A step-up bond changes the rates; an amortizing bond lowers the
+    /// notionals, and repays each fall at the payment date of the coupon before it (QuantLib
+    /// `FixedRateBond` with vectors, `AmortizingFixedRateBond`, `Bond::addRedemptionsToCashflows`).
+    /// `spec.coupon_rate` and `spec.face_amount` are replaced by the first values.
+    pub fn with_schedules(mut spec: FixedRateBondSpec, rates: Vec<f64>, notionals: Vec<f64>) -> Result<FixedRateBond, Error> {
+        if rates.is_empty() || notionals.is_empty() || rates.iter().chain(&notionals).any(|v| !v.is_finite()) {
+            return Err(Error::InvalidInput { reason: "a bond needs finite coupon rates and notionals".into() });
+        }
+        spec.coupon_rate = rates[0];
+        spec.face_amount = notionals[0];
         let schedule = generate_schedule(&spec.schedule)?;
         let payment_calendar = spec.payment_calendar.clone().unwrap_or_else(|| spec.schedule.calendar.clone());
         let leg = FixedRateLegSpec {
-            notional: spec.face_amount,
-            rate: spec.coupon_rate,
+            notionals: notionals.clone(),
+            rates,
             day_count: spec.day_count.clone(),
             payment_calendar,
             payment_convention: spec.payment_convention,
         };
         let mut cashflows = cashflows::create_fixed_rate_leg(&spec.schedule, &schedule, &leg)?;
-        // the notional is repaid on the payment date of the last coupon
-        let maturity_payment_date = cashflows.last().expect("at least one coupon").date();
-        cashflows.push(CashFlow::Redemption {
-            date: maturity_payment_date,
-            amount: (spec.redemption / 100.0) * (spec.face_amount - 0.0),
-        });
+        let coupons: Vec<(Date, f64)> = cashflows
+            .iter()
+            .map(|cf| match cf {
+                CashFlow::FixedRateCoupon(c) => (c.payment_date, c.nominal),
+                CashFlow::Redemption { date, amount } => (*date, *amount),
+            })
+            .collect();
+        let maturity_payment_date = coupons.last().expect("at least one coupon").0;
+        let factor = spec.redemption / 100.0;
+        let mut notional_changes = Vec::new();
+        for pair in coupons.windows(2) {
+            let ((date, before), (_, after)) = (pair[0], pair[1]);
+            if after != before {
+                cashflows.push(CashFlow::Redemption { date, amount: factor * (before - after) });
+                notional_changes.push((date, after));
+            }
+        }
+        // the last notional is repaid on the payment date of the last coupon
+        let last = coupons.last().expect("at least one coupon").1;
+        cashflows.push(CashFlow::Redemption { date: maturity_payment_date, amount: factor * (last - 0.0) });
+        notional_changes.push((maturity_payment_date, 0.0));
         // stable sort by date: redemptions follow coupons paid on the same date
         cashflows.sort_by_key(|cf| cf.date());
-        Ok(FixedRateBond { spec, schedule, cashflows, maturity_payment_date })
+        Ok(FixedRateBond { spec, schedule, cashflows, maturity_payment_date, notional_changes, initial_notional: coupons[0].1 })
     }
 
     fn payment_calendar(&self) -> &HolidayCalendar {
@@ -92,17 +127,16 @@ impl FixedRateBond {
         })
     }
 
-    /// Outstanding notional at `d` (QuantLib `Bond::notional`); zero from the redemption date on.
+    /// Outstanding notional at `d` (QuantLib `Bond::notional`). On a date where it changes, the payment
+    /// has occurred and the new notional applies; zero from the last redemption on.
     pub fn notional(&self, d: Date) -> f64 {
-        if d > self.maturity_payment_date {
-            return 0.0;
+        let mut notional = self.initial_notional;
+        for &(date, after) in &self.notional_changes {
+            if d >= date {
+                notional = after;
+            }
         }
-        if d < self.maturity_payment_date {
-            self.spec.face_amount
-        } else {
-            // on the redemption date the payment has occurred and the notional changed
-            0.0
-        }
+        notional
     }
 
     /// Accrued interest per 100 of notional at `settlement` (QuantLib `BondFunctions::accruedAmount`).

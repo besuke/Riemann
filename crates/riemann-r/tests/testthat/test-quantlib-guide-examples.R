@@ -16,7 +16,8 @@ test_that("the bond example runs and its unrounded Guide values agree", {
 test_that("the spread example reproduces the z-spread", {
   r <- NULL
   capture.output(r <- source(guide_script("spreads.R"), local = new.env())$value)
-  expect_lt(abs(r$riemann_minus_guide[1]), 1e-8)
+  expect_lt(abs(r$riemann_minus_guide[startsWith(r$item, "Z-spread")]), 1e-8)
+  if (requireNamespace("QuantLib", quietly = TRUE)) expect_lt(abs(r$riemann_minus_quantlib[startsWith(r$item, "I-spread")]), 1e-8)
 })
 
 test_that("the option example runs", {

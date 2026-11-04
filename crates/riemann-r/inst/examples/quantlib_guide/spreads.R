@@ -14,8 +14,11 @@
 # Curve: SOFR OIS, 2 settlement days, annual payments, Actual/360, monotonic log-cubic discounts. Spread:
 # compounded annually, 30/360.
 #
-# Not reproduced (docs/quantlib_guide_inventory.md): the yield with SimpleThenCompounded compounding and the
-# i-spread built on it; InterestRate.equivalentRate; the OAS of the callable version on a Hull-White tree.
+# The yield (SimpleThenCompounded, annual) and the i-spread over the OIS rates interpolated linearly in
+# 30/360 time are also computed.
+#
+# Not reproduced (docs/quantlib_guide_inventory.md): InterestRate.equivalentRate; the OAS of the callable
+# version on a Hull-White tree.
 
 library(RiemannFinMath)
 has_quantlib <- requireNamespace("QuantLib", quietly = TRUE)
@@ -28,8 +31,13 @@ bond <- create_fixed_rate_bond(3L, 1e6, "2020-05-26", "2040-05-26", "1Y", "us_go
 curve <- bootstrap_ois_curve(today, today, "sofr", "actual_360", create_ois_instruments(tenors, quotes, 2L, 1L, 0L))
 settlement <- compute_settlement_date(bond, today)
 z <- compute_z_spread_from_price(bond, curve, 98.08, "clean", "compounded", 1L, settlement)
+y <- compute_yield_from_price(bond, 98.08, "clean", "thirty_360_bond_basis", "simple_then_compounded", 1L, settlement)
+# the i-spread: the yield over the OIS rate at the bond's maturity, interpolated between 12 and 15 years
+maturity <- max(get_bond_cashflows(bond)$payment_date)
+t <- compute_year_fraction("thirty_360_bond_basis", today, c(maturity, as.Date("2038-03-16"), as.Date("2041-03-16")))
+ois_at_maturity <- stats::approx(t[2:3], quotes[7:8], t[1])$y
 
-q_z <- NA_real_
+q_z <- q_y <- NA_real_
 q_discounts <- rep(NA_real_, 3)
 check_dates <- as.Date(c("2031-03-18", "2040-05-29", "2056-03-17"))
 if (has_quantlib) {
@@ -48,9 +56,15 @@ if (has_quantlib) {
   q_z <- QuantLib::BondFunctions_zSpread(ql_bond, QuantLib::BondPrice(98.08, "Clean"), ql_curve, QuantLib::Thirty360("BondBasis"), "Compounded", "Annual",
                                          QuantLib::Bond_settlementDate(ql_bond))
   q_discounts <- vapply(check_dates, \(d) QuantLib::YieldTermStructure_discount(ql_curve, ql_date(d)), 1)
+  q_y <- QuantLib::BondFunctions_yield(ql_bond, QuantLib::BondPrice(98.08, "Clean"), QuantLib::Thirty360("BondBasis"), "SimpleThenCompounded",
+                                       "Annual", QuantLib::Bond_settlementDate(ql_bond))
 }
 
 results <- rbind(
+  tibble::tibble(item = "Yield at 98.08, SimpleThenCompounded, annual", guide = 0.021579158777769974, quantlib_local = q_y, riemann = y),
+  tibble::tibble(item = "Time to maturity, 30/360", guide = 14.202777777777778, quantlib_local = NA_real_, riemann = t[1]),
+  tibble::tibble(item = "OIS rate interpolated at maturity", guide = 0.01485349074074074, quantlib_local = NA_real_, riemann = ois_at_maturity),
+  tibble::tibble(item = "I-spread, bp", guide = 67.25668037029234, quantlib_local = (q_y - ois_at_maturity) * 1e4, riemann = (y - ois_at_maturity) * 1e4),
   tibble::tibble(item = "Z-spread, bp (compounded annually, 30/360)", guide = 64.75664508570601, quantlib_local = q_z * 1e4, riemann = z * 1e4),
   tibble::tibble(item = paste("Discount factor on", check_dates), guide = NA_real_, quantlib_local = q_discounts,
                  riemann = compute_discount(curve, check_dates))
@@ -63,4 +77,8 @@ old <- options(width = 250)
 print(as.data.frame(results), digits = 12, row.names = FALSE, right = FALSE)
 options(old)
 cat("\nCurve repricing of the 15 OIS quotes, largest absolute error:", format(max(abs(get_quote_repricing(curve)$reproduction_error)), digits = 3), "\n")
+cat("The yield, and so the i-spread, differs from the Guide's print by 2.7e-7 and equals QuantLib 1.42: a difference",
+    "\nbetween the Guide's QuantLib and 1.42.\n")
+invisible(results)
+NA
 invisible(results)

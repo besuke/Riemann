@@ -10,8 +10,7 @@
 # Needs: RiemannFinMath and tibble. QuantLib (the R package) is optional.
 #
 # Not reproduced here, because RiemannFinMath lacks the feature (docs/quantlib_guide_inventory.md):
-# the yield with
-# SimpleThenCompounded compounding, step-up and amortizing bonds, zero-coupon bonds on a curve, floaters.
+# zero-coupon bonds on a curve and floaters.
 
 library(RiemannFinMath)
 has_quantlib <- requireNamespace("QuantLib", quietly = TRUE)
@@ -58,7 +57,7 @@ cfb <- create_fixed_rate_bond(3L, 10000, "2021-02-08", "2026-02-08", "6M", "targ
                               FALSE, 0.03, thirty360, "following", 100, issue_date = "2021-02-05")
 cfb_flows <- get_bond_cashflows(cfb)
 guide_amounts <- c(150.833, 149.167, 150.000, 150.000, 150.000, 150.000, 150.000, 151.667, 148.333, 150.833, 10000)
-add("Cash flows and bonds", "Largest difference in the 11 cash-flow amounts (Guide prints 3 decimals)", 0,
+add("Cash flows and bonds", "Largest difference in the 11 cash-flow amounts (Guide prints 3 decimals)", NA_real_,
     max(abs(cfb_flows$amount - guide_amounts)))
 settle <- compute_settlement_date(cfb, "2024-01-15")
 cfb_yield <- compute_yield_from_price(cfb, 98, "clean", thirty360, "compounded", 2L, settle)
@@ -74,7 +73,7 @@ add("Cash flows and bonds", "Yield at a clean price of 98, compounded semiannual
 cfa <- create_fixed_rate_bond(3L, 10000, "2025-04-08", "2030-04-08", "6M", "target", "following", "following", "backward",
                               FALSE, 0.03, thirty360, "following", 100)
 cfa_amounts <- c(150.00, 150.00, 150.00, 150.00, 150.00, 151.67, 149.17, 150.00, 149.17, 150.00, 10000.00)
-add("Cash-flow analysis", "Largest difference in the 11 cash-flow amounts (Guide prints 2 decimals)", 0,
+add("Cash-flow analysis", "Largest difference in the 11 cash-flow amounts (Guide prints 2 decimals)", NA_real_,
     max(abs(get_bond_cashflows(cfa)$amount - cfa_amounts)))
 cfa_value <- compute_cashflow_npv(get_bond_cashflows(cfa), create_flat_curve("2025-07-28", 0.04, "actual_360"),
                                   nominal = 10000, day_count = thirty360)
@@ -88,7 +87,7 @@ vanilla <- create_fixed_rate_bond(3L, 10000, "2023-02-08", "2028-02-08", "6M", "
 settle <- compute_settlement_date(vanilla, "2024-05-02")
 later <- compute_settlement_date(vanilla, "2027-05-31")
 vanilla_amounts <- c(150, 150, 150, 151.67, 148.33, 150.83, 150.83, 148.33, 150.83, 149.17, 10000)
-add("Vanilla bonds", "Largest difference in the 11 cash-flow amounts (Guide prints 2 decimals)", 0,
+add("Vanilla bonds", "Largest difference in the 11 cash-flow amounts (Guide prints 2 decimals)", NA_real_,
     max(abs(get_bond_cashflows(vanilla)$amount - vanilla_amounts)))
 add("Vanilla bonds", "Settlement date for 2 May 2024 (days since 1970-01-01)", as.numeric(as.Date("2024-05-07")), as.numeric(settle))
 add("Vanilla bonds", "Settlement date for 31 May 2027 (days since 1970-01-01)", as.numeric(as.Date("2027-06-03")), as.numeric(later))
@@ -112,6 +111,29 @@ add("Vanilla bonds", "Modified duration at 3.5%, Actual/360, semiannual", 3.5426
     compute_duration(vanilla, 0.035, "actual_360", "compounded", 2L, settle, duration_type = "modified"), q[5])
 add("Vanilla bonds", "Convexity at 3.5%, Actual/360, semiannual", 14.76085604114641,
     compute_convexity(vanilla, 0.035, "actual_360", "compounded", 2L, settle), q[6])
+
+# ---- "Vanilla bonds": a yield with SimpleThenCompounded, a step-up bond and an amortizing bond ------------
+q <- NA_real_
+if (has_quantlib) {
+  b <- ql_bond("2024-05-02", "2023-02-08", "2028-02-08", 10000, 0.03)
+  q <- QuantLib::BondFunctions_yield(b, QuantLib::BondPrice(98.08, "Clean"), QuantLib::Thirty360("BondBasis"), "SimpleThenCompounded",
+                                     "Semiannual", QuantLib::Bond_settlementDate(b))
+}
+add("Vanilla bonds", "Yield at a clean price of 98.08, SimpleThenCompounded, semiannual", 0.035489194994310615,
+    compute_yield_from_price(vanilla, 98.08, "clean", thirty360, "simple_then_compounded", 2L, settle), q)
+step_up <- create_fixed_rate_bond(3L, 100, "2023-02-08", "2028-02-08", "6M", "target", "following", "following", "backward", FALSE,
+                                  c(0.03, 0.03, 0.04, 0.04, 0.05), thirty360, "following", 100)
+add("Vanilla bonds", "Step-up bond: largest difference in the 11 amounts (Guide prints 2 decimals)", NA_real_,
+    max(abs(get_bond_cashflows(step_up)$amount - c(1.50, 1.50, 2.00, 2.02, 2.47, 2.51, 2.51, 2.47, 2.51, 2.49, 100.00))))
+amortizing <- create_fixed_rate_bond(3L, 10000, "2018-02-08", "2028-02-08", "1Y", "target", "following", "following", "backward", FALSE,
+                                     0.03, thirty360, "following", 100,
+                                     notionals = c(10000, 10000, 8000, 8000, 6000, 6000, 4000, 4000, 2000, 2000))
+amortizing_value <- compute_bond_value_on_curve(amortizing, create_flat_curve("2024-05-02", 0.04, "actual_360"), "2024-05-02")
+add("Vanilla bonds", "Amortizing bond: largest difference in the 15 amounts (Guide prints 2 decimals)", NA_real_,
+    max(abs(get_bond_cashflows(amortizing)$amount - c(300.00, 301.67, 2000.00, 238.67, 240.00, 2000.00, 180.00, 180.00, 2000.00,
+                                                      120.67, 119.67, 2000.00, 59.83, 60.00, 2000.00))))
+add("Vanilla bonds", "Amortizing bond: NPV on a flat 4% curve, 2 May 2024", 3910.55084058516, amortizing_value$npv)
+add("Vanilla bonds", "Amortizing bond: clean price on the same curve", 97.07643264387757, amortizing_value$clean_price)
 
 # ---- "Vanilla bonds" on a flat 4% Actual/360 curve, built on each evaluation date -------------------------
 # QuantLib's FlatForward(0, TARGET, ...) moves its reference date with the evaluation date; here a curve is

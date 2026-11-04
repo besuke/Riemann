@@ -184,6 +184,9 @@ fn modified_duration(leg: &[CashFlow], y: &InterestRate, incl: bool, settlement:
             Compounding::Simple => dpdy -= c * b * b * t,
             Compounding::Compounded => dpdy -= c * t * b / (1.0 + r / n),
             Compounding::Continuous => dpdy -= c * b * t,
+            Compounding::SimpleThenCompounded if t <= 1.0 / n => dpdy -= c * b * b * t,
+            Compounding::CompoundedThenSimple if t > 1.0 / n => dpdy -= c * b * b * t,
+            Compounding::SimpleThenCompounded | Compounding::CompoundedThenSimple => dpdy -= c * t * b / (1.0 + r / n),
         }
         last_date = cf.date();
     }
@@ -229,6 +232,11 @@ pub fn compute_convexity(leg: &[CashFlow], y: &InterestRate, incl: bool, settlem
             Compounding::Simple => d2pdy2 += c * 2.0 * b * b * b * t * t,
             Compounding::Compounded => d2pdy2 += c * b * t * (n * t + 1.0) / (n * (1.0 + r / n) * (1.0 + r / n)),
             Compounding::Continuous => d2pdy2 += c * b * t * t,
+            Compounding::SimpleThenCompounded if t <= 1.0 / n => d2pdy2 += c * 2.0 * b * b * b * t * t,
+            Compounding::CompoundedThenSimple if t > 1.0 / n => d2pdy2 += c * 2.0 * b * b * b * t * t,
+            Compounding::SimpleThenCompounded | Compounding::CompoundedThenSimple => {
+                d2pdy2 += c * b * t * (n * t + 1.0) / (n * (1.0 + r / n) * (1.0 + r / n))
+            }
         }
         last_date = cf.date();
     }

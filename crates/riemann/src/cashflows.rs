@@ -88,8 +88,10 @@ impl CashFlow {
 /// The inputs of a fixed-rate leg (QuantLib `FixedRateLeg`) on a generated schedule.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FixedRateLegSpec {
-    pub notional: f64,
-    pub rate: f64,
+    /// Per coupon; the last value holds for the coupons after it (QuantLib `FixedRateLeg`).
+    pub notionals: Vec<f64>,
+    /// Per coupon; the last value holds for the coupons after it.
+    pub rates: Vec<f64>,
     pub day_count: DayCount,
     pub payment_calendar: HolidayCalendar,
     pub payment_convention: BusinessDayConvention,
@@ -113,11 +115,19 @@ pub fn create_fixed_rate_leg(
     let cal = &schedule_spec.calendar;
     let conv = schedule_spec.convention;
     let payment = |end: Date| leg.payment_calendar.adjust(end, leg.payment_convention);
+    if leg.notionals.is_empty() || leg.rates.is_empty() || leg.notionals.len() > n - 1 || leg.rates.len() > n - 1 {
+        return Err(Error::InvalidCashFlow {
+            reason: format!("give 1 to {} notionals and rates for {} coupons", n - 1, n - 1),
+        });
+    }
+    let at = |values: &[f64], i: usize| values[i.min(values.len() - 1)];
     let coupon = |start: Date, end: Date, ref_start: Date, ref_end: Date| -> Result<CashFlow, Error> {
+        // the index of the coupon is its position in the schedule
+        let i = dates.iter().position(|d| *d == start).unwrap_or(0);
         Ok(CashFlow::FixedRateCoupon(FixedRateCoupon {
             payment_date: payment(end)?,
-            nominal: leg.notional,
-            rate: leg.rate,
+            nominal: at(&leg.notionals, i),
+            rate: at(&leg.rates, i),
             day_count: leg.day_count.clone(),
             accrual_start: start,
             accrual_end: end,

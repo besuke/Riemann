@@ -19,6 +19,10 @@ pub enum Compounding {
     Compounded,
     /// exp(r t)
     Continuous,
+    /// Simple up to one period (`t <= 1 / f`), compounded beyond it (QuantLib `SimpleThenCompounded`).
+    SimpleThenCompounded,
+    /// Compounded up to one period, simple beyond it (QuantLib `CompoundedThenSimple`).
+    CompoundedThenSimple,
 }
 
 /// A rate with its day count, compounding and compounding frequency (periods per year).
@@ -32,7 +36,7 @@ pub struct InterestRate<T = f64> {
 
 impl<T: Operand> InterestRate<T> {
     pub fn new(rate: T, day_count: DayCount, compounding: Compounding, frequency: u32) -> Result<Self, Error> {
-        if compounding == Compounding::Compounded && frequency == 0 {
+        if matches!(compounding, Compounding::Compounded | Compounding::SimpleThenCompounded | Compounding::CompoundedThenSimple) && frequency == 0 {
             return Err(Error::InvalidInput { reason: "compounded rate needs a frequency of at least 1".into() });
         }
         Ok(InterestRate { rate, day_count, compounding, frequency })
@@ -49,6 +53,10 @@ impl<T: Operand> InterestRate<T> {
             Compounding::Simple => r * t + 1.0,
             Compounding::Compounded => (r / f + 1.0).powf(f * t),
             Compounding::Continuous => (r * t).exp(),
+            Compounding::SimpleThenCompounded if t <= 1.0 / f => r * t + 1.0,
+            Compounding::SimpleThenCompounded => (r / f + 1.0).powf(f * t),
+            Compounding::CompoundedThenSimple if t > 1.0 / f => r * t + 1.0,
+            Compounding::CompoundedThenSimple => (r / f + 1.0).powf(f * t),
         })
     }
 
@@ -89,6 +97,10 @@ impl<T: Operand> InterestRate<T> {
                 Compounding::Simple => (compound - 1.0) / t,
                 Compounding::Compounded => (compound.powf(1.0 / (f * t)) - 1.0) * f,
                 Compounding::Continuous => compound.ln() / t,
+                Compounding::SimpleThenCompounded if t <= 1.0 / f => (compound - 1.0) / t,
+                Compounding::SimpleThenCompounded => (compound.powf(1.0 / (f * t)) - 1.0) * f,
+                Compounding::CompoundedThenSimple if t > 1.0 / f => (compound - 1.0) / t,
+                Compounding::CompoundedThenSimple => (compound.powf(1.0 / (f * t)) - 1.0) * f,
             }
         };
         InterestRate::new(rate, day_count, compounding, frequency)

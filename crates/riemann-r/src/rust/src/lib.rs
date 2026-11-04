@@ -7,7 +7,6 @@
 //! holds the message, and `R/common.R` turns it into an R error. They do not use the `Err` path
 //! of extendr, which unwinds through a panic. A panic therefore always means a defect here or in
 //! the core; the process's panic hook is left alone, so it stays visible and can be diagnosed.
-
 use extendr_api::prelude::*;
 use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
@@ -36,22 +35,17 @@ use riemann::risk;
 use riemann::sabr::{self, SabrParameters};
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
 use riemann::yen_bond;
-
 type Core<T> = std::result::Result<T, riemann::Error>;
-
 fn failure(e: riemann::Error) -> List {
     list!(failure = e.to_string())
 }
-
 /// A list of the results, or the failure of the whole call.
 fn outcome(result: Core<List>) -> List {
     result.unwrap_or_else(failure)
 }
-
 fn date(serial: i32) -> Core<Date> {
     Date::from_serial(serial as i64)
 }
-
 /// 0 stands for no date.
 fn optional_date(serial: i32) -> Core<Option<Date>> {
     if serial == 0 {
@@ -60,7 +54,6 @@ fn optional_date(serial: i32) -> Core<Option<Date>> {
         date(serial).map(Some)
     }
 }
-
 /// A logical column crosses the border as integers. R has checked it; anything but 0 and 1 (NA
 /// included) is a failure here too, and never reads as false.
 fn flag(value: i32) -> Core<bool> {
@@ -72,11 +65,9 @@ fn flag(value: i32) -> Core<bool> {
         }),
     }
 }
-
 fn na_real() -> f64 {
     <f64 as CanBeNA>::na()
 }
-
 /// Splits row results into values, with NA for errors, and messages, empty for values.
 fn split_rows(rows: Vec<Core<f64>>) -> (Vec<f64>, Vec<String>) {
     let mut values = Vec::with_capacity(rows.len());
@@ -95,12 +86,10 @@ fn split_rows(rows: Vec<Core<f64>>) -> (Vec<f64>, Vec<String>) {
     }
     (values, errors)
 }
-
 fn value_list(rows: Vec<Core<f64>>) -> List {
     let (value, error) = split_rows(rows);
     list!(value = value, error = error)
 }
-
 fn yield_convention(day_count: &str, compounding: &str, frequency: i32) -> Core<YieldConvention> {
     Ok(YieldConvention {
         day_count: names::parse_day_count(day_count)?,
@@ -108,9 +97,7 @@ fn yield_convention(day_count: &str, compounding: &str, frequency: i32) -> Core<
         frequency: frequency as u32,
     })
 }
-
 // ---- bonds ----------------------------------------------------------------------------------
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn create_fixed_rate_bond(
@@ -126,14 +113,16 @@ fn create_fixed_rate_bond(
     end_of_month: bool,
     first_date: i32,
     next_to_last_date: i32,
-    coupon_rate: f64,
+    coupon_rate: Vec<f64>,
     day_count: &str,
     payment_convention: &str,
     redemption: f64,
     issue_date: i32,
+    notionals: Vec<f64>,
 ) -> List {
     let build = || -> Core<FixedRateBond> {
-        FixedRateBond::new(FixedRateBondSpec {
+        let notionals = if notionals.is_empty() { vec![face_amount] } else { notionals };
+        FixedRateBond::with_schedules(FixedRateBondSpec {
             settlement_days: settlement_days as u32,
             face_amount,
             schedule: ScheduleSpec {
@@ -148,17 +137,16 @@ fn create_fixed_rate_bond(
                 first_date: optional_date(first_date)?,
                 next_to_last_date: optional_date(next_to_last_date)?,
             },
-            coupon_rate,
+            coupon_rate: coupon_rate.first().copied().unwrap_or(f64::NAN),
             day_count: names::parse_day_count(day_count)?,
             payment_convention: names::parse_business_day_convention(payment_convention)?,
             redemption,
             issue_date: optional_date(issue_date)?,
             payment_calendar: None,
-        })
+        }, coupon_rate, notionals)
     };
     outcome(build().map(|bond| list!(value = ExternalPtr::new(bond))))
 }
-
 #[extendr]
 fn compute_settlement_date(bond: ExternalPtr<FixedRateBond>, evaluation_date: Vec<i32>) -> List {
     let rows = evaluation_date
@@ -167,7 +155,6 @@ fn compute_settlement_date(bond: ExternalPtr<FixedRateBond>, evaluation_date: Ve
         .collect();
     value_list(rows)
 }
-
 /// All measures of a bond at each yield and settlement date.
 #[extendr]
 fn compute_bond_values(
@@ -187,7 +174,6 @@ fn compute_bond_values(
         &settlement_date,
     ))
 }
-
 fn bond_values_rows(
     bond: &FixedRateBond,
     rate: &[f64],
@@ -260,7 +246,6 @@ fn bond_values_rows(
         error = errors
     ))
 }
-
 /// One duration measure at each yield and settlement date.
 #[extendr]
 #[allow(clippy::too_many_arguments)]
@@ -285,7 +270,6 @@ fn compute_duration(
     };
     outcome(rows())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_yield_from_price(
@@ -317,7 +301,6 @@ fn compute_yield_from_price(
     };
     outcome(rows())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn create_ois_swap(
@@ -353,12 +336,10 @@ fn create_ois_swap(
         Err(e) => failure(e),
     }
 }
-
 /// Fixings cross the border as two columns of equal length.
 fn fixings_of(dates: &[i32], rates: &[f64]) -> Core<Fixings> {
     dates.iter().zip(rates).map(|(&d, &r)| Ok((date(d)?, r))).collect()
 }
-
 /// The forecasting curve must be of the swap's index. Any curve can discount.
 fn check_forecast(swap: &OisSwap, curve: &OisCurve) -> Core<()> {
     if swap.spec.index == curve.spec.index {
@@ -367,7 +348,6 @@ fn check_forecast(swap: &OisSwap, curve: &OisCurve) -> Core<()> {
         Err(riemann::Error::InvalidInput { reason: "the curve is not of the swap's overnight index".into() })
     }
 }
-
 #[extendr]
 fn compute_ois_swap_value(
     swap: ExternalPtr<OisSwap>,
@@ -393,7 +373,6 @@ fn compute_ois_swap_value(
     };
     outcome(run())
 }
-
 /// The coupons of both legs. A coupon that cannot be computed has NA and its message.
 #[extendr]
 fn compute_ois_swap_cashflows(
@@ -437,7 +416,6 @@ fn compute_ois_swap_cashflows(
     };
     outcome(run())
 }
-
 #[extendr]
 fn compute_ois_swap_daily_rates(
     swap: ExternalPtr<OisSwap>,
@@ -467,7 +445,6 @@ fn compute_ois_swap_daily_rates(
     };
     outcome(run())
 }
-
 #[extendr]
 fn compute_ois_swap_quote_sensitivity(
     swap: ExternalPtr<OisSwap>,
@@ -489,7 +466,6 @@ fn compute_ois_swap_quote_sensitivity(
     };
     outcome(run())
 }
-
 /// The cash flows of a bond in date order, coupons before a redemption on the same date.
 #[extendr]
 fn get_bond_cashflows(bond: ExternalPtr<FixedRateBond>) -> List {
@@ -526,7 +502,6 @@ fn get_bond_cashflows(bond: ExternalPtr<FixedRateBond>) -> List {
     };
     outcome(rows())
 }
-
 #[extendr]
 fn compute_bond_value_with_zero_spread(
     bond: ExternalPtr<FixedRateBond>,
@@ -573,7 +548,6 @@ fn compute_bond_value_with_zero_spread(
     };
     outcome(rows())
 }
-
 #[extendr]
 fn compute_z_spread_from_price(
     bond: ExternalPtr<FixedRateBond>,
@@ -611,7 +585,6 @@ fn compute_z_spread_from_price(
     };
     outcome(rows())
 }
-
 #[extendr]
 fn compute_bond_value_on_curve(
     bond: ExternalPtr<FixedRateBond>,
@@ -648,9 +621,7 @@ fn compute_bond_value_on_curve(
         error = errors
     )
 }
-
 // ---- Japanese bond calculations --------------------------------------------------------------
-
 /// NA digits stand for no truncation.
 fn optional_digits(digits: i32) -> Option<u32> {
     if digits.is_na() {
@@ -659,7 +630,6 @@ fn optional_digits(digits: i32) -> Option<u32> {
         Some(digits as u32)
     }
 }
-
 #[extendr]
 fn compute_remaining_years(start: Vec<i32>, end: Vec<i32>) -> List {
     let rows = start
@@ -669,7 +639,6 @@ fn compute_remaining_years(start: Vec<i32>, end: Vec<i32>) -> List {
         .collect();
     value_list(rows)
 }
-
 #[extendr]
 fn compute_price_from_simple_rate(
     t: Vec<f64>,
@@ -691,7 +660,6 @@ fn compute_price_from_simple_rate(
         .collect();
     value_list(rows)
 }
-
 #[extendr]
 fn compute_simple_rate_from_price(
     t: Vec<f64>,
@@ -715,14 +683,12 @@ fn compute_simple_rate_from_price(
         .collect();
     value_list(rows)
 }
-
 fn frequencies(coupon: i32, compound: i32) -> yen_bond::CompoundFrequencies {
     yen_bond::CompoundFrequencies {
         coupon: coupon as u32,
         compound: compound as u32,
     }
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_price_from_compound_yield(
@@ -748,7 +714,6 @@ fn compute_price_from_compound_yield(
         .collect();
     value_list(rows)
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_compound_yield_from_price(
@@ -776,7 +741,6 @@ fn compute_compound_yield_from_price(
         .collect();
     value_list(rows)
 }
-
 fn risk_list(rows: Vec<Core<yen_bond::YenBondRisk>>) -> List {
     let pick = |f: fn(&yen_bond::YenBondRisk) -> f64| -> Vec<f64> {
         rows.iter()
@@ -800,7 +764,6 @@ fn risk_list(rows: Vec<Core<yen_bond::YenBondRisk>>) -> List {
         error = errors
     )
 }
-
 #[extendr]
 fn compute_risk_from_simple_rate(
     t: Vec<f64>,
@@ -823,7 +786,6 @@ fn compute_risk_from_simple_rate(
             .collect(),
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_risk_from_compound_yield(
@@ -850,9 +812,7 @@ fn compute_risk_from_compound_yield(
             .collect(),
     )
 }
-
 // ---- OIS curves ------------------------------------------------------------------------------
-
 /// A tenor of `ON` is an overnight deposit, which has no settlement days, frequency or lag.
 #[extendr]
 #[allow(clippy::too_many_arguments)]
@@ -897,7 +857,6 @@ fn bootstrap_ois_curve(
     };
     outcome(build().map(|curve| list!(value = ExternalPtr::new(curve))))
 }
-
 /// The same curve with extrapolation allowed or not; the original value does not change.
 #[extendr]
 fn with_extrapolation(curve: ExternalPtr<OisCurve>, extrapolate: bool) -> ExternalPtr<OisCurve> {
@@ -905,7 +864,6 @@ fn with_extrapolation(curve: ExternalPtr<OisCurve>, extrapolate: bool) -> Extern
     changed.curve = changed.curve.with_extrapolation(extrapolate);
     ExternalPtr::new(changed)
 }
-
 #[extendr]
 fn compute_discount(curve: ExternalPtr<OisCurve>, date_serial: Vec<i32>) -> List {
     let rows = date_serial
@@ -914,7 +872,6 @@ fn compute_discount(curve: ExternalPtr<OisCurve>, date_serial: Vec<i32>) -> List
         .collect();
     value_list(rows)
 }
-
 #[extendr]
 fn compute_zero_rate(
     curve: ExternalPtr<OisCurve>,
@@ -939,7 +896,6 @@ fn compute_zero_rate(
     };
     outcome(rows())
 }
-
 #[extendr]
 fn compute_forward_rate(
     curve: ExternalPtr<OisCurve>,
@@ -966,7 +922,6 @@ fn compute_forward_rate(
     };
     outcome(rows())
 }
-
 #[extendr]
 fn get_quote_repricing(curve: ExternalPtr<OisCurve>) -> List {
     let q = &curve.quote_repricing;
@@ -986,7 +941,6 @@ fn get_quote_repricing(curve: ExternalPtr<OisCurve>) -> List {
             .collect::<Vec<f64>>()
     )
 }
-
 #[extendr]
 fn get_discount_nodes(curve: ExternalPtr<OisCurve>) -> List {
     match curve.curve.discount_nodes() {
@@ -996,14 +950,11 @@ fn get_discount_nodes(curve: ExternalPtr<OisCurve>) -> List {
         None => failure(riemann::Error::InvalidInput { reason: "this curve is not given by discount factors".into() }),
     }
 }
-
 // ---- curves given directly -----------------------------------------------------------------------
-
 fn given_curve(build: impl FnOnce() -> Core<YieldCurve>, index: &str) -> List {
     let run = || -> Core<OisCurve> { Ok(OisCurve::given(build()?, names::parse_overnight_index(index)?)) };
     outcome(run().map(|curve| list!(value = ExternalPtr::new(curve))))
 }
-
 #[extendr]
 fn create_flat_curve(reference_date: i32, rate: f64, day_count: &str, compounding: &str, frequency: i32, index: &str) -> List {
     given_curve(
@@ -1014,7 +965,6 @@ fn create_flat_curve(reference_date: i32, rate: f64, day_count: &str, compoundin
         index,
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn create_zero_curve(dates: Vec<i32>, rates: Vec<f64>, day_count: &str, compounding: &str, frequency: i32, index: &str) -> List {
@@ -1026,7 +976,6 @@ fn create_zero_curve(dates: Vec<i32>, rates: Vec<f64>, day_count: &str, compound
         index,
     )
 }
-
 #[extendr]
 fn create_discount_curve(dates: Vec<i32>, discounts: Vec<f64>, day_count: &str, interpolation: &str, index: &str) -> List {
     given_curve(
@@ -1044,7 +993,6 @@ fn create_discount_curve(dates: Vec<i32>, discounts: Vec<f64>, day_count: &str, 
         index,
     )
 }
-
 #[extendr]
 fn create_zero_spreaded_curve(curve: ExternalPtr<OisCurve>, spread: f64, compounding: &str, frequency: i32) -> List {
     let run = || -> Core<OisCurve> {
@@ -1053,9 +1001,7 @@ fn create_zero_spreaded_curve(curve: ExternalPtr<OisCurve>, spread: f64, compoun
     };
     outcome(run().map(|c| list!(value = ExternalPtr::new(c))))
 }
-
 // ---- sensitivities ---------------------------------------------------------------------------
-
 #[extendr]
 fn compute_yield_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
@@ -1099,7 +1045,6 @@ fn compute_yield_sensitivity(
     };
     outcome(rows())
 }
-
 #[extendr]
 fn compute_curve_node_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
@@ -1129,7 +1074,6 @@ fn compute_curve_node_sensitivity(
     };
     outcome(rows())
 }
-
 #[extendr]
 fn compute_quote_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
@@ -1150,9 +1094,7 @@ fn compute_quote_sensitivity(
     };
     outcome(rows())
 }
-
 // ---- asset swaps and futures basis ----------------------------------------------------------
-
 #[extendr]
 fn compute_ois_asset_swap(
     bond: ExternalPtr<FixedRateBond>,
@@ -1207,7 +1149,6 @@ fn compute_ois_asset_swap(
         error = error
     )
 }
-
 #[extendr]
 fn compute_asset_swap_quote_sensitivity(
     bond: ExternalPtr<FixedRateBond>,
@@ -1238,7 +1179,6 @@ fn compute_asset_swap_quote_sensitivity(
     };
     outcome(run())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_yen_asset_swap(
@@ -1298,7 +1238,6 @@ fn compute_yen_asset_swap(
         error = error
     )
 }
-
 #[extendr]
 fn compute_future_basis(
     bond: ExternalPtr<FixedRateBond>,
@@ -1335,9 +1274,7 @@ fn compute_future_basis(
     };
     outcome(run())
 }
-
 // ---- Hull-White and SABR ---------------------------------------------------------------------
-
 /// `spacing` above 0 selects the trapezoid rule; otherwise `nodes` of Gauss-Hermite.
 fn grid_settings(points: i32, limit: f64, nodes: i32, spacing: f64) -> GridSettings {
     GridSettings {
@@ -1350,7 +1287,6 @@ fn grid_settings(points: i32, limit: f64, nodes: i32, spacing: f64) -> GridSetti
         },
     }
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_hull_white_bond_option_value(
@@ -1376,7 +1312,6 @@ fn compute_hull_white_bond_option_value(
         .collect();
     value_list(rows)
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_hull_white_swaption_value(
@@ -1396,7 +1331,6 @@ fn compute_hull_white_swaption_value(
         }),
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_hull_white_bermudan_swaption_value(
@@ -1421,7 +1355,6 @@ fn compute_hull_white_bermudan_swaption_value(
             .map(|value| list!(value = value)),
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_hull_white_callable_bond_value(
@@ -1453,7 +1386,6 @@ fn compute_hull_white_callable_bond_value(
         }),
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_sabr_volatility(
@@ -1483,7 +1415,6 @@ fn compute_sabr_volatility(
     };
     outcome(rows())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn calibrate_hull_white(
@@ -1558,7 +1489,6 @@ fn calibrate_hull_white(
     };
     outcome(run())
 }
-
 #[extendr]
 fn calibrate_sabr(kind: &str, strike: Vec<f64>, volatility: Vec<f64>, forward: f64, expiry: f64, beta: f64) -> List {
     let run = || -> Core<List> {
@@ -1574,9 +1504,7 @@ fn calibrate_sabr(kind: &str, strike: Vec<f64>, volatility: Vec<f64>, forward: f
     };
     outcome(run())
 }
-
 // ---- credit default swaps ----------------------------------------------------------------------
-
 fn cds_value_list(v: CdsValue) -> List {
     list!(
         npv = v.npv,
@@ -1588,7 +1516,6 @@ fn cds_value_list(v: CdsValue) -> List {
         fair_upfront = v.fair_upfront.unwrap_or_else(na_real)
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn create_credit_default_swap(
@@ -1644,7 +1571,6 @@ fn create_credit_default_swap(
     };
     outcome(build().map(|c| list!(value = ExternalPtr::new(c))))
 }
-
 #[extendr]
 fn create_hazard_curve(reference_date: i32, day_count: &str, dates: Vec<i32>, hazards: Vec<f64>) -> List {
     let build = || -> Core<HazardCurve> {
@@ -1654,13 +1580,11 @@ fn create_hazard_curve(reference_date: i32, day_count: &str, dates: Vec<i32>, ha
     };
     outcome(build().map(|c| list!(value = ExternalPtr::new(c))))
 }
-
 #[extendr]
 fn compute_survival_probability(curve: ExternalPtr<HazardCurve>, date_serial: Vec<i32>) -> List {
     let rows = date_serial.iter().map(|&d| curve.survival(date(d)?)).collect();
     value_list(rows)
 }
-
 #[extendr]
 fn compute_cds_value(
     cds: ExternalPtr<Cds>,
@@ -1676,7 +1600,6 @@ fn compute_cds_value(
     };
     outcome(run())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn bootstrap_hazard_curve(
@@ -1727,7 +1650,6 @@ fn bootstrap_hazard_curve(
         )
     }))
 }
-
 #[extendr]
 fn compute_cds_quote_sensitivity(
     cds: ExternalPtr<Cds>,
@@ -1749,7 +1671,6 @@ fn compute_cds_quote_sensitivity(
     };
     outcome(run())
 }
-
 #[extendr]
 fn compute_cds_maturity(trade_date: i32, tenor: &str, rule: &str) -> List {
     let run = || -> Core<f64> {
@@ -1758,9 +1679,7 @@ fn compute_cds_maturity(trade_date: i32, tenor: &str, rule: &str) -> List {
     };
     value_list(vec![run()])
 }
-
 // ---- PRDC ----------------------------------------------------------------------------------------
-
 fn prdc_list(s: PrdcSensitivity) -> List {
     let (mut domestic, mut dates, mut times, mut d_npv) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for c in &s.curves {
@@ -1782,7 +1701,6 @@ fn prdc_list(s: PrdcSensitivity) -> List {
         d_npv = d_npv
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_prdc_value(
@@ -1832,14 +1750,11 @@ fn compute_prdc_value(
     };
     outcome(result.map(prdc_list))
 }
-
 // ---- options --------------------------------------------------------------------------------
-
 fn option_inputs(values: [f64; 6]) -> OptionInputs {
     let [spot, strike, rate, dividend_yield, volatility, time] = values;
     OptionInputs { spot, strike, rate, dividend_yield, volatility, time }
 }
-
 /// Columns of `f(row)`, with NA and a message where a row fails.
 fn table<const N: usize>(n: usize, f: impl Fn(usize) -> Core<[f64; N]>) -> (Vec<Vec<f64>>, Vec<String>) {
     let mut columns = vec![Vec::with_capacity(n); N];
@@ -1858,11 +1773,9 @@ fn table<const N: usize>(n: usize, f: impl Fn(usize) -> Core<[f64; N]>) -> (Vec<
     }
     (columns, errors)
 }
-
 fn greeks_row(g: Greeks) -> [f64; 8] {
     [g.value, g.delta, g.gamma, g.vega, g.rho, g.dividend_rho, g.theta, g.strike_sensitivity]
 }
-
 fn greeks_list(n: usize, f: impl Fn(usize) -> Core<Greeks>) -> List {
     let (columns, error) = table(n, |i| f(i).map(greeks_row));
     list!(
@@ -1877,7 +1790,6 @@ fn greeks_list(n: usize, f: impl Fn(usize) -> Core<Greeks>) -> List {
         error = error
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_european_option_value(
@@ -1896,7 +1808,6 @@ fn compute_european_option_value(
         )
     })
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_barrier_option_value(
@@ -1921,7 +1832,6 @@ fn compute_barrier_option_value(
         )
     })
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_binomial_option_value(
@@ -1944,7 +1854,6 @@ fn compute_binomial_option_value(
         )
     })
 }
-
 #[extendr]
 fn compute_forward_option_value(
     model: Vec<String>,
@@ -1980,7 +1889,6 @@ fn compute_forward_option_value(
         error = error
     )
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_implied_volatility(
@@ -2007,9 +1915,7 @@ fn compute_implied_volatility(
         .collect();
     value_list(rows)
 }
-
 // ---- LMM building blocks ----------------------------------------------------------------------------
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_caplet_value(
@@ -2042,7 +1948,6 @@ fn compute_caplet_value(
         .collect();
     value_list(rows)
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_caplet_from_normals(
@@ -2060,13 +1965,11 @@ fn compute_caplet_from_normals(
         list!(value = s.value, standard_error = s.standard_error, paths = s.paths as i32)
     }))
 }
-
 /// Normals and the correlation come by rows.
 #[extendr]
 fn compute_correlated_normals(normals: Vec<f64>, correlation: Vec<f64>, dimension: i32) -> List {
     outcome(lmm::compute_correlated_normals(&normals, &correlation, dimension.max(0) as usize).map(|v| list!(values = v)))
 }
-
 #[extendr]
 fn generate_correlated_normals(correlation: Vec<f64>, dimension: i32, count: f64, seed: f64) -> List {
     let run = || -> Core<List> {
@@ -2075,9 +1978,7 @@ fn generate_correlated_normals(correlation: Vec<f64>, dimension: i32, count: f64
     };
     outcome(run())
 }
-
 // ---- mortgage-backed securities --------------------------------------------------------------------
-
 /// The terms in the order of `create_mbs_pass_through()`: balance, mortgage rate, pass-through rate,
 /// months, PSA multiplier, sensitivity, refinancing cost, CPR cap.
 fn mbs_terms(values: &[f64], amortization: &str) -> Core<PassThroughTerms> {
@@ -2107,12 +2008,10 @@ fn mbs_terms(values: &[f64], amortization: &str) -> Core<PassThroughTerms> {
     terms.check()?;
     Ok(terms)
 }
-
 #[extendr]
 fn check_mbs_pass_through(terms: Vec<f64>, amortization: &str) -> List {
     outcome(mbs_terms(&terms, amortization).map(|_| list!(valid = true)))
 }
-
 #[extendr]
 fn compute_mbs_cashflows(terms: Vec<f64>, amortization: &str, refinance_rates: Vec<f64>) -> List {
     let run = || -> Core<List> {
@@ -2131,7 +2030,6 @@ fn compute_mbs_cashflows(terms: Vec<f64>, amortization: &str, refinance_rates: V
     };
     outcome(run())
 }
-
 /// Rates come by rows: path 1's months, then path 2's.
 #[extendr]
 fn compute_mbs_path_values(terms: Vec<f64>, amortization: &str, short_rates: Vec<f64>, refinance_rates: Vec<f64>, paths: i32, oas: f64) -> List {
@@ -2143,7 +2041,6 @@ fn compute_mbs_path_values(terms: Vec<f64>, amortization: &str, short_rates: Vec
     };
     outcome(run())
 }
-
 #[extendr]
 fn compute_mbs_oas(terms: Vec<f64>, amortization: &str, short_rates: Vec<f64>, refinance_rates: Vec<f64>, paths: i32, price: f64) -> List {
     let run = || -> Core<List> {
@@ -2153,7 +2050,6 @@ fn compute_mbs_oas(terms: Vec<f64>, amortization: &str, short_rates: Vec<f64>, r
     };
     outcome(run())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn generate_hull_white_monthly_rates(paths: i32, months: i32, flat_rate: f64, mean_reversion: f64, volatility: f64, seed: f64, antithetic: bool) -> List {
@@ -2165,7 +2061,6 @@ fn generate_hull_white_monthly_rates(paths: i32, months: i32, flat_rate: f64, me
     };
     outcome(run())
 }
-
 fn path_sequence(sequence: &str, brownian_bridge: bool, seed: f64) -> Core<PathSequence> {
     match sequence {
         "sobol" => Ok(PathSequence::Sobol { brownian_bridge }),
@@ -2174,7 +2069,6 @@ fn path_sequence(sequence: &str, brownian_bridge: bool, seed: f64) -> Core<PathS
         other => Err(riemann::Error::InvalidInput { reason: format!("sequence must be sobol or pseudo, not {other}") }),
     }
 }
-
 #[extendr]
 fn generate_sobol_sequence(dimension: i32, points: f64) -> List {
     let run = || -> Core<List> {
@@ -2193,7 +2087,6 @@ fn generate_sobol_sequence(dimension: i32, points: f64) -> List {
     };
     outcome(run())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn generate_black_scholes_paths(
@@ -2216,7 +2109,6 @@ fn generate_black_scholes_paths(
     };
     outcome(run())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_longstaff_schwartz_value(
@@ -2296,7 +2188,6 @@ fn compute_longstaff_schwartz_value(
     };
     outcome(run())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_monte_carlo_european_value(
@@ -2339,9 +2230,7 @@ fn compute_monte_carlo_european_value(
     };
     outcome(run())
 }
-
 // ---- calendars -------------------------------------------------------------------------------
-
 /// 1 for a business day, 0 for a holiday, NA where the calendar fails.
 #[extendr]
 fn is_business_day(calendar: &str, date_serial: Vec<i32>) -> List {
@@ -2353,12 +2242,10 @@ fn is_business_day(calendar: &str, date_serial: Vec<i32>) -> List {
         value_list(rows)
     }))
 }
-
 #[extendr]
 fn get_curve_reference_date(curve: ExternalPtr<OisCurve>) -> i32 {
     curve.curve.reference_date().serial()
 }
-
 #[extendr]
 fn compute_year_fraction(day_count: &str, start: Vec<i32>, end: Vec<i32>, reference_start: Vec<i32>, reference_end: Vec<i32>) -> List {
     let dc = match names::parse_day_count(day_count) {
@@ -2371,11 +2258,9 @@ fn compute_year_fraction(day_count: &str, start: Vec<i32>, end: Vec<i32>, refere
         .collect();
     value_list(rows)
 }
-
 fn calendar_of(name: &str) -> Core<HolidayCalendar> {
     Ok(HolidayCalendar::from(names::parse_calendar(name)?))
 }
-
 #[extendr]
 fn compute_adjusted_date(calendar: &str, date_serial: Vec<i32>, convention: &str) -> List {
     let run = || -> Core<List> {
@@ -2385,7 +2270,6 @@ fn compute_adjusted_date(calendar: &str, date_serial: Vec<i32>, convention: &str
     };
     run().unwrap_or_else(failure)
 }
-
 #[extendr]
 fn compute_advanced_date(calendar: &str, date_serial: Vec<i32>, period: &str, convention: &str, end_of_month: bool) -> List {
     let run = || -> Core<List> {
@@ -2398,7 +2282,6 @@ fn compute_advanced_date(calendar: &str, date_serial: Vec<i32>, period: &str, co
     };
     run().unwrap_or_else(failure)
 }
-
 #[extendr]
 fn compute_end_of_month(calendar: &str, date_serial: Vec<i32>) -> List {
     let run = || -> Core<List> {
@@ -2408,7 +2291,6 @@ fn compute_end_of_month(calendar: &str, date_serial: Vec<i32>) -> List {
     };
     run().unwrap_or_else(failure)
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn generate_schedule(
@@ -2440,7 +2322,6 @@ fn generate_schedule(
     };
     outcome(run())
 }
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_cashflow_npv(
@@ -2461,7 +2342,6 @@ fn compute_cashflow_npv(
     };
     outcome(run())
 }
-
 #[extendr]
 fn generate_holidays(calendar: &str, from: i32, to: i32, include_weekends: bool) -> List {
     let rows = || -> Core<List> {
@@ -2473,13 +2353,11 @@ fn generate_holidays(calendar: &str, from: i32, to: i32, include_weekends: bool)
     };
     outcome(rows())
 }
-
 // ---- parallel batches --------------------------------------------------------------------
 //
 // The inputs are converted here on R's main thread, and the results are converted back here after
 // the threads have finished. `riemann::batch` receives plain Rust values only; the core crate does
 // not depend on extendr, so the threads cannot call the R API.
-
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn compute_bond_values_batch(
@@ -2567,14 +2445,12 @@ fn compute_bond_values_batch(
     };
     outcome(run())
 }
-
 fn first_error(values: [&Core<f64>; 3]) -> String {
     values
         .iter()
         .find_map(|v| v.as_ref().err().map(|e| e.to_string()))
         .unwrap_or_default()
 }
-
 /// Instruments and dates are columns with the 1-based number of their curve.
 #[extendr]
 #[allow(clippy::too_many_arguments)]
@@ -2634,7 +2510,6 @@ fn compute_curve_values_batch(
             });
         }
         let results = batch::compute_curve_values_batch(&units, threads as usize)?;
-
         let (mut curve, mut serial, mut errors) = (Vec::new(), Vec::new(), Vec::new());
         let (mut discount, mut zero, mut forward, mut worst) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -2683,13 +2558,11 @@ fn compute_curve_values_batch(
     };
     outcome(run())
 }
-
 /// A deliberate panic, for the test that a defect stays visible and does not end the R session.
 #[extendr]
 fn panic_for_test() {
     panic!("riemann deliberate panic for the test");
 }
-
 // The module has the name of the R package, because R looks for its routines by that name.
 extendr_module! {
     mod RiemannFinMath;
