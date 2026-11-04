@@ -29,13 +29,13 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 機能 | Guide・Examples での使われ方 | RiemannFinMath | 判定 | 不足 |
 |---|---|---|---|---|
 | 日付と期間の演算 | `Date + Period`、月末の扱い、Period の比較 | Rust の内部にある。R では R の日付を使う | 一部対応 | 期間の演算を R に公開していない |
-| カレンダー | `isHoliday`、`isBusinessDay`、`adjust`、`advance`、`endOfMonth`、`addHoliday`、`JointCalendar`、`BespokeCalendar` | `is_business_day`、`generate_holidays`（約 70 のカレンダー） | 一部対応 | `adjust`、`advance`、`endOfMonth` を R に公開していない。休日の追加、結合カレンダー、自作カレンダーは未対応 |
-| スケジュール | `MakeSchedule`（前進・後退、月末、短期・長期の初回、CDS2015） | 債券、OIS スワップ、CDS の内部で生成（同じ規則） | 一部対応 | スケジュールだけを作る関数がない |
-| 日数計算 | 30/360 の各種、Act/Act ISMA（参照期間・スケジュールつき）、`yearFraction` | 30 種類以上を内部で持つ | 一部対応 | `yearFraction` を R に公開していない。Act/Act ISMA の参照期間を直接は指定できない |
+| カレンダー | `isHoliday`、`isBusinessDay`、`adjust`、`advance`、`endOfMonth`、`addHoliday`、`JointCalendar`、`BespokeCalendar` | `is_business_day`、`generate_holidays`、`compute_adjusted_date`、`compute_advanced_date`、`compute_end_of_month`（約 70 のカレンダー） | 一部対応 | 休日の追加、結合カレンダー、自作カレンダー |
+| スケジュール | `MakeSchedule`（前進・後退、月末、短期・長期の初回、CDS2015） | `generate_schedule`（同じ規則）と、債券・OIS スワップ・CDS の内部 | 対応済み | |
+| 日数計算 | 30/360 の各種、Act/Act ISMA（参照期間・スケジュールつき）、`yearFraction` | `compute_year_fraction`（参照期間つき、30 種類以上） | 一部対応 | Act/Act ISMA にスケジュール全体を渡す形はない（参照期間は渡せる） |
 | 複利・利率の換算 | Simple、Compounded、Continuous、**SimpleThenCompounded**、`InterestRate.equivalentRate` | Simple、Compounded、Continuous | 一部対応 | SimpleThenCompounded がない。利率の換算を R に公開していない |
 | 評価日・参照日 | グローバルな評価日、参照日が動くカーブと固定のカーブ | 評価日と参照日を引数で明示する | 設計上の違い | 評価日を変えた再計算は、引数を変えて呼び直す |
 | fixing | `addFixing`、欠けた fixing のエラー、当日の fixing の扱い | OIS スワップの `fixings` 引数 | 一部対応 | IBOR の fixing は対象外。当日 fixing を予測するかの切り替えはない |
-| キャッシュフロー表 | `cashflows()`、利率・期間・金額、`CashFlows.npv`、`CashFlows.bps` | `get_bond_cashflows`、`compute_ois_swap_cashflows` | 一部対応 | 任意のキャッシュフロー列の NPV と BPS を計算する関数がない |
+| キャッシュフロー表 | `cashflows()`、利率・期間・金額、`CashFlows.npv`、`CashFlows.bps` | `get_bond_cashflows`、`compute_ois_swap_cashflows`、`compute_cashflow_npv`（NPV と BPS、各フローの値） | 対応済み | 償還の BPS は QuantLib が `nan`、ここは 0 |
 | 既定のカーブ | `FlatForward`、`ZeroCurve`、`DiscountCurve`、`ZeroSpreadedTermStructure` | `create_flat_curve`、`create_zero_curve`、`create_discount_curve`、`create_zero_spreaded_curve`（2026-11-04 に公開） | 対応済み | 参照日は固定（評価日とともに動かない。設計上の違い） |
 | ブートストラップ | OIS、SOFR 先物、債券、IBOR スワップ、ベーシス、クロスカレンシー。補間は LogCubicDiscount、LinearZero、FlatForward、CubicZero | OIS（単調対数 3 次、対数線形） | 一部対応 | 先物、債券のヘルパー、線形ゼロ・フラットフォワード・3 次ゼロの補間、ジャンプがない |
 | 外挿 | `enableExtrapolation` | `with_extrapolation` | 対応済み | |
@@ -49,8 +49,8 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 |---|---|---|---|---|
 | 2 | A taste of QuantLib | 固定利付債の利回り価格・経過利息、ゼロカーブでの価格、スプレッドつきカーブ、Brent で Z スプレッド | 一部対応 | ゼロカーブを R で作れない |
 | 4 | Dates and periods | 日付・期間の演算 | 一部対応 | 期間の演算を R に公開していない（R の日付で代替できる例が多い） |
-| 5 | Calendars and holidays | TARGET、米国債、調整、前進、休日の追加、結合・自作カレンダー | 一部対応 | `adjust`、`advance`、`endOfMonth`、休日の追加、結合・自作カレンダー |
-| 6 | Schedules | 前進・後退、短期・長期の初回、月末、CDS2015 | 一部対応 | スケジュールだけを作る関数 |
+| 5 | Calendars and holidays | TARGET、米国債、調整、前進、休日の追加、結合・自作カレンダー | 一部対応 | 休日の追加、結合・自作カレンダー。それ以外は再現した（`dates.R`） |
+| 6 | Schedules | 前進・後退、短期・長期の初回、月末、CDS2015 | 対応済み | 再現した（`dates.R`） |
 | 7 | Cash flows and bonds | 固定利付債のキャッシュフロー、利回り、**償還元本が変わる債券** | 一部対応 | 汎用の Bond、償還元本の変化（アモチ） |
 | 8 | The global evaluation date | 割引債、評価日の効果、Euribor の fixing | 一部対応 | 割引債の専用の作り方（クーポン 0 の固定利付債で表せるかは未確認）。IBOR は対象外 |
 | 9 | Handling dependencies | 割引債を発行体カーブで評価、カーブの差し替え | 一部対応 | R でゼロカーブを作れない。差し替えは呼び直しで代替 |
@@ -58,14 +58,14 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 11 | The Observer pattern | 二重カーブの IBOR スワップ（C++） | 設計上対象外 | |
 | 12 | Updating multiple market quotes | 債券ヘルパーと Nelson–Siegel のフィット、気配の更新 | 未対応 | 当てはめカーブ、債券ヘルパー |
 | 13 | Term structures | フラットカーブ、参照日が動く・固定 | 一部対応 | 参照日が動くカーブ（設計上の違い。新しい日付で作り直す）。Observer は対象外 |
-| 14 | Cash-flow analysis | 固定利付債のキャッシュフロー表、`CashFlows.npv`、`bps` | 一部対応 | 任意のキャッシュフローの NPV・BPS、R のフラットカーブ |
+| 14 | Cash-flow analysis | 固定利付債のキャッシュフロー表、`CashFlows.npv`、`bps` | 対応済み | 再現した（`bonds.R`）。`as_coupon` などの型の判定は R の列で代わりに見る |
 | 16 | Common interface of term structures | フラット・割引係数カーブ、割引・フォワード、スプレッドつき | 一部対応 | Euribor の予測は対象外。それ以外は再現した（`curves.R`） |
 | 17 | Fitted bond curves | Nelson–Siegel、指数スプライン、B スプライン、Svensson | 未対応 | 当てはめカーブ |
 | 18 | Curve bootstrapping | SOFR 先物と OIS、IBOR スワップ、ベーシス、ジャンプ | 一部対応 | 先物のヘルパー、ジャンプ。IBOR は対象外 |
 | 19 | Cross-currency curves | MtM クロスカレンシーベーシスでのブートストラップ | 未対応 | クロスカレンシーのブートストラップ |
 | 20 | Interest-rate indexes | 指数の規約、fixing の登録 | 一部対応 | OIS の fixing は引数で渡す。IBOR は対象外 |
 | 21 | Effect of today's fixing | 当日 fixing の有無で IBOR カーブが変わる | 設計上対象外 | |
-| 22 | Dangerous day-count conventions | 30/360 の分割、Act/Act ISMA の参照期間 | 一部対応 | `yearFraction` と参照期間の指定 |
+| 22 | Dangerous day-count conventions | 30/360 の分割、Act/Act ISMA の参照期間 | 一部対応 | スケジュール全体を渡す Act/Act ISMA。それ以外は再現した（`dates.R`） |
 | 23 | Vanilla bonds | 固定利付債の価格・利回り・デュレーション・コンベクシティ、評価日の変更、ステップアップ、アモチ、割引債、IBOR 変動利付債、キャップ・フロア、**OIS 変動利付債** | 一部対応 | SimpleThenCompounded、ステップアップ、アモチ、OIS 変動利付債、R のフラットカーブ。IBOR は対象外 |
 | 24 | Different kinds of swaps | SOFR OIS（fair rate、BPS、varying notional、spread、payment lag、lookback・lockout）、IBOR スワップ、ベーシス | 一部対応 | 想定元本の変化、lookback・lockout・観測シフト、R のゼロカーブ。IBOR は対象外 |
 | 25 | Asset swaps | Euribor の par・market アセットスワップ | 設計上対象外 | Riemann は OIS のアセットスワップ（別の規約） |

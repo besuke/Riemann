@@ -11,7 +11,7 @@
 use extendr_api::prelude::*;
 use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
-use riemann::cashflow_analysis::{YieldConvention, YieldSolver};
+use riemann::cashflow_analysis::{self, YieldConvention, YieldSolver};
 use riemann::cashflows::CashFlow;
 use riemann::cds::{self, Cds, CdsCurve, CdsCurveSpec, CdsSpec, CdsValue, HazardCurve, SpreadQuote};
 use riemann::hull_white::{
@@ -2355,6 +2355,114 @@ fn is_business_day(calendar: &str, date_serial: Vec<i32>) -> List {
 }
 
 #[extendr]
+fn get_curve_reference_date(curve: ExternalPtr<OisCurve>) -> i32 {
+    curve.curve.reference_date().serial()
+}
+
+#[extendr]
+fn compute_year_fraction(day_count: &str, start: Vec<i32>, end: Vec<i32>, reference_start: Vec<i32>, reference_end: Vec<i32>) -> List {
+    let dc = match names::parse_day_count(day_count) {
+        Ok(dc) => dc,
+        Err(e) => return failure(e),
+    };
+    let optional = |v: &[i32], i: usize| -> Core<Option<Date>> { if v.is_empty() { Ok(None) } else { optional_date(v[i]) } };
+    let rows = (0..start.len())
+        .map(|i| dc.year_fraction(date(start[i])?, date(end[i])?, optional(&reference_start, i)?, optional(&reference_end, i)?))
+        .collect();
+    value_list(rows)
+}
+
+fn calendar_of(name: &str) -> Core<HolidayCalendar> {
+    Ok(HolidayCalendar::from(names::parse_calendar(name)?))
+}
+
+#[extendr]
+fn compute_adjusted_date(calendar: &str, date_serial: Vec<i32>, convention: &str) -> List {
+    let run = || -> Core<List> {
+        let (cal, convention) = (calendar_of(calendar)?, names::parse_business_day_convention(convention)?);
+        let rows = date_serial.iter().map(|&d| Ok(f64::from(cal.adjust(date(d)?, convention)?.serial()))).collect();
+        Ok(value_list(rows))
+    };
+    run().unwrap_or_else(failure)
+}
+
+#[extendr]
+fn compute_advanced_date(calendar: &str, date_serial: Vec<i32>, period: &str, convention: &str, end_of_month: bool) -> List {
+    let run = || -> Core<List> {
+        let (cal, convention, period) = (calendar_of(calendar)?, names::parse_business_day_convention(convention)?, names::parse_period(period)?);
+        let rows = date_serial
+            .iter()
+            .map(|&d| Ok(f64::from(cal.advance(date(d)?, period, convention, end_of_month)?.serial())))
+            .collect();
+        Ok(value_list(rows))
+    };
+    run().unwrap_or_else(failure)
+}
+
+#[extendr]
+fn compute_end_of_month(calendar: &str, date_serial: Vec<i32>) -> List {
+    let run = || -> Core<List> {
+        let cal = calendar_of(calendar)?;
+        let rows = date_serial.iter().map(|&d| Ok(f64::from(cal.end_of_month(date(d)?)?.serial()))).collect();
+        Ok(value_list(rows))
+    };
+    run().unwrap_or_else(failure)
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn generate_schedule(
+    effective_date: i32,
+    termination_date: i32,
+    tenor: &str,
+    calendar: &str,
+    convention: &str,
+    termination_convention: &str,
+    rule: &str,
+    end_of_month: bool,
+    first_date: i32,
+    next_to_last_date: i32,
+) -> List {
+    let run = || -> Core<List> {
+        let s = riemann::time::generate_schedule(&ScheduleSpec {
+            effective_date: date(effective_date)?,
+            termination_date: date(termination_date)?,
+            tenor: names::parse_period(tenor)?,
+            calendar: calendar_of(calendar)?,
+            convention: names::parse_business_day_convention(convention)?,
+            termination_convention: names::parse_business_day_convention(termination_convention)?,
+            rule: names::parse_date_generation_rule(rule)?,
+            end_of_month,
+            first_date: optional_date(first_date)?,
+            next_to_last_date: optional_date(next_to_last_date)?,
+        })?;
+        Ok(list!(date = s.dates.iter().map(|d| d.serial()).collect::<Vec<i32>>(), is_regular = s.is_regular))
+    };
+    outcome(run())
+}
+
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_cashflow_npv(
+    dates: Vec<i32>,
+    amounts: Vec<f64>,
+    nominals: Vec<f64>,
+    accruals: Vec<f64>,
+    curve: ExternalPtr<OisCurve>,
+    settlement_date: i32,
+    include_settlement_cashflows: bool,
+    npv_date: i32,
+) -> List {
+    let run = || -> Core<List> {
+        let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<_>>>()?;
+        let v = cashflow_analysis::compute_flows_npv_bps(&dates, &amounts, &nominals, &accruals, &curve.curve, date(settlement_date)?,
+                                                          include_settlement_cashflows, date(npv_date)?)?;
+        Ok(list!(npv = v.npv, bps = v.bps, discount = v.discounts, flow_npv = v.npvs, flow_bps = v.bpss))
+    };
+    outcome(run())
+}
+
+#[extendr]
 fn generate_holidays(calendar: &str, from: i32, to: i32, include_weekends: bool) -> List {
     let rows = || -> Core<List> {
         let cal = HolidayCalendar::from(names::parse_calendar(calendar)?);
@@ -2658,6 +2766,13 @@ extendr_module! {
     fn create_discount_curve;
     fn create_zero_spreaded_curve;
     fn is_business_day;
+    fn get_curve_reference_date;
+    fn compute_year_fraction;
+    fn compute_adjusted_date;
+    fn compute_advanced_date;
+    fn compute_end_of_month;
+    fn generate_schedule;
+    fn compute_cashflow_npv;
     fn generate_holidays;
     fn compute_bond_values_batch;
     fn compute_curve_values_batch;

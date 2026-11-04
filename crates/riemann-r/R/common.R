@@ -17,9 +17,14 @@ as_serial <- function(x, arg = deparse(substitute(x))) {
   as.integer(unclass(dates)) + serial_of_epoch
 }
 
-# NULL stands for no date, which is 0 in Rust.
+# An optional date crosses to Rust as its serial, or as 0 for "not given": NULL, or NA in a vector.
+# Rust's optional_date() reads 0 as no date. This is the only conversion of optional dates.
 as_optional_serial <- function(x, arg = deparse(substitute(x))) {
-  if (is.null(x)) 0L else as_serial(x, arg)
+  if (is.null(x)) return(0L)
+  out <- rep(0L, length(x))
+  given <- !is.na(x)
+  if (any(given)) out[given] <- as_serial(x[given], arg)
+  out
 }
 
 as_date <- function(serial) {

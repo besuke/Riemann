@@ -10,7 +10,7 @@
 # Needs: RiemannFinMath and tibble. QuantLib (the R package) is optional.
 #
 # Not reproduced here, because RiemannFinMath lacks the feature (docs/quantlib_guide_inventory.md):
-# CashFlows.npv and bps on a curve, the yield with
+# the yield with
 # SimpleThenCompounded compounding, step-up and amortizing bonds, zero-coupon bonds on a curve, floaters.
 
 library(RiemannFinMath)
@@ -76,6 +76,11 @@ cfa <- create_fixed_rate_bond(3L, 10000, "2025-04-08", "2030-04-08", "6M", "targ
 cfa_amounts <- c(150.00, 150.00, 150.00, 150.00, 150.00, 151.67, 149.17, 150.00, 149.17, 150.00, 10000.00)
 add("Cash-flow analysis", "Largest difference in the 11 cash-flow amounts (Guide prints 2 decimals)", 0,
     max(abs(get_bond_cashflows(cfa)$amount - cfa_amounts)))
+cfa_value <- compute_cashflow_npv(get_bond_cashflows(cfa), create_flat_curve("2025-07-28", 0.04, "actual_360"),
+                                  nominal = 10000, day_count = thirty360)
+add("Cash-flow analysis", "CashFlows.npv on a flat 4% Actual/360 curve", 9625.543550654686, cfa_value$npv)
+add("Cash-flow analysis", "CashFlows.bps on the same curve", 4.535150508988854, cfa_value$bps)
+add("Cash-flow analysis", "NPV of the redemption (Guide prints 2 decimals)", 8265.00, tail(cfa_value$flows[[1]]$npv, 1))
 
 # ---- "Vanilla bonds": evaluation date 2 May 2024 ---------------------------------------------------------
 vanilla <- create_fixed_rate_bond(3L, 10000, "2023-02-08", "2028-02-08", "6M", "target", "following", "following", "backward",

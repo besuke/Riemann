@@ -102,6 +102,46 @@ pub fn compute_npv<T: Operand>(leg: &[CashFlow], y: &InterestRate<T>, incl: bool
     Ok(npv)
 }
 
+/// The NPV and BPS of cash flows given as columns, each at `npv_date`, and those of each flow.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowsValue {
+    pub npv: f64,
+    /// The value of one basis point on the coupon rates: the sum of `nominal * accrual * discount * 1e-4`.
+    pub bps: f64,
+    pub discounts: Vec<f64>,
+    /// 0 for a flow that has occurred.
+    pub npvs: Vec<f64>,
+    pub bpss: Vec<f64>,
+}
+
+/// QuantLib `CashFlows::npv` and `CashFlows::bps` on a curve, for flows given as arrays. A flow has
+/// occurred if its date is before `settlement`, or on it unless `include_settlement_flows`. A flow with
+/// a nominal or an accrual of 0 adds nothing to the BPS (a redemption, for example). The arrays are
+/// checked by the caller to have the same length.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_flows_npv_bps(
+    dates: &[Date],
+    amounts: &[f64],
+    nominals: &[f64],
+    accruals: &[f64],
+    curve: &YieldCurve,
+    settlement: Date,
+    include_settlement_flows: bool,
+    npv_date: Date,
+) -> Result<FlowsValue, Error> {
+    let at = curve.discount(npv_date)?;
+    let n = dates.len();
+    let (mut discounts, mut npvs, mut bpss) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
+    for i in 0..n {
+        let occurred = dates[i] < settlement || (dates[i] == settlement && !include_settlement_flows);
+        let discount = curve.discount(dates[i])? / at;
+        discounts.push(discount);
+        npvs.push(if occurred { 0.0 } else { amounts[i] * discount });
+        bpss.push(if occurred { 0.0 } else { nominals[i] * accruals[i] * discount * 1e-4 });
+    }
+    Ok(FlowsValue { npv: npvs.iter().sum(), bps: bpss.iter().sum(), discounts, npvs, bpss })
+}
+
 /// Present value at `npv_date` of the cash flows after `settlement`, discounted on `curve`
 /// (QuantLib `CashFlows::npv` with a yield term structure).
 pub fn compute_npv_on_curve<T: Operand>(

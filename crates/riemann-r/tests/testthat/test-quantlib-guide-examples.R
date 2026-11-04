@@ -3,7 +3,7 @@
 guide_script <- function(name) system.file("examples", "quantlib_guide", name, package = "RiemannFinMath")
 
 test_that("the example scripts are installed with the package", {
-  for (name in c("bonds.R", "cds.R", "curves.R", "options.R", "spreads.R", "README.md")) expect_true(nzchar(guide_script(name)), info = name)
+  for (name in c("bonds.R", "cds.R", "curves.R", "dates.R", "options.R", "spreads.R", "README.md")) expect_true(nzchar(guide_script(name)), info = name)
 })
 
 test_that("the bond example runs and its unrounded Guide values agree", {
@@ -37,4 +37,10 @@ test_that("the CDS example rounds to the Guide's hazard rates", {
   capture.output(r <- source(guide_script("cds.R"), local = new.env())$value)
   expect_equal(round(r$riemann_hazard_pct, 2), r$guide_hazard_pct)
   expect_equal(r$node, r$guide_node)
+})
+
+test_that("the dates example matches every printed value", {
+  r <- NULL
+  capture.output(r <- source(guide_script("dates.R"), local = new.env())$value)
+  expect_true(all(r$same))
 })
