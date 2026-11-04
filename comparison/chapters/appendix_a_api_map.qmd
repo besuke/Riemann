@@ -30,6 +30,7 @@ counterparts <- tribble(
   "compute_barrier_option_value", "BarrierOption, AnalyticBarrierEngine",
   "compute_basis_point_value", "BondFunctions_basisPointValue",
   "compute_binomial_option_value", "VanillaOption, BinomialCRRVanillaEngine",
+  "compute_american_approximation_value", "VanillaOption, BaroneAdesiWhaleyApproximationEngine, BjerksundStenslandApproximationEngine",
   "compute_bond_values", "BondFunctions_*",
   "compute_bond_values_batch", "None; a loop over BondFunctions_*",
   "bootstrap_bond_curve", "FixedRateBondHelper, PiecewiseLinearZero, PiecewiseYieldCurve<Discount, LogLinear>",

@@ -50,3 +50,15 @@ test_that("Monte Carlo agrees with the analytic value and does not depend on the
 test_that("a missing flag is an error", {
   expect_error(compute_monte_carlo_european_value("call", 100, 105, 0.03, 0.01, 0.25, 1.5, paths = 100, seed = 1, antithetic = NA), "TRUE or FALSE")
 })
+
+test_that("American approximations recycle, sit near the tree and refuse what QuantLib refuses", {
+  x <- compute_american_approximation_value(c("barone_adesi_whaley", "bjerksund_stensland"), "put", 100, 100, 0.05, 0, 0.2, 367 / 365)
+  # LagrangeFinance II-4.5
+  expect_equal(x$value, c(6.110018383735438, 5.9950587422795465), tolerance = 1e-13)
+  tree <- compute_binomial_option_value("put", "american", 100, 100, 0.05, 0, 0.2, 367 / 365, steps = 2000L)$value
+  expect_true(all(abs(x$value - tree) < 0.15))
+  expect_true(all(c("delta", "gamma", "vega", "theta") %in% names(x)))
+  expect_error(compute_american_approximation_value("barone_adesi_whaley", "put", 100, 100, -0.01, 0, 0.2, 1), "negative interest rates")
+  expect_true(is.na(compute_american_approximation_value("bjerksund_stensland", "call", 100, 100, -0.01, 0, 0.3, 1, on_error = "na")$value))
+  expect_error(compute_american_approximation_value("qd_plus", "put", 100, 100, 0.05, 0, 0.2, 1), "method must be")
+})

@@ -86,6 +86,8 @@ ch08_options,"European put, 100 steps",price,LagrangeFinance II-4.3.2,5.56291674
 ch08_options,"European put, 500 steps",price,LagrangeFinance II-4.3.2,5.578645206961151,5.578645206965884,4.733102798581967e-12,1e-4,PASS,NA
 ch08_options,"American put, 25 steps",price,LagrangeFinance II-4.5,6.159486222851605,6.159486222855241,3.6362024502523127e-12,1e-4,PASS,NA
 ch08_options,"American put, 500 steps",price,LagrangeFinance II-4.5,6.101096294008553,6.101096294012048,3.4949820815199928e-12,1e-4,PASS,NA
+ch08_options,"American put, Barone-Adesi-Whaley",price,LagrangeFinance II-4.5,6.110018383735438,6.110018383735435,-3.552713678800501e-15,1e-4,PASS,NA
+ch08_options,"American put, Bjerksund-Stensland",price,LagrangeFinance II-4.5,5.9950587422795465,5.995058742279532,-1.4210854715202004e-14,1e-4,PASS,NA
 ch08_options,European call value,price,LagrangeFinance III-5.2,9.413403383853025,9.413403383853023,-1.7763568394002505e-15,1e-4,PASS,NA
 ch08_options,European call delta,per unit of spot,LagrangeFinance III-5.2,0.598706325682924,0.5987063256829239,-1.1102230246251565e-16,1e-4,PASS,NA
 ch08_options,European call gamma,per unit of spot squared,LagrangeFinance III-5.2,0.01933340584014246,0.019333405840142457,-3.469446951953614e-18,1e-4,PASS,NA

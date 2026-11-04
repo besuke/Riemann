@@ -8,6 +8,7 @@
 //! of extendr, which unwinds through a panic. A panic therefore always means a defect here or in
 //! the core; the process's panic hook is left alone, so it stays visible and can be diagnosed.
 use extendr_api::prelude::*;
+use riemann::american_approximations::{self, AmericanApproximation};
 use riemann::asset_swap::{self, FutureBasisTerms, OisAssetSwapTerms, YenBasisTerms};
 use riemann::batch::{self, BondEvaluation, CurveEvaluation};
 use riemann::bond_curve::{self, BondCurve, BondCurveInterpolation, BondCurveQuote, BondCurveSpec};
@@ -1945,6 +1946,35 @@ fn compute_binomial_option_value(
     })
 }
 #[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_american_approximation_value(
+    method: Vec<String>,
+    option_type: Vec<String>,
+    spot: Vec<f64>,
+    strike: Vec<f64>,
+    rate: Vec<f64>,
+    dividend_yield: Vec<f64>,
+    volatility: Vec<f64>,
+    time: Vec<f64>,
+) -> List {
+    greeks_list(spot.len(), |i| {
+        let method = match method[i].as_str() {
+            "barone_adesi_whaley" => AmericanApproximation::BaroneAdesiWhaley,
+            "bjerksund_stensland" => AmericanApproximation::BjerksundStensland,
+            other => {
+                return Err(riemann::Error::InvalidInput {
+                    reason: format!("method must be barone_adesi_whaley or bjerksund_stensland, not {other}"),
+                })
+            }
+        };
+        american_approximations::compute_american_approximation_greeks(
+            method,
+            names::parse_option_type(&option_type[i])?,
+            &option_inputs([spot[i], strike[i], rate[i], dividend_yield[i], volatility[i], time[i]]),
+        )
+    })
+}
+#[extendr]
 fn compute_forward_option_value(
     model: Vec<String>,
     option_type: Vec<String>,
@@ -2697,6 +2727,7 @@ extendr_module! {
     fn compute_european_option_value;
     fn compute_barrier_option_value;
     fn compute_binomial_option_value;
+    fn compute_american_approximation_value;
     fn compute_forward_option_value;
     fn compute_implied_volatility;
     fn compute_monte_carlo_european_value;

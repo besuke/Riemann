@@ -90,6 +90,8 @@ used for verification:
   Inc. All rights reserved. Developed at SunPro, a Sun Microsystems, Inc. business.
   Permission to use, copy, modify, and distribute this software is freely granted, provided
   that this notice is preserved.
+- crates/riemann/src/american_approximations.rs: ql/pricingengines/vanilla/baroneadesiwhaleyengine.cpp and
+  ql/pricingengines/vanilla/bjerksundstenslandengine.cpp
 - crates/riemann/src/options.rs: ql/pricingengines/vanilla/analyticeuropeanengine.cpp,
   ql/pricingengines/blackcalculator.cpp, ql/pricingengines/blackformula.cpp,
   ql/pricingengines/barrier/analyticbarrierengine.cpp,

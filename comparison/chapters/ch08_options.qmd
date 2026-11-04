@@ -345,6 +345,8 @@ The legacy text values the Black 76 option through a process whose spot is the f
 black_as_equity <- RiemannFinMath::compute_european_option_value("call", black$forward, black$strike, black$rate, black$rate, black$volatility, black$time)
 tree_value <- function(kind, steps) riemann_tree$value[tree_cases$exercise == kind & tree_cases$steps == steps]
 european_put <- RiemannFinMath::compute_european_option_value("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)
+approximation <- RiemannFinMath::compute_american_approximation_value(c("barone_adesi_whaley", "bjerksund_stensland"), "put", tree$spot, tree$strike,
+                                                                     tree$rate, tree$dividend, tree$volatility, tree$time)
 bind_rows(
   against_lagrange("Black 76 value", "price", "black.npv", black_as_equity$value),
   against_lagrange("Black 76 delta", "per unit of forward", "black.delta", black_as_equity$delta),
@@ -362,6 +364,8 @@ bind_rows(
   against_lagrange("European put, 500 steps", "price", "tree.european.crr_500", tree_value("european", 500L)),
   against_lagrange("American put, 25 steps", "price", "tree.american.crr_25", tree_value("american", 25L)),
   against_lagrange("American put, 500 steps", "price", "tree.american.crr_500", tree_value("american", 500L)),
+  against_lagrange("American put, Barone-Adesi-Whaley", "price", "tree.american.barone_adesi_whaley", approximation$value[1]),
+  against_lagrange("American put, Bjerksund-Stensland", "price", "tree.american.bjerksund_stensland", approximation$value[2]),
   against_lagrange("European call value", "price", "greeks.npv", riemann_call$value),
   against_lagrange("European call delta", "per unit of spot", "greeks.delta", riemann_call$delta),
   against_lagrange("European call gamma", "per unit of spot squared", "greeks.gamma", riemann_call$gamma),
@@ -377,7 +381,7 @@ bind_rows(
 
 ## Not available
 
-Approximation engines (Barone-Adesi-Whaley, Bjerksund-Stensland) are in the legacy text and not in RiemannFinMath. Sobol sequences stop at 32 dimensions and are not scrambled. See @sec-gaps.
+Sobol sequences stop at 32 dimensions and are not scrambled. See @sec-gaps.
 
 ## Differences of wrapper and core
 

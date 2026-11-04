@@ -57,6 +57,27 @@ compute_binomial_option_value <- function(option_type, exercise, spot, strike, r
   option_table(.Call(wrap__compute_binomial_option_value, i$option_type, i$exercise, i$spot, i$strike, i$rate, i$dividend_yield, i$volatility, i$time, i$steps), i, on_error)
 }
 
+#' American options by closed-form approximations
+#'
+#' The Barone-Adesi–Whaley (1987) and Bjerksund–Stensland (1993) approximations, as in QuantLib's
+#' `BaroneAdesiWhaleyApproximationEngine` and `BjerksundStenslandApproximationEngine`. The Greeks are the
+#' derivatives of the approximation by automatic differentiation; QuantLib gives none for
+#' Barone-Adesi–Whaley when early exercise can be optimal. Barone-Adesi–Whaley refuses negative rates.
+#' Inputs are recycled to a common length.
+#'
+#' @param method `"barone_adesi_whaley"` or `"bjerksund_stensland"`.
+#' @inheritParams compute_european_option_value
+#' @return A tibble as from [compute_european_option_value()], with `method`.
+#' @examples
+#' compute_american_approximation_value(c("barone_adesi_whaley", "bjerksund_stensland"), "put", 36, 40, 0.06, 0, 0.2, 1)
+#' @export
+compute_american_approximation_value <- function(method, option_type, spot, strike, rate, dividend_yield, volatility, time, on_error = "stop") {
+  i <- tibble(method = as.character(method), option_type = as.character(option_type), spot = as.numeric(spot), strike = as.numeric(strike),
+              rate = as.numeric(rate), dividend_yield = as.numeric(dividend_yield), volatility = as.numeric(volatility), time = as.numeric(time))
+  option_table(.Call(wrap__compute_american_approximation_value, i$method, i$option_type, i$spot, i$strike, i$rate, i$dividend_yield, i$volatility,
+                     i$time), i, on_error)
+}
+
 #' Options on a forward
 #'
 #' Black (lognormal) and Bachelier (normal) formulas, with derivatives by automatic differentiation.

@@ -16,7 +16,6 @@ Nothing below is approximated with another library. "Legacy section" is the sect
 | II-3.5, II-3.6 | EONIA curve, its jump adjustment and rate scenarios | Out of scope: OIS is limited to TONAR, ESTR, SOFR and SONIA |
 | II-3.7 | `ModifiedFollowing` on the OIS payments | No argument; always `Following`. Effect shown in the OIS chapter |
 | II-4.4.2, II-4.4.3 | Monte Carlo path tables | Paths are not returned |
-| II-4.5 | Barone-Adesi-Whaley and Bjerksund-Stensland approximations | Not implemented; the tree is compared |
 | II-4.6 | Sobol sequences beyond 32 dimensions, scrambling | Not implemented; Sobol and Longstaff-Schwartz otherwise are |
 | II-5.2.5, II-5.6.4 | CDS cash flow and probability tables | Not returned |
 | II-6.5, II-7.3 to II-7.5 | A full BGM/LMM (drift under a common measure, joint paths, calibration), HJM, FMM | Not implemented; the caplet and correlated shocks of II-7.4 are |

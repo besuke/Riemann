@@ -92,7 +92,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 |---|---|---|---|
 | Bonds | 預金・債券・IBOR スワップのカーブで割引債・固定利付債・IBOR 変動利付債 | 一部再現 | 預金ヘルパー、割引債。債券ヘルパー（対数線形の割引係数）は 2026-11-04 に追加。IBOR は対象外 |
 | CDS | Spread ヘルパーでハザード、MidPoint・ISDA、ISDA 規約の金利カーブ | 一部再現 | ISDA 規約の金利カーブ（預金・IBOR スワップ） |
-| EquityOption | European・Bermudan・American を多数のエンジンで | 一部再現 | Barone-Adesi–Whaley、Bjerksund–Stensland、有限差分、QD+、JR・Tian などの木、積分エンジン |
+| EquityOption | European・Bermudan・American を多数のエンジンで | 一部再現 | バミューダン、Black–Vasicek・Heston・Bates、QD+、有限差分、積分エンジン、CRR 以外の木、QuantLib の乱数による MC。Black–Scholes、二つの近似式、CRR 木は再現した（`quantlib_examples/equity_option.R`、QuantLib 1.42 と差 7.8e-12 以内） |
 | FRA | Euribor の FRA | 対象外 | IBOR |
 | FittedBondCurve | 当てはめカーブ 6 方式 | 未対応 | 当てはめカーブ |
 | MulticurveBootstrapping | OIS 割引と Euribor 予測 | 一部再現 | OIS 部分のみ。IBOR は対象外 |
@@ -118,13 +118,15 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 3. **SimpleThenCompounded** と、**ステップアップ・アモチ**の固定利付債。Guide 7、23、29 が使う。**実装済み**。
 4. **CDS の Upfront ヘルパーと生存確率カーブ**。Guide 39、40 が使う。**実装済み**（`bootstrap_hazard_curve(quote_type = "upfront")`、`create_survival_probability_curve`、`compute_hazard_rate`）。Guide 40 のリスキー債券エンジンは含まない。
 5. **債券ヘルパーのブートストラップと線形ゼロ補間**。Guide 34、Examples Bonds が使う。**実装済み**（`bootstrap_bond_curve`、`create_zero_spreaded_curve(spread_dates = )`）。
-6. **American オプションの近似式**（Barone-Adesi–Whaley、Bjerksund–Stensland）。Examples EquityOption、LagrangeFinance II-4.5 が使う。
+6. **American オプションの近似式**（Barone-Adesi–Whaley、Bjerksund–Stensland）。Examples EquityOption、LagrangeFinance II-4.5 が使う。**実装済み**（`compute_american_approximation_value`）。
 
 後回しにするもの：当てはめカーブ、OIS 変動利付債、lookback・lockout、先物ヘルパー、Heston、インフレ、クロスカレンシー、転換社債、アジア型、G2、CVA。
 
 ## 6. 作ったサンプル
 
 R パッケージの `inst/examples/quantlib_guide/` にある。一覧と主要な結果は同じフォルダーの `README.md`、実行方法は各スクリプトの冒頭にある。インストールしたパッケージからは `source(system.file("examples", "quantlib_guide", "<名前>.R", package = "RiemannFinMath"))` で実行できる。テストは `tests/testthat/test-quantlib-guide-examples.R`。
+
+公式 Examples のサンプルは `inst/examples/quantlib_examples/` にある（2026-11-04 時点で `equity_option.R`）。テストは `tests/testthat/test-quantlib-examples.R`。
 
 ## 5. 今の機能で作れるサンプル
 

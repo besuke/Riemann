@@ -205,7 +205,7 @@ pub fn compute_forward_greeks(
 }
 
 /// A function of recorded inputs, for the Greeks below.
-fn greeks_of<F>(inputs: &OptionInputs, f: F) -> Result<Greeks, Error>
+pub(crate) fn greeks_of<F>(inputs: &OptionInputs, f: F) -> Result<Greeks, Error>
 where
     F: for<'t> Fn(&OptionInputs<Var<'t>>) -> Result<Var<'t>, Error>,
 {

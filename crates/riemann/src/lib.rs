@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod american_approximations;
 pub mod asset_swap;
 pub mod autodiff;
 pub mod batch;

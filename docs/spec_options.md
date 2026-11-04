@@ -8,6 +8,7 @@
 |---|---|---|---|
 | ヨーロピアン | `compute_european_option_value` | Black–Scholes–Merton | `AnalyticEuropeanEngine` |
 | ヨーロピアン、アメリカン | `compute_binomial_option_value` | Cox–Ross–Rubinstein の二項木 | `BinomialCRRVanillaEngine` |
+| アメリカン（近似式） | `compute_american_approximation_value` | Barone-Adesi–Whaley、Bjerksund–Stensland（1993） | `BaroneAdesiWhaleyApproximationEngine`、`BjerksundStenslandApproximationEngine` |
 | バリア（連続監視） | `compute_barrier_option_value` | Reiner–Rubinstein の解析解 | `AnalyticBarrierEngine` |
 | フォワードのオプション | `compute_forward_option_value` | Black、Bachelier | `blackFormula`、`bachelierBlackFormula` |
 | インプライド・ボラティリティ | `compute_implied_volatility` | Brent（1e-7〜4） | `impliedVolatility` |
@@ -64,3 +65,20 @@ Sobol 列と Longstaff–Schwartz 法（LagrangeFinance II-4.6）は P9 で扱�
 - 満期のペイオフを 0 にした木を別に計算すると、11 件すべてが QuantLib と差 3.2e-10 以内で一致した。残りの 140 件は、普通の木と差 4.6e-10 以内で一致した。
 
 GaussQuant の `make_american_option_GQL` はこのエンジンを使うので、同じ条件で同じ影響を受ける。これは GaussQuant を変更せず、ここに記録するだけとする。
+
+## 6. アメリカンの近似式（2026-11-04）【ソース確認・実行照合済み】
+
+実装は `crates/riemann/src/american_approximations.rs`。QuantLib v1.42 の `baroneadesiwhaleyengine.cpp` と `bjerksundstenslandengine.cpp` の価格の計算を移した。グリークスは移さず、価格を自動微分する（2 章と同じ）。
+
+- **Barone-Adesi–Whaley**：臨界価格を QuantLib と同じ種と Newton 反復（行使価格に対する相対誤差 1e-6 まで）で求め、二次近似の項を足す。配当がない（割引係数が 1 以上の）コールはヨーロピアンの値。負の金利（無リスクの割引係数が 1 より大きい）はエラー（QuantLib と同じ）。反復が正でない価格に達した場合もエラーにする（QuantLib は `blackFormula` で失敗する）。自動微分は Newton 反復の各段を通すので、微分には反復の打ち切り誤差が残る。QuantLib はこの場合グリークスを返さない。
+- **Bjerksund–Stensland**：1993 年の一定の境界の近似。プットはプット・コールの対称性（スポットと行使価格、金利と配当利回りを入れ替える）でコールに直す。境界 `I` 以上は即時行使、`ln(I / F) / σ√T > 12.5` はヨーロピアン、近似値がヨーロピアンより小さい場合もヨーロピアンとし（QuantLib の `americanCallApproximation` の最後）、最後に即時行使の値と比べる。`r < q < 0` のコールはエラー（QuantLib と同じ）。
+
+**照合**（2026-11-04、QuantLib R パッケージ 1.42、`tools/golden/p11_american_approximations.R`、`crates/riemann/tests/golden_american_approximations.rs`）：2 手法 × コール・プット × スポット 5 × 金利 4（-1%〜8%）× 配当利回り 3 × ボラティリティ 2 × 期間 3 の 1440 件。値のある 1270 件は相対差 2.8e-14 以内で一致した。QuantLib がエラーにする 155 件（BAW の負の金利、臨界価格の反復の失敗）は、Riemann もエラーにする。
+
+**QuantLib との違い（意図したもの）**：QuantLib の Bjerksund–Stensland が NaN を返す 15 件（`r = -1%`、`q = 0` のコール。`beta` の平方根の中が負になる）を、Riemann はエラーにする。
+
+**LagrangeFinance II-4.5** のアメリカン・プット（スポット 100、行使価格 100、金利 5%、配当 0、ボラティリティ 20%、2024-03-01 から 2025-03-03）：BAW 6.110018383735435（基準値との差 -3.6e-15）、Bjerksund–Stensland 5.995058742279532（差 -1.4e-14）。
+
+**公式 Examples の EquityOption**：`inst/examples/quantlib_examples/equity_option.R`。Black–Scholes、二つの近似式、801 段の CRR 木（ヨーロピアン、アメリカン）が、手元の QuantLib 1.42 と差 7.8e-12 以内で一致した（木の差は 5 章の (1)）。
+
+**未対応**：QD+（`QdFpAmericanEngine`）、Bjerksund–Stensland の 2002 年版、近似式のバミューダン。
