@@ -1437,6 +1437,39 @@ fn bootstrap_xccy_curve(
     }))
 }
 #[extendr]
+fn create_ctd_curve(reference_date: i32, end_date: i32, day_count: &str, names_of: Vec<String>, curves: List) -> List {
+    let build = || -> Core<riemann::ctd::CtdCurve> {
+        if names_of.len() != curves.len() {
+            return Err(riemann::Error::InvalidInput { reason: "one name per curve is needed".into() });
+        }
+        let options = curves
+            .values()
+            .zip(&names_of)
+            .map(|(c, name)| {
+                let curve = ExternalPtr::<OisCurve>::try_from(c)
+                    .map_err(|_| riemann::Error::InvalidInput { reason: "every curve must be a riemann_ois_curve".into() })?;
+                Ok(riemann::ctd::CollateralOption { name: name.clone(), curve: curve.curve.clone() })
+            })
+            .collect::<Core<Vec<_>>>()?;
+        riemann::ctd::create_ctd_curve(date(reference_date)?, date(end_date)?, &names::parse_day_count(day_count)?, &options)
+    };
+    let index = curves
+        .values()
+        .next()
+        .and_then(|c| ExternalPtr::<OisCurve>::try_from(c).ok())
+        .map(|c| c.spec.index.clone());
+    outcome(build().and_then(|c| {
+        let index = index.ok_or_else(|| riemann::Error::InvalidInput { reason: "no curves given".into() })?;
+        Ok(list!(
+            value = ExternalPtr::new(OisCurve::given(c.curve, index)),
+            start = c.choices.iter().map(|x| x.start.serial() as f64).collect::<Vec<f64>>(),
+            end = c.choices.iter().map(|x| x.end.serial() as f64).collect::<Vec<f64>>(),
+            option = c.choices.iter().map(|x| x.option as i32 + 1).collect::<Vec<i32>>(),
+            advantage = c.choices.iter().map(|x| x.advantage).collect::<Vec<f64>>()
+        ))
+    }))
+}
+#[extendr]
 fn compute_future_basis(
     bond: ExternalPtr<FixedRateBond>,
     clean_price: f64,
@@ -2840,6 +2873,7 @@ extendr_module! {
     fn compute_yen_asset_swap;
     fn compute_yen_asset_swap_on_basis_curve;
     fn bootstrap_xccy_curve;
+    fn create_ctd_curve;
     fn compute_future_basis;
     fn compute_hull_white_bond_option_value;
     fn compute_hull_white_swaption_value;

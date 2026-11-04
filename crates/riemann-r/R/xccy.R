@@ -98,3 +98,41 @@ compute_yen_asset_swap_on_basis_curve <- function(bond, clean_price, foreign_cur
          yen_asw_bp = rows$yen_fair_spread * 1e4, npv_yen = rows$npv, hedged_bond_pv_yen = rows$hedged_bond_pv, yen_base_leg_pv = rows$yen_base_leg_pv,
          upfront_pv_yen = rows$upfront_pv, spread_annuity_yen = rows$spread_annuity, error = rows$error)
 }
+
+#' Discount curve with the choice of collateral currency
+#'
+#' The intrinsic value of the cheapest-to-deliver collateral (LagrangeFinance II-3.7.5): the same cash
+#' flows have a discount curve under each eligible collateral currency, and the party that posts
+#' collateral picks, each day, the currency with the highest forward. The curve compounds the highest
+#' daily forward, so it is never above any of the curves. The choice uses today's forwards only; the
+#' time value of switching later, haircuts and substitution costs are not included.
+#'
+#' For yen cash flows, give the TONAR curve for yen collateral and, for dollar collateral, the yen curve
+#' under dollar collateral from [bootstrap_xccy_curve()] (base SOFR, quote TONAR, `base_is_collateral =
+#' TRUE`).
+#'
+#' @param reference_date The reference date of every curve.
+#' @param end_date The last date of the result; every curve must reach it.
+#' @param curves A named list of curves, one per eligible collateral currency.
+#' @param day_count Day count of the result's times.
+#' @return A curve, of class `riemann_ois_curve`, with `choices`: a tibble of the runs of days with the
+#'   same chosen collateral (`start`, `end`, `collateral`, `days`) and `advantage`, the chosen daily forward
+#'   minus the next highest, summed over the run (continuous, not annualized).
+#' @examples
+#' today <- "2026-11-04"
+#' yen <- create_zero_curve(as.Date(today) + c(0, 365, 3652), c(0.005, 0.005, 0.012), "actual_365_fixed")
+#' usd <- create_zero_curve(as.Date(today) + c(0, 365, 3652), c(0.009, 0.009, 0.006), "actual_365_fixed")
+#' ctd <- create_ctd_curve(today, as.Date(today) + 3652, list(JPY = yen, USD = usd))
+#' ctd$choices
+#' @export
+create_ctd_curve <- function(reference_date, end_date, curves, day_count = "actual_365_fixed") {
+  if (!is.list(curves) || is.null(names(curves)) || any(names(curves) == "") ||
+      !all(purrr::map_lgl(curves, \(c) inherits(c, "riemann_ois_curve")))) {
+    stop("`curves` must be a named list of curves.", call. = FALSE)
+  }
+  x <- checked(.Call(wrap__create_ctd_curve, as_serial(reference_date), as_serial(end_date), day_count, names(curves), purrr::map(curves, "pointer")))
+  curve <- given(x$value, "cheapest-to-deliver collateral", curves[[1]]$index)
+  curve$choices <- tibble(start = as_date(x$start), end = as_date(x$end), collateral = names(curves)[x$option],
+                          days = as.integer(x$end - x$start), advantage = x$advantage)
+  curve
+}

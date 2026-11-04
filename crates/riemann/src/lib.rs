@@ -13,6 +13,7 @@ pub mod bond_curve;
 pub mod cashflow_analysis;
 pub mod cds;
 pub mod cashflows;
+pub mod ctd;
 pub mod curves;
 pub mod error;
 pub mod hull_white;
