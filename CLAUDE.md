@@ -21,6 +21,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_longstaff_schwartz.md` | P11-4 の Sobol 列と Longstaff–Schwartz（比較条件と seed は 1・2 章、関数の形の比較は 7 章） |
 | `docs/spec_mbs.md` | P11-5 のパススルー MBS（LagrangeFinance の条件は 1 章、違いは 2 章） |
 | `docs/spec_lmm.md` | P11-6 の LMM の構成要素（Caplet と相関ショック。範囲は冒頭、LagrangeFinance の条件は 1 章） |
+| `docs/spec_rates_fx_extension.md` | 金利・通貨機能の拡張（通貨ベーシスの期間構造、担保 CTD、FMM、LMM）：現状の分類、検証基準、後続課題 |
 | `docs/quantlib_guide_inventory.md` | QuantLib Guide（全 39 ページ）と公式 Examples（v1.42）の棚卸し：対応表、不足機能、優先順位、今の機能で作れるサンプル |
 | `docs/design_distributed.md` | 分散計算基盤（Azure・Slurm・R と Rust の並列の区別）、開発方針（入口は厳格に、計算コアは単純に）、GPU の構想 |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
