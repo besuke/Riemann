@@ -121,15 +121,10 @@ pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize,
                 step_count += 1;
                 let w: Vec<f64> = (0..n).map(|i| lower[i][..=i].iter().zip(&z).map(|(a, b)| a * b).sum()).collect();
                 let snapshot = l.clone();
+                let drift = drift_of(spec, alive, &snapshot);
                 for k in alive..n {
-                    let mut drift = 0.0;
-                    for j in alive..=k {
-                        let tau = spec.accrual(j);
-                        drift += tau * spec.correlation[k * n + j] * spec.volatilities[j] * snapshot[j] / (1.0 + tau * snapshot[j]);
-                    }
                     let sigma = spec.volatilities[k];
-                    drift *= sigma;
-                    l[k] = snapshot[k] * ((drift - 0.5 * sigma * sigma) * dt + sigma * dt.sqrt() * w[k]).exp();
+                    l[k] = snapshot[k] * ((drift[k] - 0.5 * sigma * sigma) * dt + sigma * dt.sqrt() * w[k]).exp();
                 }
             }
         };
@@ -166,6 +161,42 @@ fn estimate(values: &[f64]) -> LmmEstimate {
 
 /// The swap rate from `T_a` to `T_b` and its annuity, at `T_a` on a path or today (`k` the index of
 /// the time, `forwards` the forwards then, from index `a`).
+/// The drift of `ln L_k` under the spot measure without the `-sigma_k^2 / 2` term, per year, for the
+/// forwards from `alive` (the first not yet fixed) on: `sigma_k sum_{j = alive}^{k} tau_j rho_kj sigma_j L_j
+/// / (1 + tau_j L_j)`. Entries before `alive` are 0 (QuantLib `LMMDriftCalculator::computePlain` with the
+/// numeraire at `alive`).
+fn drift_of(spec: &LmmSpec, alive: usize, forwards: &[f64]) -> Vec<f64> {
+    let n = spec.count();
+    let mut drift = vec![0.0; n];
+    for k in alive..n {
+        let mut sum = 0.0;
+        for j in alive..=k {
+            let tau = spec.accrual(j);
+            sum += tau * spec.correlation[k * n + j] * spec.volatilities[j] * forwards[j] / (1.0 + tau * forwards[j]);
+        }
+        drift[k] = spec.volatilities[k] * sum;
+    }
+    drift
+}
+
+/// The spot-measure drift for the forwards `forwards` (see the module documentation).
+pub fn compute_lmm_drift(spec: &LmmSpec, alive: usize, forwards: &[f64]) -> Result<Vec<f64>, Error> {
+    spec.check()?;
+    if forwards.len() != spec.count() || alive >= spec.count() {
+        return invalid(format!("give {} forwards and a first alive index below it", spec.count()));
+    }
+    Ok(drift_of(spec, alive, forwards))
+}
+
+/// The swap rate from `T_a` to `T_b` and its annuity per unit discount at `T_a`, for given forwards.
+pub fn compute_lmm_swap_rate(spec: &LmmSpec, a: usize, b: usize, forwards: &[f64]) -> Result<(f64, f64), Error> {
+    spec.check()?;
+    if !(a < b && b <= spec.count()) || forwards.len() != spec.count() {
+        return invalid(format!("the swap must run from T_a to T_b with a < b <= {}", spec.count()));
+    }
+    Ok(swap_rate_and_annuity(spec, a, b, forwards))
+}
+
 fn swap_rate_and_annuity(spec: &LmmSpec, a: usize, b: usize, forwards: &[f64]) -> (f64, f64) {
     let (mut discount, mut annuity) = (1.0, 0.0);
     for i in a..b {

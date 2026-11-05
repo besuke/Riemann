@@ -114,6 +114,20 @@ LagrangeFinance の該当節を読み、RiemannFinMath の実装と突き合わ�
 - 各 Caplet のモンテカルロが Black の式（自分のフォワード測度での解析解）と標準誤差の 4 倍以内で一致する。
 - スワップションのモンテカルロと Rebonato の近似の差は、2 万パスで 1.6%（`times` の位置 3 から 7）と 1.3%（位置 5 から 11）、標準誤差の 1.4 倍と 1.1 倍だった。テストでは近似の誤差として値の 2% と標準誤差の 4 倍を許す。
 - 校正：`β = 0.3` の Rebonato の値を目標にすると、別の初期値の模型から `β` を 1e-6 以内で回復し、残差は 1e-9 未満。
-- QuantLib の `LiborForwardModel` との照合はしていない（R バインディングからの呼び出しは未確認）。
+- QuantLib との照合：9 章。
 
 **未対応**：期間内で変わるボラティリティ、因子数を減らした相関、スワップションのボラティリティ（行列）への個別のボラティリティの校正、終端測度、予測子・修正子法、FMM（段階 3）の金利を含む共同経路、Bermudan スワップションと早期行使。
+
+## 9. LMM の QuantLib との照合（2026-11-05）【ソース確認。照合テストは未実行（アプリ制御）】
+
+**R バインディングで使えるもの**【ソース確認】：旧版の `LiborForwardModel` は QuantLib R パッケージ 1.42 にない。market models の枠組み（`ql/models/marketmodels`）はあるが、具体的なモデル（`FlatVol` など）と経路の生成器（`LogNormalFwdRateEuler` など）のコンストラクターは公開されていない。そのためモンテカルロの経路と価格は比べられない。公開されている次の三つを、決定論的な値で比べる。
+
+- 相関：`ExponentialForwardCorrelation`（長期相関 0、`gamma` 1 で `exp(-β |T_i - T_j|)`。相関は各フォワードの確定時刻の上で定義される）。
+- スポット測度のドリフト：`LMMDriftCalculator::computePlain`（数値基準を最初の未確定のフォワードに置く）。共分散の平方根には Cholesky 分解を渡す。R の包み関数は出力の引数を数値のコピーに変えてしまうので、パッケージ自身の C の入口 `R_swig_LMMDriftCalculator_computePlain__SWIG_0` を `DoubleVector` で呼んで値を読む。
+- スワップ・レートと割引の比：`LMMCurveState` の `swapRate`、`discountRatio`。
+
+**照合の用意**：`tools/golden/p13_lmm_market.R` が合成入力 6 ケース（フォワード 3〜8 本）で 383 値（相関 93、ドリフト 93、スワップ・レート 58、割引の比 58）を `tests/golden/lmm_market.csv` に書き、`crates/riemann/tests/golden_lmm_market.rs` が Riemann の `create_exponential_correlation`、`compute_lmm_drift`、`compute_lmm_swap_rate` と相対 1e-12 で比べる。
+
+**未実行**：照合テストの実行ファイルを Smart App Control が止めた（os error 4551、CodeIntegrity のイベント ID 3033・3077）。2026-11-05 の 20:43 から 23:25 過ぎまで、間を置いた再試行とビルドのやり直しを含めて一度も実行できていない。回避はしていない。ユーザーの判断で、照合を保留にしてコミットした。実行できたら結果をここに書く。
+
+**参考（Riemann との照合ではない）**：R の中で書き直したドリフトの式（`σ_k Σ_{j=alive}^{k} τ_j ρ_kj σ_j L_j / (1 + τ_j L_j)`）は、4 本のフォワードの例で QuantLib の `computePlain` と表示の桁まで一致した。Riemann の `compute_lmm_drift` は同じ式で、経路生成もこの関数を使う（既存の LMM のテスト 7 件は通る）。
