@@ -31,7 +31,9 @@
 #' @param volatilities Lognormal volatilities, one per forward.
 #' @param correlation A correlation matrix of the forwards, or `NULL` with `beta`.
 #' @param beta Decay of the exponential correlation.
-#' @param discount_start The discount factor to `times[1]`.
+#' @param discount_start The discount factor to `times[1]`. When the first period of backward-looking rates started before
+#'   today (`times[1] < 0`), the compounding factor of its fixings so far instead; `forwards[1]` is then the forward of
+#'   the whole period from [compute_backward_forward_rate()], and only the rest of the period is random.
 #' @param backward_looking `FALSE` for forward-looking term rates, `TRUE` for backward-looking compounded rates.
 #' @param model A model from `create_lmm()`.
 #' @param paths,steps_per_period,seed Number of paths, log-Euler steps in each period, and the seed.

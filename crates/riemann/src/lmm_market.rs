@@ -42,7 +42,11 @@ pub struct LmmSpec {
     pub volatilities: Vec<f64>,
     /// `n` by `n`, by rows.
     pub correlation: Vec<f64>,
-    /// `P(0, T_0)`.
+    /// `P(0, T_0)` when `T_0 >= 0`. When the first period started before today (`T_0 < 0`, backward-looking
+    /// rates only), the compounding factor `A(0)` of its fixings so far: then `P(0, T_k) = A(0) / prod_{j<k}
+    /// (1 + tau_j R_j(0))` and the numeraire is `B(T_1) = (1 + tau_0 R_0(T_1)) / A(0)`, as with `P(0, T_0)`;
+    /// `forwards[0]` is the forward of the whole period, from
+    /// [`crate::fmm::compute_backward_forward_rate`].
     pub discount_start: f64,
     /// False for forward-looking term rates, fixed at the start of their period. True for
     /// backward-looking compounded rates (the generalized FMM of Lyashenko and Mercurio): rate `i`
@@ -65,8 +69,12 @@ impl LmmSpec {
         if n == 0 || self.times.len() != n + 1 || self.volatilities.len() != n {
             return invalid(format!("give n + 1 times and n forwards and volatilities (n = {n})"));
         }
-        if !(self.times[0] >= 0.0) || self.times.windows(2).any(|w| !(w[1] > w[0])) {
-            return invalid("the times must start at or after 0 and increase".into());
+        if !self.times[0].is_finite() || self.times.windows(2).any(|w| !(w[1] > w[0])) {
+            return invalid("the times must increase".into());
+        }
+        // a period that started before today: only a backward-looking rate, and only the first one
+        if self.times[0] < 0.0 && !(self.backward_looking && self.times[1] > 0.0) {
+            return invalid("only the first period of backward-looking rates can have started before today".into());
         }
         if self.forwards.iter().any(|f| !(*f > 0.0)) || self.volatilities.iter().any(|v| !(*v >= 0.0) || !v.is_finite()) {
             return invalid("the forwards must be positive and the volatilities finite and non-negative".into());
@@ -132,7 +140,11 @@ pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize,
                 let mut g = vec![1.0; n];
                 let mut g_squared = vec![1.0; n];
                 if let Some(i) = accruing {
-                    let (g0, g1) = (1.0 - s as f64 / steps_per_period as f64, 1.0 - (s + 1) as f64 / steps_per_period as f64);
+                    // g(u) = (T_{i+1} - u) / tau_i, from the actual time: below 1 for a period started before today
+                    let end = spec.times[i + 1];
+                    let tau = spec.accrual(i);
+                    let (u0, u1) = (from + s as f64 * dt, from + (s + 1) as f64 * dt);
+                    let (g0, g1) = ((end - u0) / tau, (end - u1) / tau);
                     g[i] = (g0 + g1) / 2.0;
                     g_squared[i] = (g0 * g0 + g0 * g1 + g1 * g1) / 3.0;
                 }
@@ -151,8 +163,9 @@ pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize,
         path_state[0].clone_from(&l);
         for k in 0..n {
             if spec.backward_looking {
-                // rate k accrues over [T_k, T_{k+1}] and is known at its end
-                evolve(&mut l, spec.times[k], spec.times[k + 1], k, Some(k));
+                // rate k accrues over [T_k, T_{k+1}] and is known at its end; a period started before
+                // today moves only from today, its fixings so far being in `discount_start`
+                evolve(&mut l, spec.times[k].max(0.0), spec.times[k + 1], k, Some(k));
                 path_numeraire[k + 1] = path_numeraire[k] * (1.0 + spec.accrual(k) * l[k]);
                 path_state[k + 1][k..n].copy_from_slice(&l[k..n]);
             } else {
@@ -479,6 +492,61 @@ mod tests {
         let forward_looking = generate_lmm_paths(&spec(0.2), PATHS, 8, 17).unwrap();
         let (b, f) = (compute_lmm_caplet_value(&s, &paths, 4, s.forwards[4]).unwrap(), compute_lmm_caplet_value(&spec(0.2), &forward_looking, 4, s.forwards[4]).unwrap());
         assert!(b.value > f.value);
+    }
+
+    #[test]
+    fn a_period_under_way_moves_only_its_unfixed_part() {
+        use crate::fmm::{compute_backward_caplet_value, compute_backward_forward_rate, BackwardCapletTerms};
+        // the first quarter started a month ago; its fixings so far compound to 1.0017, and the curve
+        // discounts its end (two months away) at 0.9965
+        let times: Vec<f64> = (0..=8).map(|k| -1.0 / 12.0 + 0.25 * k as f64).collect();
+        let realized = 1.0017;
+        let first = compute_backward_forward_rate(realized, 1.0, 0.9965, 0.25).unwrap();
+        let mut forwards: Vec<f64> = (0..8).map(|k| 0.02 + 0.001 * k as f64).collect();
+        forwards[0] = first;
+        let s = LmmSpec {
+            correlation: create_exponential_correlation(&times[..8], 0.3).unwrap(),
+            times,
+            forwards,
+            volatilities: vec![0.3; 8],
+            discount_start: realized,
+            backward_looking: true,
+        };
+        assert!((s.discount(1) - 0.9965).abs() < 1e-15);
+        let paths = generate_lmm_paths(&s, PATHS, 8, 23).unwrap();
+        for k in [1usize, 4, 8] {
+            let values: Vec<f64> = paths.numeraire.iter().map(|b| 1.0 / b[k]).collect();
+            let e = estimate(&values);
+            assert!((e.value - s.discount(k)).abs() < 4.0 * e.standard_error + 1e-12, "P(0,T_{k}): {} against {} ± {}", s.discount(k), e.value, e.standard_error);
+        }
+        for i in [0usize, 3] {
+            let strike = s.forwards[i] + 0.0005;
+            let mc = compute_lmm_caplet_value(&s, &paths, i, strike).unwrap();
+            let fmm = compute_backward_caplet_value(
+                ForwardModel::Black,
+                &BackwardCapletTerms {
+                    forward: s.forwards[i],
+                    strike,
+                    volatility: s.volatilities[i],
+                    time_to_start: s.times[i],
+                    time_to_end: s.times[i + 1],
+                    accrual: s.accrual(i),
+                    discount_factor: s.discount(i + 1),
+                    notional: 1.0,
+                },
+            )
+            .unwrap();
+            assert!((mc.value - fmm).abs() < 4.0 * mc.standard_error, "caplet {i}: {fmm} against {} ± {}", mc.value, mc.standard_error);
+        }
+        // only the remaining two months are random: the spread of the first rate's fixing is that of
+        // the in-period variance time (T_1)^3 / (3 tau^2), far below a whole period's
+        let fixings: Vec<f64> = paths.state.iter().map(|st| st[1][0].ln()).collect();
+        let mean = fixings.iter().sum::<f64>() / fixings.len() as f64;
+        let variance = fixings.iter().map(|f| (f - mean) * (f - mean)).sum::<f64>() / (fixings.len() - 1) as f64;
+        let expected = 0.09 * (2.0f64 / 12.0).powi(3) / (3.0 * 0.0625);
+        assert!((variance / expected - 1.0).abs() < 0.1, "{variance} against {expected}");
+        // a forward-looking rate cannot have started
+        assert!(generate_lmm_paths(&LmmSpec { backward_looking: false, ..s }, 10, 4, 1).is_err());
     }
 
     #[test]

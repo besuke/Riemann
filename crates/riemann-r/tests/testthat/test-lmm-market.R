@@ -40,3 +40,14 @@ test_that("backward-looking rates (FMM) keep bonds martingales and match the FMM
   forward_looking <- compute_lmm_caplet_value(model, forward = 5, strike = model$forwards[5], paths = 2000L, steps_per_period = 8L)
   expect_gt(caplets$black_value[2], forward_looking$black_value)
 })
+
+test_that("a period under way moves only its unfixed part", {
+  times <- -1 / 12 + 0.25 * (0:8)
+  realized <- 1.0017
+  forwards <- c(compute_backward_forward_rate(realized, 1, 0.9965, 0.25), 0.02 + 0.001 * (1:7))
+  fmm <- create_lmm(times, forwards, rep(0.3, 8), beta = 0.3, discount_start = realized, backward_looking = TRUE)
+  caplets <- compute_lmm_caplet_value(fmm, forward = c(1, 4), strike = forwards[c(1, 4)] + 0.0005, paths = 2000L, steps_per_period = 8L)
+  expect_equal(caplets$black_value[1], compute_backward_caplet_value(forwards[1], forwards[1] + 0.0005, 0.3, -1 / 12, 1 / 6, 0.25, 0.9965))
+  expect_true(all(abs(caplets$value - caplets$black_value) < 4 * caplets$standard_error))
+  expect_error(generate_lmm_paths(create_lmm(times, forwards, rep(0.3, 8), beta = 0.3, discount_start = realized), 10), "started before today")
+})

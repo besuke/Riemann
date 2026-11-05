@@ -58,7 +58,9 @@ calibrate_lmm_correlation(model, start, end, volatility, beta_max = 5)
 
 \item{beta}{Decay of the exponential correlation.}
 
-\item{discount_start}{The discount factor to \code{times[1]}.}
+\item{discount_start}{The discount factor to \code{times[1]}. When the first period of backward-looking rates started before
+today (\code{times[1] < 0}), the compounding factor of its fixings so far instead; \code{forwards[1]} is then the forward of
+the whole period from \code{\link[=compute_backward_forward_rate]{compute_backward_forward_rate()}}, and only the rest of the period is random.}
 
 \item{backward_looking}{\code{FALSE} for forward-looking term rates, \code{TRUE} for backward-looking compounded rates.}
 
