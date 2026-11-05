@@ -7,8 +7,8 @@
 #' `compute_correlated_normals()` turns rows of independent normals `Z` into `Z %*% chol(correlation)`, and
 #' `generate_correlated_normals()` does the same with this package's random numbers.
 #'
-#' These are not a LIBOR market model: there is no drift under a common measure and no joint path of
-#' several forward rates. The random numbers are arguments, so that the same draws give the same values.
+#' Each caplet here is valued under its own forward measure. The joint paths of several forwards under a
+#' common measure, and the calibration, are in [create_lmm()]. The random numbers are arguments, so that the same draws give the same values.
 #'
 #' @param forward,strike,volatility,expiry,accrual,discount_factor,notional The caplet. `volatility` is
 #'   lognormal for `"black"` and in rate units for `"bachelier"`; `expiry` and `accrual` in years.

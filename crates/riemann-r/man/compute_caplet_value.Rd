@@ -64,8 +64,8 @@ forward measure, \verb{L(T) = L(0) exp(-v^2 T / 2 + v sqrt(T) z)}, for the stand
 \code{generate_correlated_normals()} does the same with this package's random numbers.
 }
 \details{
-These are not a LIBOR market model: there is no drift under a common measure and no joint path of
-several forward rates. The random numbers are arguments, so that the same draws give the same values.
+Each caplet here is valued under its own forward measure. The joint paths of several forwards under a
+common measure, and the calibration, are in \code{\link[=create_lmm]{create_lmm()}}. The random numbers are arguments, so that the same draws give the same values.
 }
 \examples{
 df <- exp(-0.02 * 2.5)

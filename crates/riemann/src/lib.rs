@@ -20,6 +20,7 @@ pub mod fmm;
 pub mod hull_white;
 pub mod instruments;
 pub mod lmm;
+pub mod lmm_market;
 pub mod longstaff_schwartz;
 pub mod mbs;
 pub mod interest_rate;

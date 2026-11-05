@@ -2,9 +2,9 @@
 //! formula, a caplet from the marginal distribution of its forward rate on given normal variates, and
 //! correlated normal shocks.
 //!
-//! This is not a full LIBOR market model. There is no drift under a common measure and no joint path
-//! of several forward rates: each caplet is valued under its own forward measure, where its rate is a
-//! martingale. The extension to a full model is a separate decision.
+//! Each caplet here is valued under its own forward measure, where its rate is a martingale. The joint
+//! paths of several forwards under a common measure, with their drift, and the calibration are in
+//! [`crate::lmm_market`].
 //!
 //! The random numbers are inputs, so that the same draws give the same values in any language; the
 //! generators of this library are separate functions.
@@ -100,7 +100,7 @@ pub fn compute_caplet_from_normals(terms: &CapletTerms, normals: &[f64]) -> Resu
 
 // the indices compare an entry with its transpose
 #[allow(clippy::needless_range_loop)]
-fn check_correlation(correlation: &[f64], dimension: usize) -> Result<Vec<Vec<f64>>, Error> {
+pub(crate) fn check_correlation(correlation: &[f64], dimension: usize) -> Result<Vec<Vec<f64>>, Error> {
     if dimension == 0 || correlation.len() != dimension * dimension {
         return invalid(format!("the correlation must be {dimension} by {dimension}"));
     }

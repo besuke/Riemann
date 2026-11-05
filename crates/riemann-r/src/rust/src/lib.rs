@@ -2267,6 +2267,138 @@ fn compute_backward_caplet_value(
         .collect();
     value_list(rows)
 }
+fn lmm_spec(times: &[f64], forwards: &[f64], volatilities: &[f64], correlation: &[f64], discount_start: f64) -> riemann::lmm_market::LmmSpec {
+    riemann::lmm_market::LmmSpec {
+        times: times.to_vec(),
+        forwards: forwards.to_vec(),
+        volatilities: volatilities.to_vec(),
+        correlation: correlation.to_vec(),
+        discount_start,
+    }
+}
+#[extendr]
+fn create_exponential_correlation(times: Vec<f64>, beta: f64) -> List {
+    outcome(riemann::lmm_market::create_exponential_correlation(&times, beta).map(|c| list!(value = c)))
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_lmm_monte_carlo(
+    times: Vec<f64>,
+    forwards: Vec<f64>,
+    volatilities: Vec<f64>,
+    correlation: Vec<f64>,
+    discount_start: f64,
+    kind: Vec<String>,
+    start: Vec<i32>,
+    end: Vec<i32>,
+    strike: Vec<f64>,
+    paths: i32,
+    steps_per_period: i32,
+    seed: f64,
+) -> List {
+    let run = || -> Core<List> {
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start);
+        let simulated = riemann::lmm_market::generate_lmm_paths(&spec, paths.max(0) as usize, steps_per_period.max(0) as usize, seed as u64)?;
+        let (mut value, mut standard_error) = (Vec::new(), Vec::new());
+        for i in 0..kind.len() {
+            let (a, b) = (start[i] as usize, end[i] as usize);
+            let e = match kind[i].as_str() {
+                "swaption" => riemann::lmm_market::compute_lmm_swaption_value(&spec, &simulated, a, b, strike[i])?,
+                "caplet" => riemann::lmm_market::compute_lmm_caplet_value(&spec, &simulated, a, strike[i])?,
+                other => return Err(riemann::Error::InvalidInput { reason: format!("type must be swaption or caplet, not {other}") }),
+            };
+            value.push(e.value);
+            standard_error.push(e.standard_error);
+        }
+        Ok(list!(value = value, standard_error = standard_error))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn generate_lmm_paths(
+    times: Vec<f64>,
+    forwards: Vec<f64>,
+    volatilities: Vec<f64>,
+    correlation: Vec<f64>,
+    discount_start: f64,
+    paths: i32,
+    steps_per_period: i32,
+    seed: f64,
+) -> List {
+    let run = || -> Core<List> {
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start);
+        let p = riemann::lmm_market::generate_lmm_paths(&spec, paths.max(0) as usize, steps_per_period.max(0) as usize, seed as u64)?;
+        // R's array order: path fastest, then time, then forward
+        let (n_paths, n) = (p.state.len(), forwards.len());
+        let mut state = vec![f64::NAN; n_paths * (n + 1) * n];
+        for (path, s) in p.state.iter().enumerate() {
+            for (k, row) in s.iter().enumerate() {
+                for (i, v) in row.iter().enumerate() {
+                    state[path + n_paths * (k + (n + 1) * i)] = *v;
+                }
+            }
+        }
+        let mut numeraire = vec![0.0; n_paths * (n + 1)];
+        for (path, b) in p.numeraire.iter().enumerate() {
+            for (k, v) in b.iter().enumerate() {
+                numeraire[path + n_paths * k] = *v;
+            }
+        }
+        Ok(list!(state = state, numeraire = numeraire))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_rebonato_swaption_volatility(
+    times: Vec<f64>,
+    forwards: Vec<f64>,
+    volatilities: Vec<f64>,
+    correlation: Vec<f64>,
+    discount_start: f64,
+    start: Vec<i32>,
+    end: Vec<i32>,
+    strike: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start);
+        let (mut vol, mut black) = (Vec::new(), Vec::new());
+        for i in 0..start.len() {
+            let (a, b) = (start[i] as usize, end[i] as usize);
+            let v = riemann::lmm_market::compute_rebonato_swaption_volatility(&spec, a, b)?;
+            // a strike of 0 or less asks for the volatility only
+            black.push(if strike[i] > 0.0 { riemann::lmm_market::compute_black_swaption_value(&spec, a, b, strike[i], v)? } else { f64::NAN });
+            vol.push(v);
+        }
+        Ok(list!(volatility = vol, black_value = black))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn calibrate_lmm_correlation(
+    times: Vec<f64>,
+    forwards: Vec<f64>,
+    volatilities: Vec<f64>,
+    discount_start: f64,
+    start: Vec<i32>,
+    end: Vec<i32>,
+    volatility: Vec<f64>,
+    beta_max: f64,
+) -> List {
+    let run = || -> Core<List> {
+        let n = forwards.len();
+        let identity: Vec<f64> = (0..n * n).map(|k| if k / n == k % n { 1.0 } else { 0.0 }).collect();
+        let spec = lmm_spec(&times, &forwards, &volatilities, &identity, discount_start);
+        let quotes: Vec<_> = (0..start.len())
+            .map(|i| riemann::lmm_market::SwaptionQuote { start: start[i] as usize, end: end[i] as usize, volatility: volatility[i] })
+            .collect();
+        let fit = riemann::lmm_market::calibrate_lmm_correlation(&spec, &quotes, beta_max)?;
+        Ok(list!(beta = fit.beta, fitted = fit.fitted, root_mean_square_error = fit.root_mean_square_error))
+    };
+    outcome(run())
+}
 #[extendr]
 fn compute_backward_forward_rate(realized: Vec<f64>, discount_start: Vec<f64>, discount_end: Vec<f64>, accrual: Vec<f64>) -> List {
     let rows = (0..realized.len())
@@ -2943,6 +3075,11 @@ extendr_module! {
     fn compute_caplet_value;
     fn compute_backward_caplet_value;
     fn compute_backward_forward_rate;
+    fn create_exponential_correlation;
+    fn compute_lmm_monte_carlo;
+    fn generate_lmm_paths;
+    fn compute_rebonato_swaption_volatility;
+    fn calibrate_lmm_correlation;
     fn compute_caplet_from_normals;
     fn compute_correlated_normals;
     fn generate_correlated_normals;
