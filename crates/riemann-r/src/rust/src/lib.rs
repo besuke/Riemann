@@ -2235,6 +2235,47 @@ fn compute_caplet_value(
 }
 #[extendr]
 #[allow(clippy::too_many_arguments)]
+fn compute_backward_caplet_value(
+    model: &str,
+    forward: Vec<f64>,
+    strike: Vec<f64>,
+    volatility: Vec<f64>,
+    time_to_start: Vec<f64>,
+    time_to_end: Vec<f64>,
+    accrual: Vec<f64>,
+    discount_factor: Vec<f64>,
+    notional: Vec<f64>,
+) -> List {
+    let model = match names::parse_forward_model(model) {
+        Ok(m) => m,
+        Err(e) => return failure(e),
+    };
+    let rows = (0..forward.len())
+        .map(|i| {
+            let terms = riemann::fmm::BackwardCapletTerms {
+                forward: forward[i],
+                strike: strike[i],
+                volatility: volatility[i],
+                time_to_start: time_to_start[i],
+                time_to_end: time_to_end[i],
+                accrual: accrual[i],
+                discount_factor: discount_factor[i],
+                notional: notional[i],
+            };
+            riemann::fmm::compute_backward_caplet_value(model, &terms)
+        })
+        .collect();
+    value_list(rows)
+}
+#[extendr]
+fn compute_backward_forward_rate(realized: Vec<f64>, discount_start: Vec<f64>, discount_end: Vec<f64>, accrual: Vec<f64>) -> List {
+    let rows = (0..realized.len())
+        .map(|i| riemann::fmm::compute_backward_forward_rate(realized[i], discount_start[i], discount_end[i], accrual[i]))
+        .collect();
+    value_list(rows)
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
 fn compute_caplet_from_normals(
     normals: Vec<f64>,
     forward: f64,
@@ -2900,6 +2941,8 @@ extendr_module! {
     fn compute_implied_volatility;
     fn compute_monte_carlo_european_value;
     fn compute_caplet_value;
+    fn compute_backward_caplet_value;
+    fn compute_backward_forward_rate;
     fn compute_caplet_from_normals;
     fn compute_correlated_normals;
     fn generate_correlated_normals;

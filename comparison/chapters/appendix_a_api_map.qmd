@@ -40,6 +40,8 @@ counterparts <- tribble(
   "calibrate_hull_white", "CalibratedModel_calibrate, SwaptionHelper, LevenbergMarquardt, EndCriteria",
   "calibrate_sabr", "None in the R binding; R optim around sabrVolatility",
   "compute_caplet_from_normals", "None; legacy R simulation",
+  "compute_backward_caplet_value", "None; Lyashenko-Mercurio FMM formula (QuantLib has no FMM)",
+  "compute_backward_forward_rate", "None; compounding of fixings and curve",
   "compute_caplet_value", "blackFormula, bachelierBlackFormula",
   "compute_cashflow_npv", "CashFlows_npv, CashFlows_bps",
   "compute_cds_maturity", "cdsMaturity",

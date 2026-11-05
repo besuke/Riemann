@@ -16,6 +16,7 @@ pub mod cashflows;
 pub mod ctd;
 pub mod curves;
 pub mod error;
+pub mod fmm;
 pub mod hull_white;
 pub mod instruments;
 pub mod lmm;
