@@ -299,7 +299,9 @@ pub fn compute_lmm_caplet_value(spec: &LmmSpec, paths: &LmmPaths, i: usize, stri
 
 /// Rebonato's approximation of the volatility of the swaption from `T_a` to `T_b`, with the weights
 /// frozen today: lognormal, `v^2 S^2 = sum_ij w_i w_j L_i L_j rho_ij sigma_i sigma_j`, for Black; normal,
-/// `v^2 = sum_ij w_i w_j rho_ij sigma_i sigma_j`, for Bachelier.
+/// `v^2 = sum_ij w_i w_j rho_ij sigma_i sigma_j`, for Bachelier. For backward-looking rates (FMM) the formula is the same:
+/// the rates of a swap starting at `T_a` start accruing at or after `T_a`, so their volatility does not
+/// decay before the exercise.
 pub fn compute_rebonato_swaption_volatility(spec: &LmmSpec, a: usize, b: usize) -> Result<f64, Error> {
     spec.check()?;
     let n = spec.count();
@@ -603,6 +605,30 @@ mod tests {
         let mut s = LmmSpec { volatilities: vec![0.006; 10], model: ForwardModel::Bachelier, ..spec(0.2) };
         s.forwards[0] = -0.002;
         assert!(generate_lmm_paths(&s, 10, 4, 1).is_ok());
+    }
+
+    #[test]
+    fn backward_looking_swaptions_follow_the_forward_looking_approximation() {
+        // the rates of a swap starting at T_a have not started accruing at T_a, so their decay is 1 up
+        // to the exercise and Rebonato's formula is the forward-looking one
+        let forward_looking = spec(0.3);
+        let backward_looking = LmmSpec { backward_looking: true, ..spec(0.3) };
+        let fl_paths = generate_lmm_paths(&forward_looking, PATHS, 8, 31).unwrap();
+        let bl_paths = generate_lmm_paths(&backward_looking, PATHS, 8, 31).unwrap();
+        for (a, b) in [(2usize, 6usize), (4, 10), (1, 9)] {
+            let v_fl = compute_rebonato_swaption_volatility(&forward_looking, a, b).unwrap();
+            let v_bl = compute_rebonato_swaption_volatility(&backward_looking, a, b).unwrap();
+            assert_eq!(v_fl, v_bl);
+            let (rate, _) = swap_rate_and_annuity(&backward_looking, a, b, &backward_looking.forwards);
+            let approx = compute_formula_swaption_value(&backward_looking, a, b, rate, v_bl).unwrap();
+            let bl = compute_lmm_swaption_value(&backward_looking, &bl_paths, a, b, rate).unwrap();
+            let fl = compute_lmm_swaption_value(&forward_looking, &fl_paths, a, b, rate).unwrap();
+            assert!((bl.value - approx).abs() < 4.0 * bl.standard_error + 0.02 * approx, "{a}x{b}: {approx} against {} ± {}", bl.value, bl.standard_error);
+            // the two models price the swaption alike: their spot-measure drifts differ (an accruing
+            // rate stays in the drift), but not the law of the swap rate at T_a
+            let combined = (bl.standard_error.powi(2) + fl.standard_error.powi(2)).sqrt();
+            assert!((bl.value - fl.value).abs() < 4.0 * combined, "{a}x{b}: {} against {} ± {combined}", bl.value, fl.value);
+        }
     }
 
     #[test]
