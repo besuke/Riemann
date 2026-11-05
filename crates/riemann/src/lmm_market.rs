@@ -1,6 +1,6 @@
-//! The lognormal LIBOR (forward) market model with joint paths under the spot measure, the
-//! Rebonato approximation of swaption volatilities, and the calibration of an exponential
-//! correlation to swaptions (LagrangeFinance II-7.4 and II-7.6, extended).
+//! The forward market model of term rates, lognormal (Black) or normal (Bachelier), with joint paths
+//! under the spot measure, the Rebonato approximation of swaption volatilities, and the calibration
+//! of an exponential correlation to swaptions (LagrangeFinance II-7.4 and II-7.6, extended).
 //!
 //! The tenor structure is `T_0 < T_1 < ... < T_n` (years from today); the forward `L_i` covers
 //! `[T_i, T_{i+1}]` with accrual `tau_i = T_{i+1} - T_i`, fixes at `T_i` and pays at `T_{i+1}`. Each forward
@@ -53,6 +53,9 @@ pub struct LmmSpec {
     /// keeps moving through its period, with its volatility falling linearly to 0 at `T_{i+1}`, and
     /// is known at the end.
     pub backward_looking: bool,
+    /// `Black`: lognormal rates, `dR / R = ... + sigma dW`. `Bachelier`: normal rates, `dR = ... + sigma dW`,
+    /// with `sigma` in rate units; the rates may then turn negative.
+    pub model: ForwardModel,
 }
 
 impl LmmSpec {
@@ -76,7 +79,9 @@ impl LmmSpec {
         if self.times[0] < 0.0 && !(self.backward_looking && self.times[1] > 0.0) {
             return invalid("only the first period of backward-looking rates can have started before today".into());
         }
-        if self.forwards.iter().any(|f| !(*f > 0.0)) || self.volatilities.iter().any(|v| !(*v >= 0.0) || !v.is_finite()) {
+        if (self.model == ForwardModel::Black && self.forwards.iter().any(|f| !(*f > 0.0)))
+            || self.forwards.iter().any(|f| !f.is_finite())
+            || self.volatilities.iter().any(|v| !(*v >= 0.0) || !v.is_finite()) {
             return invalid("the forwards must be positive and the volatilities finite and non-negative".into());
         }
         if !(self.discount_start > 0.0) {
@@ -153,7 +158,10 @@ pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize,
                 for k in alive..n {
                     let sigma = spec.volatilities[k];
                     let variance = sigma * sigma * g_squared[k];
-                    l[k] = snapshot[k] * ((drift[k] - 0.5 * variance) * dt + (variance * dt).sqrt() * w[k]).exp();
+                    l[k] = match spec.model {
+                        ForwardModel::Black => snapshot[k] * ((drift[k] - 0.5 * variance) * dt + (variance * dt).sqrt() * w[k]).exp(),
+                        ForwardModel::Bachelier => snapshot[k] + drift[k] * dt + (variance * dt).sqrt() * w[k],
+                    };
                 }
             }
         };
@@ -214,7 +222,8 @@ fn drift_scaled(spec: &LmmSpec, alive: usize, forwards: &[f64], g: &[f64]) -> Ve
         let mut sum = 0.0;
         for j in alive..=k {
             let tau = spec.accrual(j);
-            sum += tau * spec.correlation[k * n + j] * spec.volatilities[j] * g[j] * forwards[j] / (1.0 + tau * forwards[j]);
+            let level = if spec.model == ForwardModel::Black { forwards[j] } else { 1.0 };
+            sum += tau * spec.correlation[k * n + j] * spec.volatilities[j] * g[j] * level / (1.0 + tau * forwards[j]);
         }
         drift[k] = spec.volatilities[k] * g[k] * sum;
     }
@@ -288,8 +297,9 @@ pub fn compute_lmm_caplet_value(spec: &LmmSpec, paths: &LmmPaths, i: usize, stri
     Ok(estimate(&values))
 }
 
-/// Rebonato's approximation of the Black volatility of the swaption from `T_a` to `T_b`, with the
-/// weights frozen today: `v^2 T_a S^2 = sum_ij w_i w_j L_i L_j rho_ij sigma_i sigma_j T_a`.
+/// Rebonato's approximation of the volatility of the swaption from `T_a` to `T_b`, with the weights
+/// frozen today: lognormal, `v^2 S^2 = sum_ij w_i w_j L_i L_j rho_ij sigma_i sigma_j`, for Black; normal,
+/// `v^2 = sum_ij w_i w_j rho_ij sigma_i sigma_j`, for Bachelier.
 pub fn compute_rebonato_swaption_volatility(spec: &LmmSpec, a: usize, b: usize) -> Result<f64, Error> {
     spec.check()?;
     let n = spec.count();
@@ -307,18 +317,21 @@ pub fn compute_rebonato_swaption_volatility(spec: &LmmSpec, a: usize, b: usize) 
     let mut sum = 0.0;
     for i in a..b {
         for j in a..b {
-            sum += weights[i - a] * weights[j - a] * spec.forwards[i] * spec.forwards[j] * spec.correlation[i * n + j] * spec.volatilities[i] * spec.volatilities[j];
+            let levels = if spec.model == ForwardModel::Black { spec.forwards[i] * spec.forwards[j] } else { 1.0 };
+            sum += weights[i - a] * weights[j - a] * levels * spec.correlation[i * n + j] * spec.volatilities[i] * spec.volatilities[j];
         }
     }
-    Ok(sum.sqrt() / rate)
+    // a lognormal volatility for Black, a normal one for Bachelier
+    Ok(if spec.model == ForwardModel::Black { sum.sqrt() / rate } else { sum.sqrt() })
 }
 
-/// The Black value of the swaption at a volatility, per unit notional, today.
-pub fn compute_black_swaption_value(spec: &LmmSpec, a: usize, b: usize, strike: f64, volatility: f64) -> Result<f64, Error> {
+/// The value of the swaption at a volatility by the model's formula (Black or Bachelier), per unit
+/// notional, today.
+pub fn compute_formula_swaption_value(spec: &LmmSpec, a: usize, b: usize, strike: f64, volatility: f64) -> Result<f64, Error> {
     spec.check()?;
     let (rate, annuity) = swap_rate_and_annuity(spec, a, b, &spec.forwards);
     let value = compute_forward_value(
-        ForwardModel::Black,
+        spec.model,
         OptionType::Call,
         &ForwardInputs { forward: rate, strike, volatility, time: spec.times[a], discount: 1.0 },
     )?;
@@ -400,7 +413,7 @@ mod tests {
         let forwards: Vec<f64> = (0..10).map(|k| 0.02 + 0.001 * k as f64).collect();
         let volatilities: Vec<f64> = (0..10).map(|k| 0.25 - 0.005 * k as f64).collect();
         let correlation = create_exponential_correlation(&times[..10], beta).unwrap();
-        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false }
+        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black }
     }
 
     const PATHS: usize = 2000;
@@ -443,7 +456,7 @@ mod tests {
         for (a, b) in [(2usize, 6usize), (4, 10)] {
             let (rate, _) = swap_rate_and_annuity(&s, a, b, &s.forwards);
             let mc = compute_lmm_swaption_value(&s, &paths, a, b, rate).unwrap();
-            let approx = compute_black_swaption_value(&s, a, b, rate, compute_rebonato_swaption_volatility(&s, a, b).unwrap()).unwrap();
+            let approx = compute_formula_swaption_value(&s, a, b, rate, compute_rebonato_swaption_volatility(&s, a, b).unwrap()).unwrap();
             // Rebonato is an approximation: allow the simulation error and 2% of the value
             assert!((mc.value - approx).abs() < 4.0 * mc.standard_error + 0.02 * approx, "{a}x{b}: {approx} against {} ± {}", mc.value, mc.standard_error);
         }
@@ -511,6 +524,7 @@ mod tests {
             volatilities: vec![0.3; 8],
             discount_start: realized,
             backward_looking: true,
+            model: ForwardModel::Black,
         };
         assert!((s.discount(1) - 0.9965).abs() < 1e-15);
         let paths = generate_lmm_paths(&s, PATHS, 8, 23).unwrap();
@@ -547,6 +561,48 @@ mod tests {
         assert!((variance / expected - 1.0).abs() < 0.1, "{variance} against {expected}");
         // a forward-looking rate cannot have started
         assert!(generate_lmm_paths(&LmmSpec { backward_looking: false, ..s }, 10, 4, 1).is_err());
+    }
+
+    #[test]
+    fn normal_rates_keep_bonds_martingales_and_follow_bachelier() {
+        use crate::fmm::{compute_backward_caplet_value, BackwardCapletTerms};
+        for backward_looking in [false, true] {
+            // normal volatilities of about 60bp a year; rates near 0 can turn negative
+            let s = LmmSpec { volatilities: vec![0.006; 10], model: ForwardModel::Bachelier, backward_looking, ..spec(0.2) };
+            let paths = generate_lmm_paths(&s, PATHS, 8, 29).unwrap();
+            for k in [1usize, 5, 10] {
+                let values: Vec<f64> = paths.numeraire.iter().map(|b| 1.0 / b[k]).collect();
+                let e = estimate(&values);
+                assert!((e.value - s.discount(k)).abs() < 4.0 * e.standard_error + 1e-12, "{backward_looking} P(0,T_{k}): {} against {} ± {}", s.discount(k), e.value, e.standard_error);
+            }
+            for i in [0usize, 4, 9] {
+                let strike = s.forwards[i];
+                let mc = compute_lmm_caplet_value(&s, &paths, i, strike).unwrap();
+                let terms = BackwardCapletTerms {
+                    forward: s.forwards[i],
+                    strike,
+                    volatility: s.volatilities[i],
+                    // a forward-looking rate is a backward-looking one whose period has length 0
+                    time_to_start: s.times[i],
+                    time_to_end: if backward_looking { s.times[i + 1] } else { s.times[i] + 1e-12 },
+                    accrual: s.accrual(i),
+                    discount_factor: s.discount(i + 1),
+                    notional: 1.0,
+                };
+                let bachelier = compute_backward_caplet_value(ForwardModel::Bachelier, &terms).unwrap();
+                assert!((mc.value - bachelier).abs() < 4.0 * mc.standard_error, "{backward_looking} caplet {i}: {bachelier} against {} ± {}", mc.value, mc.standard_error);
+            }
+            for (a, b) in [(2usize, 6usize), (4, 10)] {
+                let (rate, _) = swap_rate_and_annuity(&s, a, b, &s.forwards);
+                let mc = compute_lmm_swaption_value(&s, &paths, a, b, rate).unwrap();
+                let approx = compute_formula_swaption_value(&s, a, b, rate, compute_rebonato_swaption_volatility(&s, a, b).unwrap()).unwrap();
+                assert!((mc.value - approx).abs() < 4.0 * mc.standard_error + 0.02 * approx, "{backward_looking} {a}x{b}: {approx} against {} ± {}", mc.value, mc.standard_error);
+            }
+        }
+        // the normal model accepts a negative forward
+        let mut s = LmmSpec { volatilities: vec![0.006; 10], model: ForwardModel::Bachelier, ..spec(0.2) };
+        s.forwards[0] = -0.002;
+        assert!(generate_lmm_paths(&s, 10, 4, 1).is_ok());
     }
 
     #[test]

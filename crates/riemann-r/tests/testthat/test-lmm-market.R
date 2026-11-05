@@ -12,7 +12,7 @@ test_that("discounted bonds are martingales and caplets follow Black's formula",
     expect_lt(abs(mean(discounted) - c(model$discount_start, bonds)[k]), 4 * sd(discounted) / sqrt(2000) + 1e-12)
   })
   caplets <- compute_lmm_caplet_value(model, forward = c(1, 5, 10), strike = model$forwards[c(1, 5, 10)], paths = 2000L)
-  expect_true(all(abs(caplets$value - caplets$black_value) < 4 * caplets$standard_error))
+  expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
 })
 
 test_that("Rebonato's swaption is near the simulated one, and the calibration recovers beta", {
@@ -36,9 +36,9 @@ test_that("backward-looking rates (FMM) keep bonds martingales and match the FMM
   discounted <- 1 / p$numeraire[, 11]
   expect_lt(abs(mean(discounted) - bonds[10]), 4 * sd(discounted) / sqrt(2000) + 1e-12)
   caplets <- compute_lmm_caplet_value(fmm, forward = c(1, 5, 10), strike = fmm$forwards[c(1, 5, 10)], paths = 2000L, steps_per_period = 8L)
-  expect_true(all(abs(caplets$value - caplets$black_value) < 4 * caplets$standard_error))
+  expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
   forward_looking <- compute_lmm_caplet_value(model, forward = 5, strike = model$forwards[5], paths = 2000L, steps_per_period = 8L)
-  expect_gt(caplets$black_value[2], forward_looking$black_value)
+  expect_gt(caplets$formula_value[2], forward_looking$formula_value)
 })
 
 test_that("a period under way moves only its unfixed part", {
@@ -47,7 +47,22 @@ test_that("a period under way moves only its unfixed part", {
   forwards <- c(compute_backward_forward_rate(realized, 1, 0.9965, 0.25), 0.02 + 0.001 * (1:7))
   fmm <- create_lmm(times, forwards, rep(0.3, 8), beta = 0.3, discount_start = realized, backward_looking = TRUE)
   caplets <- compute_lmm_caplet_value(fmm, forward = c(1, 4), strike = forwards[c(1, 4)] + 0.0005, paths = 2000L, steps_per_period = 8L)
-  expect_equal(caplets$black_value[1], compute_backward_caplet_value(forwards[1], forwards[1] + 0.0005, 0.3, -1 / 12, 1 / 6, 0.25, 0.9965))
-  expect_true(all(abs(caplets$value - caplets$black_value) < 4 * caplets$standard_error))
+  expect_equal(caplets$formula_value[1], compute_backward_caplet_value(forwards[1], forwards[1] + 0.0005, 0.3, -1 / 12, 1 / 6, 0.25, 0.9965))
+  expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
   expect_error(generate_lmm_paths(create_lmm(times, forwards, rep(0.3, 8), beta = 0.3, discount_start = realized), 10), "started before today")
+})
+
+test_that("normal rates keep bonds martingales and follow Bachelier's formulas", {
+  normal <- create_lmm(times, model$forwards, rep(0.006, 10), beta = 0.3, discount_start = model$discount_start, model = "bachelier")
+  caplets <- compute_lmm_caplet_value(normal, forward = c(1, 5, 10), strike = normal$forwards[c(1, 5, 10)], paths = 2000L, steps_per_period = 8L)
+  expect_equal(caplets$formula_value[2], compute_caplet_value(normal$forwards[5], normal$forwards[5], 0.006, times[5], 0.5,
+                                                                normal$discount_start / prod(1 + 0.5 * normal$forwards[1:5]), model = "bachelier"))
+  expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
+  s <- compute_lmm_swaption_value(normal, start = c(3, 5), end = c(7, 11), strike = c(0.023, 0.026), paths = 2000L, steps_per_period = 8L)
+  expect_true(all(abs(s$value - s$rebonato_value) < 4 * s$standard_error + 0.02 * s$rebonato_value))
+  expect_lt(max(s$rebonato_volatility), 0.01)
+  fmm <- create_lmm(times, model$forwards, rep(0.006, 10), beta = 0.3, discount_start = model$discount_start, backward_looking = TRUE, model = "bachelier")
+  b <- compute_lmm_caplet_value(fmm, forward = 5, strike = fmm$forwards[5], paths = 2000L, steps_per_period = 8L)
+  expect_lt(abs(b$value - b$formula_value), 4 * b$standard_error)
+  expect_error(create_lmm(times, model$forwards, rep(0.006, 10), beta = 0.3, model = "sabr"), "should be one of")
 })

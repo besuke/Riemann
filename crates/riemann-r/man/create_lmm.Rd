@@ -17,7 +17,8 @@ create_lmm(
   correlation = NULL,
   beta = NULL,
   discount_start = 1,
-  backward_looking = FALSE
+  backward_looking = FALSE,
+  model = "black"
 )
 
 create_exponential_correlation(times, beta)
@@ -110,7 +111,8 @@ The rates are generic term forwards: no IBOR index, curve or fixings. With \code
 backward-looking compounded rates, as overnight rates compounded over each period (the generalized forward
 market model, FMM, of Lyashenko and Mercurio): rate \code{i} keeps moving through its period, its volatility
 falling linearly to 0 at the period end, where it is known. The caplet's \code{black_value} is then the FMM
-formula of \code{\link[=compute_backward_caplet_value]{compute_backward_caplet_value()}}, and \code{state[p, k, i]} also holds rate \code{k - 1} at its end.
+formula of \code{\link[=compute_backward_caplet_value]{compute_backward_caplet_value()}}, and \code{state[p, k, i]} also holds rate \code{k - 1} at its end. The caplets'
+\code{formula_value} is Black's or Bachelier's formula, by \code{model}.
 }
 \examples{
 times <- seq(1, 6, by = 0.5)
