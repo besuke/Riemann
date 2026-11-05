@@ -16,7 +16,8 @@ create_lmm(
   volatilities,
   correlation = NULL,
   beta = NULL,
-  discount_start = 1
+  discount_start = 1,
+  backward_looking = FALSE
 )
 
 create_exponential_correlation(times, beta)
@@ -58,6 +59,8 @@ calibrate_lmm_correlation(model, start, end, volatility, beta_max = 5)
 \item{beta}{Decay of the exponential correlation.}
 
 \item{discount_start}{The discount factor to \code{times[1]}.}
+
+\item{backward_looking}{\code{FALSE} for forward-looking term rates, \code{TRUE} for backward-looking compounded rates.}
 
 \item{model}{A model from \code{create_lmm()}.}
 
@@ -101,7 +104,11 @@ volatilities, the forwards' volatilities fixed. With a constant volatility per f
 forward \code{i} is the Black volatility of its caplet, so the caplets calibrate the volatilities directly.
 }
 
-The rates are generic term forwards: no IBOR index, curve or fixings.
+The rates are generic term forwards: no IBOR index, curve or fixings. With \code{backward_looking = TRUE} they are
+backward-looking compounded rates, as overnight rates compounded over each period (the generalized forward
+market model, FMM, of Lyashenko and Mercurio): rate \code{i} keeps moving through its period, its volatility
+falling linearly to 0 at the period end, where it is known. The caplet's \code{black_value} is then the FMM
+formula of \code{\link[=compute_backward_caplet_value]{compute_backward_caplet_value()}}, and \code{state[p, k, i]} also holds rate \code{k - 1} at its end.
 }
 \examples{
 times <- seq(1, 6, by = 0.5)

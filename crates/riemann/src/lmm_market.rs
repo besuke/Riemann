@@ -44,6 +44,11 @@ pub struct LmmSpec {
     pub correlation: Vec<f64>,
     /// `P(0, T_0)`.
     pub discount_start: f64,
+    /// False for forward-looking term rates, fixed at the start of their period. True for
+    /// backward-looking compounded rates (the generalized FMM of Lyashenko and Mercurio): rate `i`
+    /// keeps moving through its period, with its volatility falling linearly to 0 at `T_{i+1}`, and
+    /// is known at the end.
+    pub backward_looking: bool,
 }
 
 impl LmmSpec {
@@ -86,7 +91,8 @@ pub fn create_exponential_correlation(times: &[f64], beta: f64) -> Result<Vec<f6
     Ok(times.iter().flat_map(|&a| times.iter().map(move |&b| (-beta * (a - b).abs()).exp())).collect())
 }
 
-/// Joint paths: `state[p][k][i]` is `L_i(T_k)` on path `p` for `i >= k` (NaN for fixed forwards),
+/// Joint paths: `state[p][k][i]` is `L_i(T_k)` on path `p` for `i >= k`, and for a backward-looking rate
+/// also `i = k - 1`, its value at the end of its period (NaN for the others),
 /// and `numeraire[p][k]` is `B(T_k)`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LmmPaths {
@@ -114,29 +120,47 @@ pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize,
         let mut path_numeraire = vec![0.0; n + 1];
         path_numeraire[0] = 1.0 / spec.discount_start;
         let mut step_count: u64 = 0;
-        let mut evolve = |l: &mut Vec<f64>, from: f64, to: f64, alive: usize| {
+        // `accruing` is the backward-looking rate whose period is [from, to], if any
+        let mut evolve = |l: &mut Vec<f64>, from: f64, to: f64, alive: usize, accruing: Option<usize>| {
             let dt = (to - from) / steps_per_period as f64;
-            for _ in 0..steps_per_period {
+            for s in 0..steps_per_period {
                 let z: Vec<f64> = (0..n).map(|i| generate_standard_normal(seed, p as u64, step_count * n as u64 + i as u64)).collect();
                 step_count += 1;
                 let w: Vec<f64> = (0..n).map(|i| lower[i][..=i].iter().zip(&z).map(|(a, b)| a * b).sum()).collect();
+                // the decay of the accruing rate: g at the step's middle for the drift, and the mean
+                // of g^2 over the step for the variance (exact for the linear g)
+                let mut g = vec![1.0; n];
+                let mut g_squared = vec![1.0; n];
+                if let Some(i) = accruing {
+                    let (g0, g1) = (1.0 - s as f64 / steps_per_period as f64, 1.0 - (s + 1) as f64 / steps_per_period as f64);
+                    g[i] = (g0 + g1) / 2.0;
+                    g_squared[i] = (g0 * g0 + g0 * g1 + g1 * g1) / 3.0;
+                }
                 let snapshot = l.clone();
-                let drift = drift_of(spec, alive, &snapshot);
+                let drift = drift_scaled(spec, alive, &snapshot, &g);
                 for k in alive..n {
                     let sigma = spec.volatilities[k];
-                    l[k] = snapshot[k] * ((drift[k] - 0.5 * sigma * sigma) * dt + sigma * dt.sqrt() * w[k]).exp();
+                    let variance = sigma * sigma * g_squared[k];
+                    l[k] = snapshot[k] * ((drift[k] - 0.5 * variance) * dt + (variance * dt).sqrt() * w[k]).exp();
                 }
             }
         };
         if spec.times[0] > 0.0 {
-            evolve(&mut l, 0.0, spec.times[0], 0);
+            evolve(&mut l, 0.0, spec.times[0], 0, None);
         }
         path_state[0].clone_from(&l);
         for k in 0..n {
-            path_numeraire[k + 1] = path_numeraire[k] * (1.0 + spec.accrual(k) * l[k]);
-            if k + 1 < n {
-                evolve(&mut l, spec.times[k], spec.times[k + 1], k + 1);
-                path_state[k + 1][(k + 1)..n].copy_from_slice(&l[(k + 1)..n]);
+            if spec.backward_looking {
+                // rate k accrues over [T_k, T_{k+1}] and is known at its end
+                evolve(&mut l, spec.times[k], spec.times[k + 1], k, Some(k));
+                path_numeraire[k + 1] = path_numeraire[k] * (1.0 + spec.accrual(k) * l[k]);
+                path_state[k + 1][k..n].copy_from_slice(&l[k..n]);
+            } else {
+                path_numeraire[k + 1] = path_numeraire[k] * (1.0 + spec.accrual(k) * l[k]);
+                if k + 1 < n {
+                    evolve(&mut l, spec.times[k], spec.times[k + 1], k + 1, None);
+                    path_state[k + 1][(k + 1)..n].copy_from_slice(&l[(k + 1)..n]);
+                }
             }
         }
         state.push(path_state);
@@ -166,15 +190,20 @@ fn estimate(values: &[f64]) -> LmmEstimate {
 /// / (1 + tau_j L_j)`. Entries before `alive` are 0 (QuantLib `LMMDriftCalculator::computePlain` with the
 /// numeraire at `alive`).
 fn drift_of(spec: &LmmSpec, alive: usize, forwards: &[f64]) -> Vec<f64> {
+    drift_scaled(spec, alive, forwards, &vec![1.0; spec.count()])
+}
+
+/// The drift with each volatility scaled by `g` (the FMM's decay of an accruing rate).
+fn drift_scaled(spec: &LmmSpec, alive: usize, forwards: &[f64], g: &[f64]) -> Vec<f64> {
     let n = spec.count();
     let mut drift = vec![0.0; n];
     for k in alive..n {
         let mut sum = 0.0;
         for j in alive..=k {
             let tau = spec.accrual(j);
-            sum += tau * spec.correlation[k * n + j] * spec.volatilities[j] * forwards[j] / (1.0 + tau * forwards[j]);
+            sum += tau * spec.correlation[k * n + j] * spec.volatilities[j] * g[j] * forwards[j] / (1.0 + tau * forwards[j]);
         }
-        drift[k] = spec.volatilities[k] * sum;
+        drift[k] = spec.volatilities[k] * g[k] * sum;
     }
     drift
 }
@@ -237,7 +266,11 @@ pub fn compute_lmm_caplet_value(spec: &LmmSpec, paths: &LmmPaths, i: usize, stri
         .state
         .iter()
         .zip(&paths.numeraire)
-        .map(|(state, numeraire)| tau * (state[i][i] - strike).max(0.0) / numeraire[i + 1])
+        .map(|(state, numeraire)| {
+            // a forward-looking rate is known at T_i, a backward-looking one at T_{i+1}
+            let fixing = if spec.backward_looking { state[i + 1][i] } else { state[i][i] };
+            tau * (fixing - strike).max(0.0) / numeraire[i + 1]
+        })
         .collect();
     Ok(estimate(&values))
 }
@@ -354,7 +387,7 @@ mod tests {
         let forwards: Vec<f64> = (0..10).map(|k| 0.02 + 0.001 * k as f64).collect();
         let volatilities: Vec<f64> = (0..10).map(|k| 0.25 - 0.005 * k as f64).collect();
         let correlation = create_exponential_correlation(&times[..10], beta).unwrap();
-        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp() }
+        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false }
     }
 
     const PATHS: usize = 2000;
@@ -409,6 +442,43 @@ mod tests {
         let fit = calibrate_lmm_correlation(&spec(0.9), &quotes, 5.0).unwrap();
         assert!((fit.beta - 0.3).abs() < 1e-6, "{}", fit.beta);
         assert!(fit.root_mean_square_error < 1e-9);
+    }
+
+    #[test]
+    fn backward_looking_paths_keep_bonds_martingales_and_reproduce_the_fmm_caplet() {
+        use crate::fmm::{compute_backward_caplet_value, BackwardCapletTerms};
+        let s = LmmSpec { backward_looking: true, ..spec(0.2) };
+        let paths = generate_lmm_paths(&s, PATHS, 8, 17).unwrap();
+        // the accruing rate is fixed at the end of its period
+        assert!(paths.state.iter().all(|st| st[1][0].is_finite() && st[0][0].is_finite()));
+        for k in [1usize, 5, 10] {
+            let values: Vec<f64> = paths.numeraire.iter().map(|b| 1.0 / b[k]).collect();
+            let e = estimate(&values);
+            assert!((e.value - s.discount(k)).abs() < 4.0 * e.standard_error + 1e-12, "P(0,T_{k}): {} against {} ± {}", s.discount(k), e.value, e.standard_error);
+        }
+        for i in [0usize, 4, 9] {
+            let strike = s.forwards[i];
+            let mc = compute_lmm_caplet_value(&s, &paths, i, strike).unwrap();
+            let fmm = compute_backward_caplet_value(
+                ForwardModel::Black,
+                &BackwardCapletTerms {
+                    forward: s.forwards[i],
+                    strike,
+                    volatility: s.volatilities[i],
+                    time_to_start: s.times[i],
+                    time_to_end: s.times[i + 1],
+                    accrual: s.accrual(i),
+                    discount_factor: s.discount(i + 1),
+                    notional: 1.0,
+                },
+            )
+            .unwrap();
+            assert!((mc.value - fmm).abs() < 4.0 * mc.standard_error, "caplet {i}: {fmm} against {} ± {}", mc.value, mc.standard_error);
+        }
+        // the backward-looking caplet is worth more than the forward-looking one on the same rate
+        let forward_looking = generate_lmm_paths(&spec(0.2), PATHS, 8, 17).unwrap();
+        let (b, f) = (compute_lmm_caplet_value(&s, &paths, 4, s.forwards[4]).unwrap(), compute_lmm_caplet_value(&spec(0.2), &forward_looking, 4, s.forwards[4]).unwrap());
+        assert!(b.value > f.value);
     }
 
     #[test]

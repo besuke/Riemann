@@ -27,3 +27,16 @@ test_that("Rebonato's swaption is near the simulated one, and the calibration re
   expect_error(compute_rebonato_swaption_volatility(model, 5, 5), "T_a to T_b")
   expect_error(create_lmm(times, model$forwards, model$volatilities), "correlation")
 })
+
+test_that("backward-looking rates (FMM) keep bonds martingales and match the FMM caplet", {
+  fmm <- create_lmm(times, model$forwards, model$volatilities, beta = 0.3, discount_start = model$discount_start, backward_looking = TRUE)
+  p <- generate_lmm_paths(fmm, paths = 2000L, steps_per_period = 8L, seed = 5)
+  expect_true(all(is.finite(p$state[, 2, 1])))
+  bonds <- fmm$discount_start / cumprod(1 + diff(times) * fmm$forwards)
+  discounted <- 1 / p$numeraire[, 11]
+  expect_lt(abs(mean(discounted) - bonds[10]), 4 * sd(discounted) / sqrt(2000) + 1e-12)
+  caplets <- compute_lmm_caplet_value(fmm, forward = c(1, 5, 10), strike = fmm$forwards[c(1, 5, 10)], paths = 2000L, steps_per_period = 8L)
+  expect_true(all(abs(caplets$value - caplets$black_value) < 4 * caplets$standard_error))
+  forward_looking <- compute_lmm_caplet_value(model, forward = 5, strike = model$forwards[5], paths = 2000L, steps_per_period = 8L)
+  expect_gt(caplets$black_value[2], forward_looking$black_value)
+})

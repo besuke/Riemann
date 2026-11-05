@@ -2267,13 +2267,14 @@ fn compute_backward_caplet_value(
         .collect();
     value_list(rows)
 }
-fn lmm_spec(times: &[f64], forwards: &[f64], volatilities: &[f64], correlation: &[f64], discount_start: f64) -> riemann::lmm_market::LmmSpec {
+fn lmm_spec(times: &[f64], forwards: &[f64], volatilities: &[f64], correlation: &[f64], discount_start: f64, backward_looking: bool) -> riemann::lmm_market::LmmSpec {
     riemann::lmm_market::LmmSpec {
         times: times.to_vec(),
         forwards: forwards.to_vec(),
         volatilities: volatilities.to_vec(),
         correlation: correlation.to_vec(),
         discount_start,
+        backward_looking,
     }
 }
 #[extendr]
@@ -2288,6 +2289,7 @@ fn compute_lmm_monte_carlo(
     volatilities: Vec<f64>,
     correlation: Vec<f64>,
     discount_start: f64,
+    backward_looking: bool,
     kind: Vec<String>,
     start: Vec<i32>,
     end: Vec<i32>,
@@ -2297,7 +2299,7 @@ fn compute_lmm_monte_carlo(
     seed: f64,
 ) -> List {
     let run = || -> Core<List> {
-        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start);
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking);
         let simulated = riemann::lmm_market::generate_lmm_paths(&spec, paths.max(0) as usize, steps_per_period.max(0) as usize, seed as u64)?;
         let (mut value, mut standard_error) = (Vec::new(), Vec::new());
         for i in 0..kind.len() {
@@ -2322,12 +2324,13 @@ fn generate_lmm_paths(
     volatilities: Vec<f64>,
     correlation: Vec<f64>,
     discount_start: f64,
+    backward_looking: bool,
     paths: i32,
     steps_per_period: i32,
     seed: f64,
 ) -> List {
     let run = || -> Core<List> {
-        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start);
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking);
         let p = riemann::lmm_market::generate_lmm_paths(&spec, paths.max(0) as usize, steps_per_period.max(0) as usize, seed as u64)?;
         // R's array order: path fastest, then time, then forward
         let (n_paths, n) = (p.state.len(), forwards.len());
@@ -2357,12 +2360,13 @@ fn compute_rebonato_swaption_volatility(
     volatilities: Vec<f64>,
     correlation: Vec<f64>,
     discount_start: f64,
+    backward_looking: bool,
     start: Vec<i32>,
     end: Vec<i32>,
     strike: Vec<f64>,
 ) -> List {
     let run = || -> Core<List> {
-        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start);
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking);
         let (mut vol, mut black) = (Vec::new(), Vec::new());
         for i in 0..start.len() {
             let (a, b) = (start[i] as usize, end[i] as usize);
@@ -2390,7 +2394,7 @@ fn calibrate_lmm_correlation(
     let run = || -> Core<List> {
         let n = forwards.len();
         let identity: Vec<f64> = (0..n * n).map(|k| if k / n == k % n { 1.0 } else { 0.0 }).collect();
-        let spec = lmm_spec(&times, &forwards, &volatilities, &identity, discount_start);
+        let spec = lmm_spec(&times, &forwards, &volatilities, &identity, discount_start, false);
         let quotes: Vec<_> = (0..start.len())
             .map(|i| riemann::lmm_market::SwaptionQuote { start: start[i] as usize, end: end[i] as usize, volatility: volatility[i] })
             .collect();
