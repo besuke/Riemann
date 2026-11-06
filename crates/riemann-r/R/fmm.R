@@ -47,3 +47,33 @@ compute_backward_caplet_value <- function(forward, strike, volatility, time_to_s
   finish_values(checked(.Call(wrap__compute_backward_caplet_value, as.character(model), i$forward, i$strike, i$volatility, i$time_to_start,
                               i$time_to_end, i$accrual, i$discount_factor, i$notional)), on_error)
 }
+
+#' State of a backward-looking period from its daily fixings
+#'
+#' The compounded rate of an overnight period at the evaluation date: the fixings already known, then the
+#' forecast curve, as an OIS coupon of [create_ois_swap()]. The days are the business days of the curve's
+#' index from `start_date` to `end_date`. Every fixing before the evaluation date is required; today's is used
+#' when given.
+#'
+#' The result feeds the FMM: `forward` is the forward of the whole period for [compute_backward_caplet_value()]
+#' and for the first forward of [create_lmm()] with `backward_looking = TRUE`, and `realized` is that model's
+#' `discount_start` when the period has started.
+#'
+#' @param curve A curve of the period's overnight index, which forecasts the rest of the period.
+#' @param start_date,end_date The period.
+#' @param evaluation_date One date.
+#' @param fixings `NULL`, or a data frame with the columns `date` and `rate`, as in [compute_ois_swap_value()].
+#' @return A one-row tibble with `realized` (the compounding factor of the known fixings, 1 before the period),
+#'   `forward` (the expected compounded rate of the whole period), `accrual`, `fixed_days` and `days`.
+#' @examples
+#' curve <- create_flat_curve("2026-12-07", 0.005, "actual_365_fixed", index = "tonar")
+#' days <- seq(as.Date("2026-11-04"), as.Date("2026-12-06"), by = "day")
+#' fixings <- tibble::tibble(date = days, rate = 0.0048)
+#' compute_backward_period_state(curve, "2026-11-04", "2027-02-04", "2026-12-07", fixings)
+#' @export
+compute_backward_period_state <- function(curve, start_date, end_date, evaluation_date, fixings = NULL) {
+  if (!inherits(curve, "riemann_ois_curve")) stop("`curve` must be a curve.", call. = FALSE)
+  f <- fixing_columns(fixings)
+  tibble::as_tibble(checked(.Call(wrap__compute_backward_period_state, curve$pointer, as_serial(start_date), as_serial(end_date),
+                                  as_serial(evaluation_date), f$dates, f$rates)))
+}

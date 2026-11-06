@@ -239,6 +239,19 @@ fn compounded_rate<T: Operand>(
     fixings: &Fixings,
 ) -> Result<T, Error> {
     let n = coupon.value_dates.len() - 1;
+    let (compound, i) = realized_compounding(coupon, evaluation_date, fixings)?;
+    let factor = if i < n {
+        forecast.discount(coupon.value_dates[i])? / forecast.discount(coupon.value_dates[n])? * compound
+    } else {
+        forecast.discount(forecast.reference_date())?.like(compound)
+    };
+    Ok((factor - 1.0) / coupon.accrual)
+}
+
+/// The compounding of the fixings already known at the evaluation date, and the number of value dates
+/// they cover: every fixing before it is required, and today's is used when given.
+fn realized_compounding(coupon: &OvernightCoupon, evaluation_date: Date, fixings: &Fixings) -> Result<(f64, usize), Error> {
+    let n = coupon.value_dates.len() - 1;
     let mut compound = 1.0;
     let mut i = 0;
     while i < n && coupon.value_dates[i] < evaluation_date {
@@ -255,12 +268,60 @@ fn compounded_rate<T: Operand>(
             i += 1;
         }
     }
-    let factor = if i < n {
-        forecast.discount(coupon.value_dates[i])? / forecast.discount(coupon.value_dates[n])? * compound
-    } else {
-        forecast.discount(forecast.reference_date())?.like(compound)
-    };
-    Ok((factor - 1.0) / coupon.accrual)
+    Ok((compound, i))
+}
+
+/// One overnight-indexed period from `start` to `end`, paid at its end: the business days of the
+/// index between them and the index's year fractions (as the coupons of [`create_ois_swap`]).
+pub fn create_overnight_coupon(index: &OvernightIndex, start: Date, end: Date) -> Result<OvernightCoupon, Error> {
+    if end <= start {
+        return invalid(format!("the period must end after it starts ({start} to {end})"));
+    }
+    let value_dates = daily_dates(index, start, end)?;
+    let day_fractions = value_dates
+        .windows(2)
+        .map(|d| index.day_count.year_fraction(d[0], d[1], None, None))
+        .collect::<Result<Vec<_>, Error>>()?;
+    Ok(OvernightCoupon {
+        payment_date: end,
+        accrual_start: start,
+        accrual_end: end,
+        accrual: index.day_count.year_fraction(start, end, Some(start), Some(end))?,
+        value_dates,
+        day_fractions,
+    })
+}
+
+/// The state of an overnight-indexed period at the evaluation date.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OvernightCompounding {
+    /// The compounding factor of the fixings already known (1 before the period starts).
+    pub realized: f64,
+    /// The compounded rate of the whole period expected now: the fixings, then the forecast curve.
+    pub rate: f64,
+    /// The index's year fraction of the period.
+    pub accrual: f64,
+    /// Days of the period with a known fixing, and all its days (value dates but the last).
+    pub fixed_days: usize,
+    pub days: usize,
+}
+
+/// The fixed and the expected parts of a period's compounding (the same calculation as an OIS
+/// coupon, `CompoundingOvernightIndexedCouponPricer`).
+pub fn compute_overnight_compounding(
+    coupon: &OvernightCoupon,
+    forecast: &YieldCurve,
+    evaluation_date: Date,
+    fixings: &Fixings,
+) -> Result<OvernightCompounding, Error> {
+    let (realized, fixed_days) = realized_compounding(coupon, evaluation_date, fixings)?;
+    Ok(OvernightCompounding {
+        realized,
+        rate: compounded_rate(coupon, forecast, evaluation_date, fixings)?,
+        accrual: coupon.accrual,
+        fixed_days,
+        days: coupon.value_dates.len() - 1,
+    })
 }
 
 /// The amount of a coupon of the overnight leg (`FloatingRateCoupon::amount`).

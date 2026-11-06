@@ -21,7 +21,11 @@
 // `!(x > 0.0)` is intended: it also rejects NaN
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
+use crate::curves::YieldCurve;
 use crate::lmm::{compute_caplet_value, CapletTerms};
+use crate::ois::OvernightIndex;
+use crate::ois_swap::{compute_overnight_compounding, create_overnight_coupon, Fixings, OvernightCompounding};
+use crate::time::Date;
 use crate::options::ForwardModel;
 use crate::Error;
 
@@ -38,6 +42,24 @@ pub fn compute_backward_forward_rate(realized: f64, discount_start: f64, discoun
         return invalid("the realized factor, the discount factors and the accrual must be positive".into());
     }
     Ok((realized * discount_start / discount_end - 1.0) / accrual)
+}
+
+/// The state of a backward-looking period at the evaluation date, from its daily fixings: the
+/// compounding factor of the fixings already known, and the forward of the whole period, ready for
+/// [`crate::lmm_market::LmmSpec`] (`discount_start` and `forwards[0]` of a period under way) and for
+/// [`compute_backward_caplet_value`]. The days are the index's business days from `start` to `end`;
+/// every fixing before the evaluation date is required and today's is used when given, as for an OIS
+/// coupon ([`crate::ois_swap::compute_overnight_compounding`]).
+pub fn compute_backward_period_state(
+    index: &OvernightIndex,
+    start: Date,
+    end: Date,
+    evaluation_date: Date,
+    fixings: &Fixings,
+    forecast: &YieldCurve,
+) -> Result<OvernightCompounding, Error> {
+    let coupon = create_overnight_coupon(index, start, end)?;
+    compute_overnight_compounding(&coupon, forecast, evaluation_date, fixings)
 }
 
 /// A caplet on the compounded rate of one period, paid at the period end.
@@ -171,6 +193,66 @@ mod tests {
         assert!((near_end - 0.25 * 0.98 * (0.03 - 0.021)).abs() < 1e-12);
         assert!(compute_backward_variance_time(0.5, 0.25).is_err());
         assert!(compute_backward_variance_time(-0.25, 0.0).is_err());
+    }
+
+    #[test]
+    fn daily_fixings_give_the_realized_factor_and_the_forward_of_the_period() {
+        use crate::interest_rate::{Compounding, InterestRate};
+        use crate::ois::create_tonar_index;
+        use crate::ois_swap::{compute_overnight_coupon_amount, create_ois_swap, OisSwapSpec, SwapSide};
+        use crate::time::{Actual365Kind, DayCount};
+        let d = |y: i32, m: u32, day: u32| Date::from_ymd(y, m, day).unwrap();
+        let index = create_tonar_index();
+        let (start, end) = (d(2026, 11, 4), d(2027, 2, 4));
+        let today = d(2026, 12, 7);
+        let curve = YieldCurve::flat(today, InterestRate::new(0.005, DayCount::Actual365Fixed(Actual365Kind::Standard), Compounding::Continuous, 0).unwrap());
+        // before the period starts: no fixings, the curve's forward
+        let early_curve = YieldCurve::flat(d(2026, 11, 2), InterestRate::new(0.005, DayCount::Actual365Fixed(Actual365Kind::Standard), Compounding::Continuous, 0).unwrap());
+        let before = compute_backward_period_state(&index, start, end, d(2026, 11, 2), &Fixings::new(), &early_curve).unwrap();
+        assert_eq!((before.realized, before.fixed_days), (1.0, 0));
+        let expected = (early_curve.discount(start).unwrap() / early_curve.discount(end).unwrap() - 1.0) / before.accrual;
+        assert!((before.rate - expected).abs() < 1e-15);
+        // a month in: the fixings of the business days before today
+        let coupon = create_overnight_coupon(&index, start, end).unwrap();
+        let mut fixings = Fixings::new();
+        let mut product = 1.0;
+        for (k, (date, fraction)) in coupon.value_dates.iter().zip(&coupon.day_fractions).enumerate() {
+            if *date >= today {
+                break;
+            }
+            let rate = 0.0048 + 0.00001 * k as f64;
+            fixings.insert(*date, rate);
+            product *= 1.0 + rate * fraction;
+        }
+        let state = compute_backward_period_state(&index, start, end, today, &fixings, &curve).unwrap();
+        assert!((state.realized - product).abs() < 1e-15);
+        assert_eq!(state.fixed_days, fixings.len());
+        assert!(state.fixed_days > 15 && state.fixed_days < state.days);
+        // the same forward as the stage 3 formula from the realized factor and the curve
+        let first_unfixed = coupon.value_dates[state.fixed_days];
+        let formula = compute_backward_forward_rate(state.realized, curve.discount(first_unfixed).unwrap(), curve.discount(end).unwrap(), state.accrual).unwrap();
+        assert!((state.rate - formula).abs() < 1e-15);
+        // and the same rate as the overnight coupon of a one-period OIS swap (checked against QuantLib in P11-2)
+        let swap = create_ois_swap(OisSwapSpec {
+            side: SwapSide::Payer,
+            nominal: 1.0,
+            effective_date: start,
+            termination_date: end,
+            index: index.clone(),
+            fixed_rate: 0.005,
+            fixed_day_count: None,
+            spread: 0.0,
+            fixed_frequency: 1,
+            overnight_frequency: 1,
+            payment_lag: 0,
+        })
+        .unwrap();
+        let amount = compute_overnight_coupon_amount(&swap, &swap.overnight_leg[0], &curve, today, &fixings).unwrap();
+        assert!((amount / swap.overnight_leg[0].accrual - state.rate).abs() < 1e-15);
+        // a missing fixing is an error
+        let mut gap = fixings.clone();
+        gap.remove(&coupon.value_dates[3]);
+        assert!(compute_backward_period_state(&index, start, end, today, &gap, &curve).is_err());
     }
 
     #[test]

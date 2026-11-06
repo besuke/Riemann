@@ -42,6 +42,7 @@ counterparts <- tribble(
   "compute_caplet_from_normals", "None; legacy R simulation",
   "compute_backward_caplet_value", "None; Lyashenko-Mercurio FMM formula (QuantLib has no FMM)",
   "compute_backward_forward_rate", "None; compounding of fixings and curve",
+  "compute_backward_period_state", "None; the compounding of an OvernightIndexedCoupon with fixings",
   "compute_caplet_value", "blackFormula, bachelierBlackFormula",
   "compute_lmm_caplet_value", "None; LMM paths under the spot measure (QuantLib LiborForwardModel not compared)",
   "compute_lmm_swaption_value", "None; LMM paths under the spot measure (QuantLib LiborForwardModel not compared)",

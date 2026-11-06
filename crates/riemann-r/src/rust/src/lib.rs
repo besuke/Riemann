@@ -2409,6 +2409,29 @@ fn calibrate_lmm_correlation(
     outcome(run())
 }
 #[extendr]
+fn compute_backward_period_state(
+    curve: ExternalPtr<OisCurve>,
+    start_date: i32,
+    end_date: i32,
+    evaluation_date: i32,
+    fixing_dates: Vec<i32>,
+    fixing_rates: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        let fixings = fixings_of(&fixing_dates, &fixing_rates)?;
+        let s = riemann::fmm::compute_backward_period_state(
+            &curve.spec.index,
+            date(start_date)?,
+            date(end_date)?,
+            date(evaluation_date)?,
+            &fixings,
+            &curve.curve,
+        )?;
+        Ok(list!(realized = s.realized, forward = s.rate, accrual = s.accrual, fixed_days = s.fixed_days as i32, days = s.days as i32))
+    };
+    outcome(run())
+}
+#[extendr]
 fn compute_backward_forward_rate(realized: Vec<f64>, discount_start: Vec<f64>, discount_end: Vec<f64>, accrual: Vec<f64>) -> List {
     let rows = (0..realized.len())
         .map(|i| riemann::fmm::compute_backward_forward_rate(realized[i], discount_start[i], discount_end[i], accrual[i]))
@@ -3084,6 +3107,7 @@ extendr_module! {
     fn compute_caplet_value;
     fn compute_backward_caplet_value;
     fn compute_backward_forward_rate;
+    fn compute_backward_period_state;
     fn create_exponential_correlation;
     fn compute_lmm_monte_carlo;
     fn generate_lmm_paths;
