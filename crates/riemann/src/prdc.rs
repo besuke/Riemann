@@ -1011,7 +1011,7 @@ pub fn compute_callable_prdc_three_factor_sensitivity<'c>(
     })
 }
 
-// ---- target redemption ----
+// ---- target redemption and knock-out ----
 
 /// What the coupon of the date that reaches the target pays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1034,6 +1034,32 @@ pub struct TargetRedemption {
     pub make_whole: bool,
 }
 
+/// An FX knock-out: on each coupon date of `dates` (positions in `coupon_times`, increasing, before the
+/// last) where the FX rate is at or above `level`, the note pays that date's coupon and the redemption,
+/// and ends. The FX rate is observed on those dates only.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KnockOut {
+    /// Domestic per foreign.
+    pub level: f64,
+    pub dates: Vec<usize>,
+}
+
+/// A note with a target redemption, a knock-out, or both, on the three-factor paths.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathDependentPrdcResult {
+    pub value: f64,
+    pub standard_error: f64,
+    /// The note without either on the same paths.
+    pub plain_value: f64,
+    /// The share of paths that reach the target on each coupon date.
+    pub target_probability: Vec<f64>,
+    /// The share of paths knocked out on each coupon date (a date that also reaches the target counts
+    /// as the target's).
+    pub knock_out_probability: Vec<f64>,
+    /// The mean time to the note's end, in years.
+    pub expected_life: f64,
+}
+
 /// A target redemption note on the three-factor paths.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetRedemptionResult {
@@ -1041,16 +1067,29 @@ pub struct TargetRedemptionResult {
     pub standard_error: f64,
     /// The note without the target on the same paths.
     pub plain_value: f64,
-    /// The share of paths that reach the target on each coupon date (the last includes a target reached
-    /// on that date, not the paths that end there without it).
+    /// The share of paths that reach the target on each coupon date.
     pub redemption_probability: Vec<f64>,
     /// The mean time to the note's end, in years.
     pub expected_life: f64,
 }
 
-/// One path of a target redemption note: its discounted cash flows, the date it ends, and whether it
-/// reached the target.
-fn follow_target(terms: &PrdcTerms, target: &TargetRedemption, discount: &[f64], fx: &[f64]) -> (f64, usize, bool) {
+/// Why a path ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ending {
+    Maturity,
+    Target,
+    KnockOut,
+}
+
+/// One path: its discounted cash flows, the date it ends and why. On a date the target is checked
+/// first, then the knock-out (after the coupon).
+fn follow_path_dependent(
+    terms: &PrdcTerms,
+    target: Option<&TargetRedemption>,
+    knock_out: Option<(&[bool], f64)>,
+    discount: &[f64],
+    fx: &[f64],
+) -> (f64, usize, Ending) {
     let n = terms.coupon_times.len();
     let scale = terms.leverage / terms.fx_base;
     let mut sum = 0.0;
@@ -1058,25 +1097,98 @@ fn follow_target(terms: &PrdcTerms, target: &TargetRedemption, discount: &[f64],
     for i in 0..n {
         let rate = terms.fixed_rates[i].unwrap_or_else(|| (fx[i] * scale - terms.subtraction).max(terms.floor).min(terms.cap));
         let accrued = rate * terms.accrual_fractions[i];
-        if sum + accrued >= target.target {
-            let paid = match target.coupon {
-                TargetCoupon::Full => accrued,
-                TargetCoupon::Capped => target.target - sum,
-            };
-            value += (paid * terms.notional + terms.redemption) * discount[i];
-            return (value, i, true);
+        if let Some(t) = target {
+            if sum + accrued >= t.target {
+                let paid = match t.coupon {
+                    TargetCoupon::Full => accrued,
+                    TargetCoupon::Capped => t.target - sum,
+                };
+                value += (paid * terms.notional + terms.redemption) * discount[i];
+                return (value, i, Ending::Target);
+            }
         }
         sum += accrued;
         value += accrued * terms.notional * discount[i];
+        if let Some((observed, level)) = knock_out {
+            if observed[i] && fx[i] >= level {
+                value += terms.redemption * discount[i];
+                return (value, i, Ending::KnockOut);
+            }
+        }
     }
-    let shortfall = if target.make_whole { (target.target - sum).max(0.0) * terms.notional } else { 0.0 };
+    let shortfall = match target {
+        Some(t) if t.make_whole => (t.target - sum).max(0.0) * terms.notional,
+        _ => 0.0,
+    };
     value += (terms.redemption + shortfall) * discount[n - 1];
-    (value, n - 1, false)
+    (value, n - 1, Ending::Maturity)
 }
 
-/// A target redemption note (see [`TargetRedemption`]) on the paths of the three-factor model, by Monte
-/// Carlo: the note is path-dependent, but needs no regression. With zero rate volatilities it is the
-/// note of the first model.
+/// A note with a target redemption (see [`TargetRedemption`]), an FX knock-out (see [`KnockOut`]), or
+/// both, on the paths of the three-factor model, by Monte Carlo: the note is path-dependent, but needs no
+/// regression. With zero rate volatilities it is the note of the first model.
+pub fn compute_path_dependent_prdc(
+    terms: &PrdcTerms,
+    model: &PrdcThreeFactor,
+    target: Option<&TargetRedemption>,
+    knock_out: Option<&KnockOut>,
+    paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+) -> Result<PathDependentPrdcResult, Error> {
+    terms.check()?;
+    let n = terms.coupon_times.len();
+    if let Some(t) = target {
+        if !(t.target > 0.0) {
+            return invalid(format!("the target must be positive (infinity for none), not {}", t.target));
+        }
+        if t.make_whole && !t.target.is_finite() {
+            return invalid("a make-whole needs a finite target".into());
+        }
+    }
+    let mut observed = vec![false; n];
+    if let Some(k) = knock_out {
+        if !(k.level > 0.0) {
+            return invalid(format!("the knock-out level must be positive (infinity for none), not {}", k.level));
+        }
+        if k.dates.windows(2).any(|w| w[1] <= w[0]) || k.dates.last().is_some_and(|&c| c + 1 >= n) {
+            return invalid(format!("knock-out dates must be increasing positions before the last coupon (of {n})"));
+        }
+        for &c in &k.dates {
+            observed[c] = true;
+        }
+    }
+    let states = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
+    let knock = knock_out.map(|k| (observed.as_slice(), k.level));
+    let mut values = Vec::with_capacity(paths);
+    let mut plain = 0.0;
+    let (mut targets, mut knocks) = (vec![0usize; n], vec![0usize; n]);
+    let mut life = 0.0;
+    for (discount, fx) in states.discount.iter().zip(&states.fx) {
+        let (value, end, why) = follow_path_dependent(terms, target, knock, discount, fx);
+        values.push(value);
+        match why {
+            Ending::Target => targets[end] += 1,
+            Ending::KnockOut => knocks[end] += 1,
+            Ending::Maturity => {}
+        }
+        life += terms.coupon_times[end];
+        plain += follow_path_dependent(terms, None, None, discount, fx).0;
+    }
+    let e = mean_and_error(&values);
+    let count = paths as f64;
+    Ok(PathDependentPrdcResult {
+        value: e.value,
+        standard_error: e.standard_error,
+        plain_value: plain / count,
+        target_probability: targets.iter().map(|&c| c as f64 / count).collect(),
+        knock_out_probability: knocks.iter().map(|&c| c as f64 / count).collect(),
+        expected_life: life / count,
+    })
+}
+
+/// A target redemption note (see [`TargetRedemption`]) on the paths of the three-factor model: the
+/// note of [`compute_path_dependent_prdc`] with the target only.
 pub fn compute_target_redemption_prdc(
     terms: &PrdcTerms,
     model: &PrdcThreeFactor,
@@ -1085,37 +1197,13 @@ pub fn compute_target_redemption_prdc(
     steps_per_year: usize,
     seed: u64,
 ) -> Result<TargetRedemptionResult, Error> {
-    terms.check()?;
-    if !(target.target > 0.0) {
-        return invalid(format!("the target must be positive (infinity for none), not {}", target.target));
-    }
-    if target.make_whole && !target.target.is_finite() {
-        return invalid("a make-whole needs a finite target".into());
-    }
-    let n = terms.coupon_times.len();
-    let states = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
-    let no_target = TargetRedemption { target: f64::INFINITY, coupon: TargetCoupon::Full, make_whole: false };
-    let mut values = Vec::with_capacity(paths);
-    let mut plain = 0.0;
-    let mut reached = vec![0usize; n];
-    let mut life = 0.0;
-    for (discount, fx) in states.discount.iter().zip(&states.fx) {
-        let (value, end, hit) = follow_target(terms, target, discount, fx);
-        values.push(value);
-        if hit {
-            reached[end] += 1;
-        }
-        life += terms.coupon_times[end];
-        plain += follow_target(terms, &no_target, discount, fx).0;
-    }
-    let e = mean_and_error(&values);
-    let count = paths as f64;
+    let r = compute_path_dependent_prdc(terms, model, Some(target), None, paths, steps_per_year, seed)?;
     Ok(TargetRedemptionResult {
-        value: e.value,
-        standard_error: e.standard_error,
-        plain_value: plain / count,
-        redemption_probability: reached.iter().map(|&c| c as f64 / count).collect(),
-        expected_life: life / count,
+        value: r.value,
+        standard_error: r.standard_error,
+        plain_value: r.plain_value,
+        redemption_probability: r.target_probability,
+        expected_life: r.expected_life,
     })
 }
 
@@ -1550,6 +1638,73 @@ mod tests {
                 }
             }
             assert!((r.value / value - 1.0).abs() < 1e-7, "{spot} {target}: {} against {value} (sum {sum})", r.value);
+        }
+    }
+
+    #[test]
+    fn a_knock_out_note_against_its_limits_and_the_digital_formula() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let t = terms();
+        let all = vec![0usize, 1, 2, 3];
+        // a level never reached: the note on the same paths
+        let never = KnockOut { level: f64::INFINITY, dates: all.clone() };
+        let r = compute_path_dependent_prdc(&t, &model, None, Some(&never), 4000, 12, 7).unwrap();
+        assert!((r.value / r.plain_value - 1.0).abs() < 1e-12 && r.knock_out_probability.iter().all(|&q| q == 0.0));
+        // a level always reached: the first coupon and the redemption on the first date, in closed form
+        let always = KnockOut { level: 1e-6, dates: all.clone() };
+        let r = compute_path_dependent_prdc(&t, &model, None, Some(&always), 4000, 12, 7).unwrap();
+        assert_eq!(r.knock_out_probability[0], 1.0);
+        let first = PrdcTerms { coupon_times: vec![1.0], accrual_fractions: vec![1.0], fixed_rates: vec![None], ..t.clone() };
+        let exact = compute_prdc_three_factor_analytic(&first, &model).unwrap();
+        assert!((r.value - exact).abs() < 4.0 * r.standard_error, "{} against {exact} ± {}", r.value, r.standard_error);
+        // E[D(T) 1{S(T) >= K}] = P_d(0, T) N(d_2) under the T-forward measure, with the variance of 5 章
+        let paths = generate_prdc_three_factor_paths(&t.coupon_times, &model, 20_000, 12, 9).unwrap();
+        for (i, level) in [(0usize, 152.0), (2, 140.0)] {
+            let time = t.coupon_times[i];
+            let pd = d.discount_at(time, true).unwrap();
+            let forward = 150.0 * f.discount_at(time, true).unwrap() / pd;
+            let v = model.fx_forward_variance(time);
+            let d2 = ((forward / level).ln() - 0.5 * v) / v.sqrt();
+            let exact = pd * crate::math::normal::compute_normal_cdf(d2);
+            let hits: Vec<f64> = paths.discount.iter().zip(&paths.fx).map(|(x, s)| if s[i] >= level { x[i] } else { 0.0 }).collect();
+            let e = mean_and_error(&hits);
+            assert!((e.value - exact).abs() < 4.0 * e.standard_error, "date {i}: {} against {exact} ± {}", e.value, e.standard_error);
+        }
+        // with the knock-out out of reach, the target note is unchanged; both can end paths together
+        let target = TargetRedemption { target: 0.12, coupon: TargetCoupon::Capped, make_whole: true };
+        let alone = compute_path_dependent_prdc(&t, &model, Some(&target), None, 4000, 12, 7).unwrap();
+        let with_never = compute_path_dependent_prdc(&t, &model, Some(&target), Some(&never), 4000, 12, 7).unwrap();
+        assert_eq!(alone, with_never);
+        let both = compute_path_dependent_prdc(&t, &model, Some(&target), Some(&KnockOut { level: 155.0, dates: all.clone() }), 4000, 12, 7).unwrap();
+        let ended: f64 = both.target_probability.iter().chain(&both.knock_out_probability).sum();
+        assert!(ended <= 1.0 && both.knock_out_probability.iter().sum::<f64>() > 0.0 && both.target_probability.iter().sum::<f64>() > 0.0);
+        // invalid knock-outs
+        assert!(compute_path_dependent_prdc(&t, &model, None, Some(&KnockOut { level: 150.0, dates: vec![4] }), 10, 4, 1).is_err());
+        assert!(compute_path_dependent_prdc(&t, &model, None, Some(&KnockOut { level: 150.0, dates: vec![2, 1] }), 10, 4, 1).is_err());
+        assert!(compute_path_dependent_prdc(&t, &model, None, Some(&KnockOut { level: 0.0, dates: vec![1] }), 10, 4, 1).is_err());
+    }
+
+    #[test]
+    fn a_nearly_deterministic_knock_out_follows_its_forward_path() {
+        let (d, f) = (jpy(), foreign());
+        let t = terms();
+        for (spot, level) in [(150.0, 147.0), (158.0, 150.0), (150.0, 160.0)] {
+            let model = PrdcThreeFactor { spot, fx_volatility: 1e-9, ..three_factor(&d, &f, [0.0, 0.0], [0.0; 3]) };
+            let r = compute_path_dependent_prdc(&t, &model, None, Some(&KnockOut { level, dates: vec![0, 1, 2, 3] }), 50, 4, 3).unwrap();
+            let scale = t.leverage / t.fx_base;
+            let mut value = 0.0;
+            for i in 0..5 {
+                let time = t.coupon_times[i];
+                let (pd, pf) = (d.discount_at(time, true).unwrap(), f.discount_at(time, true).unwrap());
+                let forward = spot * pf / pd;
+                value += (forward * scale - t.subtraction).max(t.floor).min(t.cap) * t.notional * pd;
+                if i == 4 || forward >= level {
+                    value += t.redemption * pd;
+                    break;
+                }
+            }
+            assert!((r.value / value - 1.0).abs() < 1e-7, "{spot} {level}: {} against {value}", r.value);
         }
     }
 

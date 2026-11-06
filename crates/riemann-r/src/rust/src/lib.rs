@@ -2045,6 +2045,8 @@ fn compute_prdc_three_factor_value(
     target: f64,
     target_coupon: &str,
     make_whole: bool,
+    knock_out_level: f64,
+    knock_out_dates: Vec<i32>,
 ) -> List {
     let run = || -> Core<List> {
         if domestic_rate.len() != 2 || foreign_rate.len() != 2 || correlation.len() != 3 {
@@ -2087,19 +2089,22 @@ fn compute_prdc_three_factor_value(
                 d_curve.push(c.d_npv);
             }
         }
-        if target.is_finite() || make_whole {
+        if target.is_finite() || make_whole || knock_out_level.is_finite() {
             if !call_dates.is_empty() || paths <= 0 {
-                return Err(riemann::Error::InvalidInput { reason: "a target redemption needs paths and no call dates".into() });
+                return Err(riemann::Error::InvalidInput { reason: "a target redemption or knock-out needs paths and no call dates".into() });
             }
             let coupon = match target_coupon {
                 "capped" => prdc::TargetCoupon::Capped,
                 "full" => prdc::TargetCoupon::Full,
                 other => return Err(riemann::Error::InvalidInput { reason: format!("unknown target coupon {other:?}: use \"capped\" or \"full\"") }),
             };
-            let r = prdc::compute_target_redemption_prdc(
+            let rule = prdc::TargetRedemption { target, coupon, make_whole };
+            let knock = prdc::KnockOut { level: knock_out_level, dates: knock_out_dates.iter().map(|&k| k.max(0) as usize).collect() };
+            let r = prdc::compute_path_dependent_prdc(
                 &terms,
                 &model,
-                &prdc::TargetRedemption { target, coupon, make_whole },
+                (target.is_finite() || make_whole).then_some(&rule),
+                knock_out_level.is_finite().then_some(&knock),
                 paths as usize,
                 steps_per_year.max(0) as usize,
                 seed as u64,
@@ -2117,7 +2122,8 @@ fn compute_prdc_three_factor_value(
                 d_curve = d_curve,
                 plain_value = r.plain_value,
                 expected_life = r.expected_life,
-                redemption_probability = r.redemption_probability
+                target_probability = r.target_probability,
+                knock_out_probability = r.knock_out_probability
             ));
         }
         if !call_dates.is_empty() {

@@ -57,14 +57,18 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' [compute_prdc_value()] with each coupon's `effective_volatility`. With `paths > 0` the value is a Monte Carlo of
 #' the three factors (exact Ornstein-Uhlenbeck steps of at most `1 / steps_per_year` years, trapezoid integrals of the
 #' rates), next to the closed form. The closed form's first derivatives with respect to every input come from
-#' automatic differentiation in one pass. No knock-out.
+#' automatic differentiation in one pass.
 #'
 #' With a finite `target`, the note is a target redemption note: once the sum of the coupon rates times their accrual
 #' fractions (fixed coupons included) reaches `target`, it pays that date's coupon (`target_coupon = "capped"` only up
 #' to the target, `"full"` the whole coupon) and the redemption, and ends. With `make_whole`, a note that has not
 #' reached the target by the last date also pays the shortfall then. Its value is a Monte Carlo on the three-factor
-#' paths (no regression), next to the note without the target on the same paths. No call with a target, and no
-#' derivatives of the target note (its cash flows jump where the target is reached).
+#' paths (no regression), next to the note without the target on the same paths.
+#'
+#' With a finite `knock_out_level`, the note also ends on the coupon dates `knock_out_dates` (all but the last by
+#' default) where the FX rate is at or above the level, paying that date's coupon and the redemption. A date that
+#' reaches the target and the level counts as the target's. No call with a target or knock-out, and no
+#' derivatives of these notes (their cash flows jump where they end).
 #'
 #' With `call_dates`, the issuer may redeem the note at `call_price` on those coupon dates, right after paying their
 #' coupons, and calls when the rest of the note is worth more than the call price. The rule comes from Longstaff and
@@ -92,6 +96,9 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' @param target The target, in units of the notional; `Inf` for none.
 #' @param target_coupon `"capped"` or `"full"`: the coupon of the date that reaches the target.
 #' @param make_whole `TRUE` to pay the shortfall at the last date if the target is not reached.
+#' @param knock_out_level FX level (domestic per foreign) of the knock-out; `Inf` for none.
+#' @param knock_out_dates Positions in `coupon_times` where the knock-out is observed, before the last; `NULL` for all
+#'   of them.
 #' @param bump Step of the callable note's central differences. Paths that cross the fixed rule's boundary add a jump
 #'   divided by the step, so a small step makes the estimate noisy.
 #' @return A list with `summary`, a one-row tibble with `value`, `standard_error` (0 for the closed form) and
@@ -103,8 +110,8 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #'   With call dates, `summary` adds `noncallable_value` and `hindsight_value`, and `calls` is a
 #'   tibble of the call dates' `call_probability`, `call_sensitivity` a tibble (`parameter`, `d_npv`,
 #'   `standard_error`) of the callable note's derivatives, and `call_curve_sensitivity` its curve nodes, with
-#'   `standard_error`. With a target, `summary` adds `plain_value` (no target, same paths) and `expected_life`, and
-#'   `target_redemption` is a tibble of each coupon date's `redemption_probability`.
+#'   `standard_error`. With a target or knock-out, `summary` adds `plain_value` (neither, same paths) and `expected_life`, and
+#'   `endings` is a tibble of each coupon date's `target_probability` and `knock_out_probability`.
 #' @examples
 #' tenors <- c("1Y", "3Y", "5Y", "7Y")
 #' jpy_quotes <- create_ois_instruments(tenors, c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L)
@@ -119,7 +126,8 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
                                             floor = 0, cap = Inf, notional = 1, redemption = notional, fixed_rate = NA_real_,
                                             paths = 0L, steps_per_year = 12L, seed = 1, call_dates = integer(), call_price = redemption,
                                             training_seed = seed + 1, training_paths = paths, bump = 1e-3,
-                                            target = Inf, target_coupon = "capped", make_whole = FALSE) {
+                                            target = Inf, target_coupon = "capped", make_whole = FALSE, knock_out_level = Inf,
+                                            knock_out_dates = NULL) {
   i <- tibble(coupon_times = as.numeric(coupon_times), accrual_fractions = as.numeric(accrual_fractions), fixed_rate = as.numeric(fixed_rate))
   x <- checked(.Call(wrap__compute_prdc_three_factor_value, as.numeric(spot), as.numeric(fx_volatility), domestic_curve$pointer,
                      foreign_curve$pointer, as.numeric(domestic_rate), as.numeric(foreign_rate), as.numeric(correlation),
@@ -127,7 +135,8 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
                      as.numeric(floor), as.numeric(cap), as.numeric(notional), as.numeric(redemption), as.integer(paths),
                      as.integer(steps_per_year), as.numeric(seed), as.integer(call_dates) - 1L, as.numeric(call_price),
                      as.numeric(training_seed), as.integer(training_paths), as.numeric(bump), as.numeric(target),
-                     match.arg(target_coupon, c("capped", "full")), as_flag(make_whole)))
+                     match.arg(target_coupon, c("capped", "full")), as_flag(make_whole), as.numeric(knock_out_level),
+                     if (is.null(knock_out_dates)) seq_len(max(length(coupon_times) - 1L, 0L)) - 1L else as.integer(knock_out_dates) - 1L))
   out <- list(summary = tibble(value = x$value, standard_error = x$standard_error, analytic = x$analytic),
               coupons = tibble(time = i$coupon_times, effective_volatility = x$effective_volatility),
               sensitivity = tibble(parameter = x$parameter, d_npv = x$d_parameter),
@@ -141,9 +150,9 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
                                          d_npv = x$call_d_curve, standard_error = x$call_curve_error,
                                          npv_per_bp = -x$call_d_curve * x$call_curve_time * 1e-4)
   }
-  if (is.finite(target) || isTRUE(make_whole)) {
+  if (is.finite(target) || isTRUE(make_whole) || is.finite(knock_out_level)) {
     out$summary <- tibble::add_column(out$summary, plain_value = x$plain_value, expected_life = x$expected_life)
-    out$target_redemption <- tibble(time = i$coupon_times, redemption_probability = x$redemption_probability)
+    out$endings <- tibble(time = i$coupon_times, target_probability = x$target_probability, knock_out_probability = x$knock_out_probability)
   }
   out
 }
