@@ -21,7 +21,8 @@ create_lmm(
   discount_start = 1,
   backward_looking = FALSE,
   model = "black",
-  factors = NULL
+  factors = NULL,
+  measure = "spot"
 )
 
 create_exponential_correlation(times, beta)
@@ -84,6 +85,9 @@ forward from its daily fixings.}
 \item{factors}{\code{NULL} for as many factors as forwards, or the number of factors \code{m}: the correlation is then replaced
 by its reduction to rank \code{m} (\code{create_reduced_correlation()}, QuantLib's \code{rankReducedSqrt}), which the paths, the
 drifts and Rebonato's approximation all use, and the paths draw \code{m} normals per step.}
+
+\item{measure}{\code{"spot"} (the numeraire rolls from one tenor date to the next) or \code{"terminal"} (the bond to the
+last time). Only the paths' drift and numeraire change; the values agree up to the simulation error.}
 
 \item{paths, steps_per_period, seed}{Number of paths, log-Euler steps in each period, and the seed.}
 

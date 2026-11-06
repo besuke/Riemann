@@ -12,8 +12,8 @@ fn market_model_pieces_match_quantlib() {
     let rows = golden_rows("lmm_market.csv");
     let cases: std::collections::BTreeSet<String> = rows.iter().map(|r| r[0].clone()).collect();
     assert_eq!(cases.len(), 6);
-    let mut worst = [0.0f64; 4];
-    let mut counts = [0usize; 4];
+    let mut worst = [0.0f64; 5];
+    let mut counts = [0usize; 5];
     for case in &cases {
         let of = |kind: &str| -> Vec<(usize, usize, f64)> {
             rows.iter()
@@ -36,6 +36,7 @@ fn market_model_pieces_match_quantlib() {
             model: riemann::options::ForwardModel::Black,
             volatility_grid: None,
             factors: None,
+            measure: riemann::lmm_market::Measure::Spot,
         };
         let mut check = |slot: usize, ours: f64, theirs: f64, what: String| {
             let error = (ours - theirs).abs() / theirs.abs().max(1e-3);
@@ -51,6 +52,11 @@ fn market_model_pieces_match_quantlib() {
             // QuantLib leaves the drifts of fixed rates at 0
             check(1, drift[k], v, format!("drift alive {alive} rate {k}"));
         }
+        let terminal = LmmSpec { measure: riemann::lmm_market::Measure::Terminal, ..spec.clone() };
+        for (alive, k, v) in of("drift_terminal") {
+            let drift = compute_lmm_drift(&terminal, alive, &forwards).unwrap();
+            check(4, drift[k], v, format!("terminal drift alive {alive} rate {k}"));
+        }
         for (a, b, v) in of("swap_rate") {
             check(2, compute_lmm_swap_rate(&spec, a, b, &forwards).unwrap().0, v, format!("swap rate {a},{b}"));
         }
@@ -58,8 +64,11 @@ fn market_model_pieces_match_quantlib() {
             check(3, spec.discount(a) / spec.discount(b), v, format!("discount ratio {a},{b}"));
         }
     }
-    assert_eq!(counts, [93, 93, 58, 58]);
-    println!("worst relative differences: correlation {:e}, drift {:e}, swap rate {:e}, discount ratio {:e}", worst[0], worst[1], worst[2], worst[3]);
+    assert_eq!(counts, [93, 93, 58, 58, 93]);
+    println!(
+        "worst relative differences: correlation {:e}, drift {:e}, swap rate {:e}, discount ratio {:e}, terminal drift {:e}",
+        worst[0], worst[1], worst[2], worst[3], worst[4]
+    );
 }
 
 /// Fewer factors against QuantLib (tools/golden/p13_lmm_factors.R): the eigenvalues of the correlation,
@@ -107,6 +116,7 @@ fn reduced_factors_match_quantlib() {
                 model: riemann::options::ForwardModel::Black,
                 volatility_grid: None,
                 factors: Some(m),
+                measure: riemann::lmm_market::Measure::Spot,
             };
             for (i, j, v) in of(m, "correlation") {
                 let error = (reduced[i * n + j] - v).abs();

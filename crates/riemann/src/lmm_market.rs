@@ -14,6 +14,10 @@
 //! steps per period make the discretization error small. The numeraire is `B(T_0) = 1 / P(0, T_0)` and
 //! `B(T_{k+1}) = B(T_k) (1 + tau_k L_k(T_k))`.
 //!
+//! Under the terminal measure ([`Measure::Terminal`]) the numeraire is the bond to `T_n` and the drift is
+//! `-sigma_k sum_{j = k + 1}^{n - 1} tau_j rho_kj sigma_j L_j / (1 + tau_j L_j)`; the valuations are the same
+//! functions, as each divides a payoff by the numeraire on the path.
+//!
 //! The rates are generic forward-looking term rates. This is a model of term forwards, not an IBOR
 //! index: no fixings, no index curve (see `docs/quantlib_guide_inventory.md` on IBOR).
 //!
@@ -72,6 +76,22 @@ pub struct LmmSpec {
     /// them by its pseudo-root from the `m` largest eigenvalues. The drift, the variances and Rebonato's
     /// approximation use `correlation` itself, so the model stays one.
     pub factors: Option<usize>,
+    /// The pricing measure of the paths: `Spot` (the numeraire rolls from one tenor date to the next) or
+    /// `Terminal` (the bond to `T_n`). The values are the same up to the simulation and discretization
+    /// errors; only the drift and the numeraire on the paths change.
+    pub measure: Measure,
+}
+
+/// The measure under which the paths move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Measure {
+    /// The spot measure: numeraire `B(T_{k+1}) = B(T_k) (1 + tau_k L_k(T_k))`, drift
+    /// `sigma_k g_k sum_{j = eta}^{k} tau_j rho_kj sigma_j g_j L_j / (1 + tau_j L_j)`.
+    Spot,
+    /// The terminal measure: numeraire `P(t, T_n) / P(0, T_n)`, drift
+    /// `-sigma_k g_k sum_{j = k + 1}^{n - 1} tau_j rho_kj sigma_j g_j L_j / (1 + tau_j L_j)`
+    /// (without the `L_j` in the numerator for normal rates).
+    Terminal,
 }
 
 impl LmmSpec {
@@ -232,7 +252,8 @@ pub fn create_reduced_correlation(correlation: &[f64], n: usize, factors: usize)
 
 /// Joint paths: `state[p][k][i]` is `L_i(T_k)` on path `p` for `i >= k`, and for a backward-looking rate
 /// also `i = k - 1`, its value at the end of its period (NaN for the others),
-/// and `numeraire[p][k]` is `B(T_k)`.
+/// and `numeraire[p][k]` is the numeraire at `T_k`, normalized to 1 today: `B(T_k)` under the spot measure,
+/// `P(T_k, T_n) / P(0, T_n)` under the terminal one. A payoff `X` at `T_k` is worth `E[X / numeraire[k]]`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LmmPaths {
     pub state: Vec<Vec<Vec<f64>>>,
@@ -357,6 +378,18 @@ pub fn generate_lmm_paths_observed(
                 }
             }
         }
+        if spec.measure == Measure::Terminal {
+            // N(T_k) = P(T_k, T_n) / P(0, T_n) from the rates alive at T_k; a period under way keeps its
+            // bookkeeping value 1 / A(0), as under the spot measure
+            let last = spec.discount(n);
+            for k in open..=n {
+                if k == open && spec.times[k] < 0.0 {
+                    continue;
+                }
+                let bond = (k..n).fold(1.0, |p, j| p / (1.0 + spec.accrual(j) * path_state[k][j]));
+                path_numeraire[k] = bond / last;
+            }
+        }
         state.push(path_state);
         numeraire.push(path_numeraire);
         if observation.is_some() {
@@ -402,17 +435,21 @@ fn drift_with(spec: &LmmSpec, alive: usize, forwards: &[f64], g: &[f64], sigma: 
     let mut drift = vec![0.0; n];
     for k in alive..n {
         let mut sum = 0.0;
-        for j in alive..=k {
+        let (others, sign) = match spec.measure {
+            Measure::Spot => (alive..k + 1, 1.0),
+            Measure::Terminal => (k + 1..n, -1.0),
+        };
+        for j in others {
             let tau = spec.accrual(j);
             let level = if spec.model == ForwardModel::Black { forwards[j] } else { 1.0 };
             sum += tau * spec.correlation[k * n + j] * sigma[j] * g[j] * level / (1.0 + tau * forwards[j]);
         }
-        drift[k] = sigma[k] * g[k] * sum;
+        drift[k] = sign * sigma[k] * g[k] * sum;
     }
     drift
 }
 
-/// The spot-measure drift for the forwards `forwards` (see the module documentation).
+/// The drift for the forwards `forwards` under the model's measure (see [`Measure`]).
 pub fn compute_lmm_drift(spec: &LmmSpec, alive: usize, forwards: &[f64]) -> Result<Vec<f64>, Error> {
     spec.check()?;
     if forwards.len() != spec.count() || alive >= spec.count() {
@@ -466,7 +503,7 @@ pub fn compute_lmm_swaption_value(spec: &LmmSpec, paths: &LmmPaths, a: usize, b:
 /// swap from `T_a` to `T_b`. At `t_e` the swap's payoff `A (S - K)^+` is known in units of
 /// `P(t_e, T_m)`, where `T_m` is the first tenor date at or after `t_e`: the discount ratios
 /// `P(t_e, T_{j+1}) / P(t_e, T_m)` are products of the rates at `t_e`. The value is then
-/// `E[Y / B(T_m)]`, since `P(t_e, T_m) / B(t_e) = E_{t_e}[1 / B(T_m)]`. For a backward-looking first
+/// `E[Y / N(T_m)]`, since `P(t_e, T_m) / N(t_e) = E_{t_e}[1 / N(T_m)]` for the model's numeraire `N`. For a backward-looking first
 /// rate exercised during its period, its value at `t_e` is its forward, the fixings so far and the
 /// expected rest.
 pub fn compute_lmm_swaption_value_at(spec: &LmmSpec, paths: &LmmPaths, a: usize, b: usize, strike: f64) -> Result<LmmEstimate, Error> {
@@ -864,7 +901,7 @@ mod tests {
         let forwards: Vec<f64> = (0..10).map(|k| 0.02 + 0.001 * k as f64).collect();
         let volatilities: Vec<f64> = (0..10).map(|k| 0.25 - 0.005 * k as f64).collect();
         let correlation = create_exponential_correlation(&times[..10], beta).unwrap();
-        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black, volatility_grid: None, factors: None }
+        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black, volatility_grid: None, factors: None, measure: Measure::Spot }
     }
 
     const PATHS: usize = 2000;
@@ -978,6 +1015,7 @@ mod tests {
             model: ForwardModel::Black,
             volatility_grid: None,
             factors: None,
+            measure: Measure::Spot,
         };
         assert!((s.discount(1) - 0.9965).abs() < 1e-15);
         let paths = generate_lmm_paths(&s, PATHS, 8, 23).unwrap();
@@ -1142,6 +1180,7 @@ mod tests {
             model: ForwardModel::Black,
             volatility_grid: None,
             factors: None,
+            measure: Measure::Spot,
         };
         assert_eq!(full.first_open_period(), 2);
         // the same model without the complete periods
@@ -1415,6 +1454,7 @@ mod tests {
             model: ForwardModel::Black,
             volatility_grid: None,
             factors: None,
+            measure: Measure::Spot,
         };
         let truth = LmmSpec { volatility_grid: Some(humped_grid(&base, 1.0)), ..base.clone() };
         let quotes = all_quotes(&truth, 1);
@@ -1433,6 +1473,74 @@ mod tests {
         quotes[low].volatility = 0.02;
         let e = calibrate_lmm_volatilities(&s, &quotes).unwrap_err();
         assert!(format!("{e:?}").contains("2 x 6"), "{e:?}");
+    }
+
+    #[test]
+    fn the_terminal_measure_gives_the_spot_measure_values() {
+        use crate::fmm::compute_backward_forward_rate;
+        let n = 10;
+        let backward = LmmSpec { backward_looking: true, ..spec(0.3) };
+        let normal = LmmSpec { volatilities: vec![0.006; 10], model: ForwardModel::Bachelier, ..spec(0.2) };
+        let normal_backward = LmmSpec { backward_looking: true, ..normal.clone() };
+        let reduced = LmmSpec {
+            correlation: create_reduced_correlation(&spec(0.3).correlation, n, 3).unwrap(),
+            factors: Some(3),
+            volatility_grid: Some(humped_grid(&spec(0.3), 1.0)),
+            ..spec(0.3)
+        };
+        // a period under way, as in `a_period_under_way_moves_only_its_unfixed_part`
+        let times: Vec<f64> = (0..=8).map(|k| -1.0 / 12.0 + 0.25 * k as f64).collect();
+        let mut forwards: Vec<f64> = (0..8).map(|k| 0.02 + 0.001 * k as f64).collect();
+        forwards[0] = compute_backward_forward_rate(1.0017, 1.0, 0.9965, 0.25).unwrap();
+        let under_way = LmmSpec {
+            correlation: create_exponential_correlation(&times[..8], 0.3).unwrap(),
+            times,
+            forwards,
+            volatilities: vec![0.3; 8],
+            discount_start: 1.0017,
+            backward_looking: true,
+            model: ForwardModel::Black,
+            volatility_grid: None,
+            factors: None,
+            measure: Measure::Spot,
+        };
+        for (case, spot) in [spec(0.3), backward, normal, normal_backward, reduced, under_way].into_iter().enumerate() {
+            let terminal = LmmSpec { measure: Measure::Terminal, ..spot.clone() };
+            let m = spot.count();
+            let paths = generate_lmm_paths(&terminal, PATHS, 8, 71).unwrap();
+            let spot_paths = generate_lmm_paths(&spot, PATHS, 8, 73).unwrap();
+            // the numeraire is 1 / P(0, T_n) at the end, and 1 / N(T_k) prices the bonds
+            assert!(paths.numeraire.iter().all(|b| (b[m] * spot.discount(m) - 1.0).abs() < 1e-14));
+            for k in [1usize, m / 2, m - 1] {
+                let values: Vec<f64> = paths.numeraire.iter().map(|b| 1.0 / b[k]).collect();
+                let e = estimate(&values);
+                assert!((e.value - spot.discount(k)).abs() < 4.0 * e.standard_error + 1e-12, "case {case} P(0,T_{k}): {} against {} ± {}", spot.discount(k), e.value, e.standard_error);
+            }
+            for i in [m / 2, m - 1] {
+                let strike = spot.forwards[i];
+                let mc = compute_lmm_caplet_value(&terminal, &paths, i, strike).unwrap();
+                let formula = compute_lmm_caplet_formula(&spot, i, strike).unwrap();
+                assert!((mc.value - formula).abs() < 4.0 * mc.standard_error, "case {case} caplet {i}: {formula} against {} ± {}", mc.value, mc.standard_error);
+            }
+            for (a, b) in [(2usize, 6usize), (3, m)] {
+                let (rate, _) = swap_rate_and_annuity(&spot, a, b, &spot.forwards);
+                let t = compute_lmm_swaption_value(&terminal, &paths, a, b, rate).unwrap();
+                let s = compute_lmm_swaption_value(&spot, &spot_paths, a, b, rate).unwrap();
+                let both = (t.standard_error.powi(2) + s.standard_error.powi(2)).sqrt();
+                assert!((t.value - s.value).abs() < 4.0 * both, "case {case} {a}x{b}: terminal {} spot {} ± {both}", t.value, s.value);
+                let approx = compute_formula_swaption_value(&spot, a, b, rate, compute_rebonato_swaption_volatility(&spot, a, b).unwrap()).unwrap();
+                assert!((t.value - approx).abs() < 4.0 * t.standard_error + 0.02 * approx, "case {case} {a}x{b}: {approx} against {}", t.value);
+            }
+            // exercised between tenor dates: the payoff deferred to the next date, as under the spot measure
+            let expiry = (spot.times[2] + spot.times[3]) / 2.0;
+            let (rate, _) = swap_rate_and_annuity(&spot, 2, 6, &spot.forwards);
+            let observed = generate_lmm_paths_observed(&terminal, PATHS, 8, 79, Some(expiry)).unwrap();
+            let t = compute_lmm_swaption_value_at(&terminal, &observed, 2, 6, rate).unwrap();
+            let spot_observed = generate_lmm_paths_observed(&spot, PATHS, 8, 83, Some(expiry)).unwrap();
+            let s = compute_lmm_swaption_value_at(&spot, &spot_observed, 2, 6, rate).unwrap();
+            let both = (t.standard_error.powi(2) + s.standard_error.powi(2)).sqrt();
+            assert!((t.value - s.value).abs() < 4.0 * both, "case {case} at {expiry}: terminal {} spot {} ± {both}", t.value, s.value);
+        }
     }
 
     #[test]

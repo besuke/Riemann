@@ -145,3 +145,20 @@ test_that("the cascade fits every swaption", {
   expect_true(all(abs(s$value - s$rebonato_value) < 4 * s$standard_error + 0.02 * s$rebonato_value))
   expect_error(calibrate_lmm_volatilities(model, swaptions$start[-1], swaptions$end[-1], quoted[-1]), "missing")
 })
+
+test_that("the terminal measure gives the spot measure's values", {
+  terminal <- create_lmm(times, model$forwards, model$volatilities, beta = 0.3, discount_start = model$discount_start, measure = "terminal")
+  p <- generate_lmm_paths(terminal, paths = 2000L, seed = 5)
+  bonds <- model$discount_start / cumprod(1 + diff(times) * model$forwards)
+  expect_equal(p$numeraire[, 11], rep(1 / bonds[10], 2000), tolerance = 1e-14)
+  purrr::walk(c(2L, 6L), \(k) {
+    discounted <- 1 / p$numeraire[, k]
+    expect_lt(abs(mean(discounted) - bonds[k - 1]), 4 * sd(discounted) / sqrt(2000))
+  })
+  t <- compute_lmm_swaption_value(terminal, start = c(3, 5), end = c(7, 11), strike = c(0.023, 0.026), paths = 2000L, seed = 7)
+  s <- compute_lmm_swaption_value(model, start = c(3, 5), end = c(7, 11), strike = c(0.023, 0.026), paths = 2000L, seed = 9)
+  expect_true(all(abs(t$value - s$value) < 4 * sqrt(t$standard_error^2 + s$standard_error^2)))
+  caplets <- compute_lmm_caplet_value(terminal, forward = c(1, 5, 10), strike = model$forwards[c(1, 5, 10)], paths = 2000L)
+  expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
+  expect_error(create_lmm(times, model$forwards, model$volatilities, beta = 0.3, measure = "forward"))
+})

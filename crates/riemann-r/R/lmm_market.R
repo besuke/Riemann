@@ -40,6 +40,8 @@
 #'   `(times[k - 1], times[k]]`, column 1 up to `times[1]`. A rate uses its row while it moves.
 #' @param correlation A correlation matrix of the forwards, or `NULL` with `beta`.
 #' @param beta Decay of the exponential correlation.
+#' @param measure `"spot"` (the numeraire rolls from one tenor date to the next) or `"terminal"` (the bond to the
+#'   last time). Only the paths' drift and numeraire change; the values agree up to the simulation error.
 #' @param factors `NULL` for as many factors as forwards, or the number of factors `m`: the correlation is then replaced
 #'   by its reduction to rank `m` (`create_reduced_correlation()`, QuantLib's `rankReducedSqrt`), which the paths, the
 #'   drifts and Rebonato's approximation all use, and the paths draw `m` normals per step.
@@ -78,7 +80,7 @@
 #' fit$beta
 #' @export
 create_lmm <- function(times, forwards, volatilities, correlation = NULL, beta = NULL, discount_start = 1, backward_looking = FALSE, model = "black",
-                       factors = NULL) {
+                       factors = NULL, measure = "spot") {
   times <- as.numeric(times)
   n <- length(times) - 1L
   if (is.null(correlation)) {
@@ -95,7 +97,8 @@ create_lmm <- function(times, forwards, volatilities, correlation = NULL, beta =
   structure(list(times = times, forwards = as.numeric(forwards), volatilities = as.numeric(volatilities), volatility_grid = grid,
                  correlation = matrix(as.numeric(correlation), n, n), discount_start = as.numeric(discount_start),
                  backward_looking = as_flag(backward_looking), model = match.arg(model, c("black", "bachelier")),
-                 factors = if (is.null(factors)) NULL else as.integer(factors)), class = "riemann_lmm")
+                 factors = if (is.null(factors)) NULL else as.integer(factors), measure = match.arg(measure, c("spot", "terminal"))),
+            class = "riemann_lmm")
 }
 
 #' @export
@@ -124,14 +127,14 @@ lmm_args <- function(model) {
   if (!inherits(model, "riemann_lmm")) stop("`model` must come from create_lmm().", call. = FALSE)
   list(model$times, model$forwards, model$volatilities, as.numeric(t(model$correlation)), model$discount_start, isTRUE(model$backward_looking),
        if (is.null(model$model)) "black" else model$model, if (is.null(model$volatility_grid)) numeric() else model$volatility_grid,
-       if (is.null(model$factors)) 0L else model$factors)
+       if (is.null(model$factors)) 0L else model$factors, if (is.null(model$measure)) "spot" else model$measure)
 }
 
 #' @rdname create_lmm
 #' @export
 generate_lmm_paths <- function(model, paths, steps_per_period = 4L, seed = 1) {
   a <- lmm_args(model)
-  x <- checked(.Call(wrap__generate_lmm_paths, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
+  x <- checked(.Call(wrap__generate_lmm_paths, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], a[[10]], as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
   n <- length(model$forwards)
   list(state = array(x$state, c(paths, n + 1L, n)), numeraire = matrix(x$numeraire, paths, n + 1L))
 }
@@ -141,7 +144,7 @@ generate_lmm_paths <- function(model, paths, steps_per_period = 4L, seed = 1) {
 compute_rebonato_swaption_volatility <- function(model, start, end, expiry = NULL) {
   a <- lmm_args(model)
   i <- tibble(start = as.integer(start), end = as.integer(end), expiry = if (is.null(expiry)) NA_real_ else as.numeric(expiry))
-  checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], i$start - 1L, i$end - 1L,
+  checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], a[[10]], i$start - 1L, i$end - 1L,
                 rep(0, nrow(i)), i$expiry))$volatility
 }
 
@@ -151,9 +154,9 @@ compute_lmm_swaption_value <- function(model, start, end, strike, expiry = NULL,
   a <- lmm_args(model)
   i <- tibble(start = as.integer(start), end = as.integer(end), strike = as.numeric(strike),
               expiry = if (is.null(expiry)) NA_real_ else as.numeric(expiry))
-  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], rep("swaption", nrow(i)), i$start - 1L, i$end - 1L, i$strike, i$expiry,
+  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], a[[10]], rep("swaption", nrow(i)), i$start - 1L, i$end - 1L, i$strike, i$expiry,
                       as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
-  approx <- checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], i$start - 1L, i$end - 1L, i$strike, i$expiry))
+  approx <- checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], a[[10]], i$start - 1L, i$end - 1L, i$strike, i$expiry))
   tibble::add_column(i, value = mc$value, standard_error = mc$standard_error, rebonato_volatility = approx$volatility,
                      rebonato_value = approx$black_value)
 }
@@ -163,7 +166,7 @@ compute_lmm_swaption_value <- function(model, start, end, strike, expiry = NULL,
 compute_lmm_caplet_value <- function(model, forward, strike, paths = 2000L, steps_per_period = 4L, seed = 1) {
   a <- lmm_args(model)
   i <- tibble(forward = as.integer(forward), strike = as.numeric(strike))
-  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], rep("caplet", nrow(i)), i$forward - 1L, i$forward, i$strike, rep(NA_real_, nrow(i)),
+  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], a[[10]], rep("caplet", nrow(i)), i$forward - 1L, i$forward, i$strike, rep(NA_real_, nrow(i)),
                       as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
   # the formula with each rate's total variance to its fixing, as the paths define it
   tibble::add_column(i, value = mc$value, standard_error = mc$standard_error, formula_value = mc$formula)
@@ -174,12 +177,12 @@ compute_lmm_caplet_value <- function(model, forward, strike, paths = 2000L, step
 calibrate_lmm_correlation <- function(model, start, end, volatility, beta_max = 5) {
   a <- lmm_args(model)
   i <- tibble(start = as.integer(start), end = as.integer(end), volatility = as.numeric(volatility))
-  x <- checked(.Call(wrap__calibrate_lmm_correlation, a[[1]], a[[2]], a[[3]], a[[5]], a[[7]], a[[8]], a[[9]], i$start - 1L, i$end - 1L, i$volatility, as.numeric(beta_max)))
+  x <- checked(.Call(wrap__calibrate_lmm_correlation, a[[1]], a[[2]], a[[3]], a[[5]], a[[7]], a[[8]], a[[9]], a[[10]], i$start - 1L, i$end - 1L, i$volatility, as.numeric(beta_max)))
   list(beta = x$beta, root_mean_square_error = x$root_mean_square_error, fitted = tibble::add_column(i, fitted_volatility = x$fitted),
        model = create_lmm(model$times, model$forwards,
                           if (is.null(model$volatility_grid)) model$volatilities else matrix(model$volatility_grid, length(model$forwards), byrow = TRUE),
                           beta = x$beta, discount_start = model$discount_start,
-                          backward_looking = isTRUE(model$backward_looking), model = a[[7]], factors = model$factors))
+                          backward_looking = isTRUE(model$backward_looking), model = a[[7]], factors = model$factors, measure = a[[10]]))
 }
 
 #' @rdname create_lmm
@@ -187,11 +190,11 @@ calibrate_lmm_correlation <- function(model, start, end, volatility, beta_max = 
 calibrate_lmm_volatilities <- function(model, start, end, volatility) {
   a <- lmm_args(model)
   i <- tibble(start = as.integer(start), end = as.integer(end), volatility = as.numeric(volatility))
-  x <- checked(.Call(wrap__calibrate_lmm_volatilities, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]],
+  x <- checked(.Call(wrap__calibrate_lmm_volatilities, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], a[[10]],
                      i$start - 1L, i$end - 1L, i$volatility))
   n <- length(model$forwards)
   list(model = create_lmm(model$times, model$forwards, matrix(x$grid, n, byrow = TRUE), correlation = model$correlation,
                           discount_start = model$discount_start, backward_looking = isTRUE(model$backward_looking), model = a[[7]],
-                          factors = model$factors),
+                          factors = model$factors, measure = a[[10]]),
        fitted = tibble::add_column(i, fitted_volatility = x$fitted), max_error = x$max_error)
 }
