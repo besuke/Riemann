@@ -127,3 +127,21 @@ test_that("fewer factors", {
   expect_error(create_reduced_correlation(full, 0), "from 1 to 10")
   expect_error(compute_rebonato_swaption_volatility(create_lmm(times, model$forwards, model$volatilities, correlation = two), 3, 7), "number of factors")
 })
+
+test_that("the cascade fits every swaption", {
+  n <- 10
+  starts <- c(0, times[-length(times)])
+  grid <- outer(times[1:n], (starts + times) / 2, \(fixing, middle) 0.12 + 0.2 * exp(-pmax(fixing - middle, 0)))
+  truth <- create_lmm(times, model$forwards, grid, beta = 0.3, discount_start = model$discount_start)
+  swaptions <- subset(expand.grid(start = 1:n, end = 2:(n + 1)), start < end)
+  quoted <- compute_rebonato_swaption_volatility(truth, swaptions$start, swaptions$end)
+  fit <- calibrate_lmm_volatilities(model, swaptions$start, swaptions$end, quoted)
+  expect_lt(fit$max_error, 1e-12)
+  fitted <- matrix(fit$model$volatility_grid, n, byrow = TRUE)
+  keep <- outer(1:n, 1:(n + 1), \(i, k) k <= i)
+  expect_equal(fitted[keep], grid[keep], tolerance = 1e-9)
+  s <- compute_lmm_swaption_value(fit$model, start = c(3, 5), end = c(7, 11), strike = c(0.023, 0.026), paths = 2000L)
+  expect_true(all(abs(s$rebonato_volatility - quoted[match(paste(c(3, 5), c(7, 11)), paste(swaptions$start, swaptions$end))]) < 1e-12))
+  expect_true(all(abs(s$value - s$rebonato_value) < 4 * s$standard_error + 0.02 * s$rebonato_value))
+  expect_error(calibrate_lmm_volatilities(model, swaptions$start[-1], swaptions$end[-1], quoted[-1]), "missing")
+})

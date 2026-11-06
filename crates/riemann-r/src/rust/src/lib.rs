@@ -2434,6 +2434,32 @@ fn calibrate_lmm_correlation(
     outcome(run())
 }
 #[extendr]
+#[allow(clippy::too_many_arguments)]
+fn calibrate_lmm_volatilities(
+    times: Vec<f64>,
+    forwards: Vec<f64>,
+    volatilities: Vec<f64>,
+    correlation: Vec<f64>,
+    discount_start: f64,
+    backward_looking: bool,
+    model: &str,
+    volatility_grid: Vec<f64>,
+    factors: i32,
+    start: Vec<i32>,
+    end: Vec<i32>,
+    volatility: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid, factors)?;
+        let quotes: Vec<_> = (0..start.len())
+            .map(|i| riemann::lmm_market::SwaptionQuote { start: start[i].max(0) as usize, end: end[i].max(0) as usize, volatility: volatility[i] })
+            .collect();
+        let fit = riemann::lmm_market::calibrate_lmm_volatilities(&spec, &quotes)?;
+        Ok(list!(grid = fit.spec.volatility_grid.unwrap_or_default(), fitted = fit.fitted, max_error = fit.max_error))
+    };
+    outcome(run())
+}
+#[extendr]
 fn compute_backward_period_state(
     curve: ExternalPtr<OisCurve>,
     start_date: i32,
@@ -3139,6 +3165,7 @@ extendr_module! {
     fn generate_lmm_paths;
     fn compute_rebonato_swaption_volatility;
     fn calibrate_lmm_correlation;
+    fn calibrate_lmm_volatilities;
     fn compute_caplet_from_normals;
     fn compute_correlated_normals;
     fn generate_correlated_normals;

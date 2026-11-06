@@ -20,6 +20,11 @@
 #' * `calibrate_lmm_correlation()` fits `beta` to swaption volatilities by least squares on Rebonato's
 #'   volatilities, the forwards' volatilities fixed. With a constant volatility per forward, the volatility of
 #'   forward `i` is the Black volatility of its caplet, so the caplets calibrate the volatilities directly.
+#' * `calibrate_lmm_volatilities()` fits the volatilities that change over time to each swaption, the correlation
+#'   fixed (the cascade calibration of Brigo and Mercurio): give every swaption `start x end` of the tenor dates
+#'   exercised after today, the caplets being `start x (start + 1)`. Each swaption sets one volatility, rate
+#'   `end - 1` on the interval that ends at `times[start]`, so Rebonato's approximation gives back every quote.
+#'   A quote below what the earlier ones give its rates cannot be fitted and is an error.
 #'
 #' The rates are generic term forwards: no IBOR index, curve or fixings. With `backward_looking = TRUE` they are
 #' backward-looking compounded rates, as overnight rates compounded over each period (the generalized forward
@@ -57,13 +62,14 @@
 #'   tenor date; Rebonato's approximation integrates the decay of each backward-looking rate up to `expiry`.
 #' @param forward Position of the forward of a caplet (1 to n).
 #' @param strike Strike rates.
-#' @param volatility Black volatilities of the swaptions to fit.
+#' @param volatility Volatilities of the swaptions to fit (Black, or normal for `"bachelier"`).
 #' @param beta_max Upper end of the search for `beta`.
 #' @return `create_lmm()` a `riemann_lmm`. `create_exponential_correlation()` and `create_reduced_correlation()` a matrix.
 #'   `generate_lmm_paths()` a list
 #'   with the array `state` and the matrix `numeraire`. The valuations a tibble. `compute_rebonato_swaption_volatility()`
 #'   a numeric vector. `calibrate_lmm_correlation()` a list with `beta`, `root_mean_square_error`, a tibble `fitted`
-#'   and the calibrated `model`.
+#'   and the calibrated `model`. `calibrate_lmm_volatilities()` a list with the calibrated `model` (its volatilities a
+#'   matrix), a tibble `fitted` and `max_error`.
 #' @examples
 #' times <- seq(1, 6, by = 0.5)
 #' model <- create_lmm(times, seq(0.02, 0.029, length.out = 10), rep(0.22, 10), beta = 0.3, discount_start = exp(-0.02))
@@ -174,4 +180,18 @@ calibrate_lmm_correlation <- function(model, start, end, volatility, beta_max = 
                           if (is.null(model$volatility_grid)) model$volatilities else matrix(model$volatility_grid, length(model$forwards), byrow = TRUE),
                           beta = x$beta, discount_start = model$discount_start,
                           backward_looking = isTRUE(model$backward_looking), model = a[[7]], factors = model$factors))
+}
+
+#' @rdname create_lmm
+#' @export
+calibrate_lmm_volatilities <- function(model, start, end, volatility) {
+  a <- lmm_args(model)
+  i <- tibble(start = as.integer(start), end = as.integer(end), volatility = as.numeric(volatility))
+  x <- checked(.Call(wrap__calibrate_lmm_volatilities, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]],
+                     i$start - 1L, i$end - 1L, i$volatility))
+  n <- length(model$forwards)
+  list(model = create_lmm(model$times, model$forwards, matrix(x$grid, n, byrow = TRUE), correlation = model$correlation,
+                          discount_start = model$discount_start, backward_looking = isTRUE(model$backward_looking), model = a[[7]],
+                          factors = model$factors),
+       fitted = tibble::add_column(i, fitted_volatility = x$fitted), max_error = x$max_error)
 }

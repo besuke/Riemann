@@ -48,6 +48,7 @@ counterparts <- tribble(
   "compute_lmm_swaption_value", "None; LMM paths under the spot measure (QuantLib LiborForwardModel not compared)",
   "compute_rebonato_swaption_volatility", "None; Rebonato's formula",
   "calibrate_lmm_correlation", "None; least squares on Rebonato's formula",
+  "calibrate_lmm_volatilities", "None; cascade on Rebonato's formula",
   "create_lmm", "None; model inputs",
   "create_exponential_correlation", "None; exp(-beta |Ti - Tj|)",
   "create_reduced_correlation", "rankReducedSqrt (its steps on SymmetricSchurDecomposition)",

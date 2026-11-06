@@ -753,6 +753,107 @@ pub fn calibrate_lmm_correlation(spec: &LmmSpec, quotes: &[SwaptionQuote], beta_
     Ok(CorrelationFit { beta, fitted, root_mean_square_error })
 }
 
+/// The fit of the volatilities to a swaption matrix.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VolatilityFit {
+    /// The model with the fitted `volatility_grid` (and, in `volatilities`, each rate's volatility on
+    /// the interval that ends at its fixing).
+    pub spec: LmmSpec,
+    /// Rebonato volatilities of the fitted model, in the order of the quotes.
+    pub fitted: Vec<f64>,
+    /// The largest `|fitted - quoted|`.
+    pub max_error: f64,
+}
+
+/// Fits the volatility grid to swaption volatilities one by one (the cascade calibration of Brigo and
+/// Mercurio, *Interest Rate Models*), with the correlation fixed. The quotes must hold every
+/// swaption `a x b` with `a < b <= n` whose exercise `T_a` is after today, once each (the caplets are the
+/// swaptions `a x (a + 1)`). Rebonato's volatility of `a x b` depends on rate `i` in `a..b` over the
+/// intervals `0..=a`; in the order `a = 0, 1, ...` and `b = a + 1, ...`, only rate `b - 1` on interval
+/// `a` is new, and the squared volatility is a quadratic in it, solved for its larger root. A quote
+/// below what the earlier ones imply has no non-negative root and is an error. The cells that no
+/// swaption reaches keep the nearest fitted cell of their row: the intervals after a rate's fixing (used
+/// by a backward-looking rate in its own period) and, when `T_0 = 0`, interval 0.
+pub fn calibrate_lmm_volatilities(spec: &LmmSpec, quotes: &[SwaptionQuote]) -> Result<VolatilityFit, Error> {
+    spec.check()?;
+    let n = spec.count();
+    if spec.times[0] < 0.0 {
+        return invalid("the cascade needs the first period to start today or later".into());
+    }
+    // the first exercise after today
+    let first = if spec.times[0] > 0.0 { 0 } else { 1 };
+    let mut quoted = vec![vec![f64::NAN; n + 1]; n + 1];
+    for q in quotes {
+        if !(q.start < q.end && q.end <= n && q.start >= first) {
+            return invalid(format!("a swaption runs from T_a to T_b with {first} <= a < b <= {n}, not {} x {}", q.start, q.end));
+        }
+        if !(q.volatility > 0.0) || !q.volatility.is_finite() {
+            return invalid(format!("the volatility of {} x {} must be positive and finite", q.start, q.end));
+        }
+        if !quoted[q.start][q.end].is_nan() {
+            return invalid(format!("the swaption {} x {} is given twice", q.start, q.end));
+        }
+        quoted[q.start][q.end] = q.volatility;
+    }
+    for a in first..n {
+        for b in a + 1..=n {
+            if quoted[a][b].is_nan() {
+                return invalid(format!("the cascade needs every swaption a x b with {first} <= a < b <= {n}: {a} x {b} is missing"));
+            }
+        }
+    }
+    let width = n + 1;
+    let mut grid: Vec<f64> = match &spec.volatility_grid {
+        Some(g) => g.clone(),
+        None => (0..n).flat_map(|i| vec![spec.volatilities[i]; width]).collect(),
+    };
+    let mut trial = spec.clone();
+    for a in first..n {
+        for b in a + 1..=n {
+            let target = quoted[a][b];
+            let cell = (b - 1) * width + a;
+            // the squared volatility at x = 0, s, 2s: exactly a quadratic in the cell
+            let s = target;
+            let mut squared = [0.0; 3];
+            for (m, value) in squared.iter_mut().enumerate() {
+                grid[cell] = m as f64 * s;
+                trial.volatility_grid = Some(grid.clone());
+                let v = compute_rebonato_swaption_volatility(&trial, a, b)?;
+                *value = v * v;
+            }
+            let quadratic = (squared[2] - 2.0 * squared[1] + squared[0]) / 2.0;
+            let linear = squared[1] - squared[0] - quadratic;
+            let constant = squared[0] - target * target;
+            let discriminant = linear * linear - 4.0 * quadratic * constant;
+            let root = (-linear + discriminant.max(0.0).sqrt()) / (2.0 * quadratic);
+            if !(quadratic > 0.0) || discriminant < 0.0 || !(root >= 0.0) || !root.is_finite() {
+                return invalid(format!(
+                    "the swaption {a} x {b} cannot be fitted: its volatility {target} is below what the earlier swaptions give its rates"
+                ));
+            }
+            grid[cell] = root * s;
+        }
+    }
+    // the cells no swaption reaches: the nearest fitted one in the row
+    for i in first..n {
+        for k in 0..width {
+            if k < first {
+                grid[i * width + k] = grid[i * width + first];
+            } else if k > i {
+                grid[i * width + k] = grid[i * width + i];
+            }
+        }
+    }
+    let mut volatilities = spec.volatilities.clone();
+    for i in first..n {
+        volatilities[i] = grid[i * width + i];
+    }
+    let fitted_spec = LmmSpec { volatilities, volatility_grid: Some(grid), ..spec.clone() };
+    let fitted: Vec<f64> = quotes.iter().map(|q| compute_rebonato_swaption_volatility(&fitted_spec, q.start, q.end)).collect::<Result<_, _>>()?;
+    let max_error = fitted.iter().zip(quotes).map(|(f, q)| (f - q.volatility).abs()).fold(0.0, f64::max);
+    Ok(VolatilityFit { spec: fitted_spec, fitted, max_error })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1220,6 +1321,118 @@ mod tests {
         assert!(generate_lmm_paths(&LmmSpec { factors: Some(11), ..s.clone() }, 10, 4, 1).is_err());
         assert!(generate_lmm_paths(&LmmSpec { factors: None, ..s.clone() }, 10, 4, 1).is_err());
         assert!(create_reduced_correlation(&full.correlation, n, 0).is_err());
+    }
+
+    /// Volatilities high near the fixing, low far from it, on each interval at its middle.
+    fn humped_grid(s: &LmmSpec, scale: f64) -> Vec<f64> {
+        let n = s.count();
+        (0..n)
+            .flat_map(|i| {
+                let times = s.times.clone();
+                (0..=n).map(move |k| {
+                    let (lo, hi) = (if k == 0 { 0.0 } else { times[k - 1] }, times[k]);
+                    scale * (0.12 + 0.2 * (-(times[i] - (lo + hi) / 2.0).max(0.0)).exp() + 0.003 * i as f64)
+                })
+            })
+            .collect()
+    }
+
+    fn all_quotes(s: &LmmSpec, first: usize) -> Vec<SwaptionQuote> {
+        let n = s.count();
+        (first..n)
+            .flat_map(|a| (a + 1..=n).map(move |b| (a, b)))
+            .map(|(a, b)| SwaptionQuote { start: a, end: b, volatility: compute_rebonato_swaption_volatility(s, a, b).unwrap() })
+            .collect()
+    }
+
+    #[test]
+    fn the_cascade_fits_each_swaption_and_gives_back_the_grid() {
+        let n = 10;
+        let reduced = LmmSpec { correlation: create_reduced_correlation(&spec(0.3).correlation, n, 3).unwrap(), factors: Some(3), ..spec(0.3) };
+        let normal = LmmSpec { model: ForwardModel::Bachelier, ..spec(0.3) };
+        let cases = [(spec(0.3), 1.0), (LmmSpec { backward_looking: true, ..spec(0.3) }, 1.0), (normal, 0.02), (reduced, 1.0)];
+        for (base, scale) in cases {
+            let truth = LmmSpec { volatility_grid: Some(humped_grid(&base, scale)), ..base.clone() };
+            let quotes = all_quotes(&truth, 0);
+            assert_eq!(quotes.len(), 55);
+            // from constant volatilities that are not the answer
+            let fit = calibrate_lmm_volatilities(&base, &quotes).unwrap();
+            assert!(fit.max_error < 1e-12 * scale, "{:e}", fit.max_error);
+            let (got, want) = (fit.spec.volatility_grid.as_ref().unwrap(), truth.volatility_grid.as_ref().unwrap());
+            for i in 0..n {
+                for k in 0..=i {
+                    let (g, w) = (got[i * (n + 1) + k], want[i * (n + 1) + k]);
+                    assert!((g - w).abs() < 1e-9 * scale, "{:?} {i} {k}: {g} against {w}", base.model);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_cascaded_model_reprices_its_swaptions_and_caplets() {
+        let base = spec(0.3);
+        let truth = LmmSpec { volatility_grid: Some(humped_grid(&base, 1.0)), ..base.clone() };
+        let quotes = all_quotes(&truth, 0);
+        let fit = calibrate_lmm_volatilities(&base, &quotes).unwrap();
+        let s = &fit.spec;
+        // the caplets a x (a + 1) are exact: the formula at the quoted volatility
+        for q in quotes.iter().filter(|q| q.end == q.start + 1) {
+            let i = q.start;
+            let black = compute_caplet_value(
+                ForwardModel::Black,
+                &CapletTerms { forward: s.forwards[i], strike: s.forwards[i], volatility: q.volatility, expiry: s.times[i], accrual: s.accrual(i), discount_factor: s.discount(i + 1), notional: 1.0 },
+            )
+            .unwrap();
+            assert!((compute_lmm_caplet_formula(s, i, s.forwards[i]).unwrap() - black).abs() < 1e-12, "caplet {i}");
+        }
+        // the simulated swaptions are near the quotes' Black values
+        let paths = generate_lmm_paths(s, PATHS, 4, 67).unwrap();
+        for (a, b) in [(1usize, 4usize), (3, 10), (6, 8)] {
+            let q = quotes.iter().find(|q| q.start == a && q.end == b).unwrap();
+            let (rate, _) = swap_rate_and_annuity(s, a, b, &s.forwards);
+            let mc = compute_lmm_swaption_value(s, &paths, a, b, rate).unwrap();
+            let quoted = compute_formula_swaption_value(s, a, b, rate, q.volatility).unwrap();
+            assert!((mc.value - quoted).abs() < 4.0 * mc.standard_error + 0.02 * quoted, "{a}x{b}: {quoted} against {} ± {}", mc.value, mc.standard_error);
+        }
+        for i in [0usize, 5, 9] {
+            let mc = compute_lmm_caplet_value(s, &paths, i, s.forwards[i]).unwrap();
+            let formula = compute_lmm_caplet_formula(s, i, s.forwards[i]).unwrap();
+            assert!((mc.value - formula).abs() < 4.0 * mc.standard_error, "caplet {i}");
+        }
+    }
+
+    #[test]
+    fn the_cascade_from_today_and_its_errors() {
+        // T_0 = 0: the swaptions exercised from T_1 on
+        let times: Vec<f64> = (0..=8).map(|k| 0.5 * k as f64).collect();
+        let base = LmmSpec {
+            correlation: create_exponential_correlation(&times[..8], 0.2).unwrap(),
+            forwards: vec![0.02; 8],
+            volatilities: vec![0.2; 8],
+            times,
+            discount_start: 1.0,
+            backward_looking: true,
+            model: ForwardModel::Black,
+            volatility_grid: None,
+            factors: None,
+        };
+        let truth = LmmSpec { volatility_grid: Some(humped_grid(&base, 1.0)), ..base.clone() };
+        let quotes = all_quotes(&truth, 1);
+        assert_eq!(quotes.len(), 28);
+        let fit = calibrate_lmm_volatilities(&base, &quotes).unwrap();
+        assert!(fit.max_error < 1e-12);
+        let s = spec(0.3);
+        let mut quotes = all_quotes(&LmmSpec { volatility_grid: Some(humped_grid(&s, 1.0)), ..s.clone() }, 0);
+        // missing, twice, before today, and too low for what the earlier swaptions give
+        assert!(calibrate_lmm_volatilities(&s, &quotes[1..]).is_err());
+        let twice = [quotes.clone(), vec![quotes[3]]].concat();
+        assert!(calibrate_lmm_volatilities(&s, &twice).is_err());
+        let today = [all_quotes(&truth, 1), vec![SwaptionQuote { start: 0, end: 2, volatility: 0.2 }]].concat();
+        assert!(calibrate_lmm_volatilities(&base, &today).is_err());
+        let low = quotes.iter().position(|q| q.start == 2 && q.end == 6).unwrap();
+        quotes[low].volatility = 0.02;
+        let e = calibrate_lmm_volatilities(&s, &quotes).unwrap_err();
+        assert!(format!("{e:?}").contains("2 x 6"), "{e:?}");
     }
 
     #[test]

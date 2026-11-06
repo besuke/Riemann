@@ -9,6 +9,7 @@
 \alias{compute_lmm_swaption_value}
 \alias{compute_lmm_caplet_value}
 \alias{calibrate_lmm_correlation}
+\alias{calibrate_lmm_volatilities}
 \title{Forward market model with joint paths}
 \usage{
 create_lmm(
@@ -52,6 +53,8 @@ compute_lmm_caplet_value(
 )
 
 calibrate_lmm_correlation(model, start, end, volatility, beta_max = 5)
+
+calibrate_lmm_volatilities(model, start, end, volatility)
 }
 \arguments{
 \item{times}{Tenor dates in years from today, increasing, from 0 on.}
@@ -95,7 +98,7 @@ tenor date; Rebonato's approximation integrates the decay of each backward-looki
 
 \item{forward}{Position of the forward of a caplet (1 to n).}
 
-\item{volatility}{Black volatilities of the swaptions to fit.}
+\item{volatility}{Volatilities of the swaptions to fit (Black, or normal for \code{"bachelier"}).}
 
 \item{beta_max}{Upper end of the search for \code{beta}.}
 }
@@ -104,7 +107,8 @@ tenor date; Rebonato's approximation integrates the decay of each backward-looki
 \code{generate_lmm_paths()} a list
 with the array \code{state} and the matrix \code{numeraire}. The valuations a tibble. \code{compute_rebonato_swaption_volatility()}
 a numeric vector. \code{calibrate_lmm_correlation()} a list with \code{beta}, \code{root_mean_square_error}, a tibble \code{fitted}
-and the calibrated \code{model}.
+and the calibrated \code{model}. \code{calibrate_lmm_volatilities()} a list with the calibrated \code{model} (its volatilities a
+matrix), a tibble \code{fitted} and \code{max_error}.
 }
 \description{
 The lognormal market model of term forward rates (LagrangeFinance II-7.4, extended): \code{times} are the
@@ -127,6 +131,11 @@ swaption exercised at \code{times[start]} into the swap to \code{times[end]}.
 \item \code{calibrate_lmm_correlation()} fits \code{beta} to swaption volatilities by least squares on Rebonato's
 volatilities, the forwards' volatilities fixed. With a constant volatility per forward, the volatility of
 forward \code{i} is the Black volatility of its caplet, so the caplets calibrate the volatilities directly.
+\item \code{calibrate_lmm_volatilities()} fits the volatilities that change over time to each swaption, the correlation
+fixed (the cascade calibration of Brigo and Mercurio): give every swaption \verb{start x end} of the tenor dates
+exercised after today, the caplets being \verb{start x (start + 1)}. Each swaption sets one volatility, rate
+\code{end - 1} on the interval that ends at \code{times[start]}, so Rebonato's approximation gives back every quote.
+A quote below what the earlier ones give its rates cannot be fitted and is an error.
 }
 
 The rates are generic term forwards: no IBOR index, curve or fixings. With \code{backward_looking = TRUE} they are
