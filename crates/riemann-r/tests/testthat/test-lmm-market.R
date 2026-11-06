@@ -94,3 +94,17 @@ test_that("complete periods before the one under way are fixed and left out", {
   expect_true(all(p$state[, 2, 1] == 0.0185 & p$state[, 3, 2] == 0.019))
   expect_error(compute_lmm_caplet_value(full, forward = 2, strike = 0.02, paths = 10L), "ended before today")
 })
+
+test_that("volatilities that change over time", {
+  n <- 10
+  flat <- create_lmm(times, model$forwards, matrix(rep(model$volatilities, n + 1), n), beta = 0.3, discount_start = model$discount_start)
+  expect_equal(compute_rebonato_swaption_volatility(flat, 3, 7), compute_rebonato_swaption_volatility(model, 3, 7), tolerance = 1e-13)
+  starts <- c(0, times[-length(times)])
+  grid <- outer(times[1:n], (starts + times) / 2, \(fixing, middle) 0.12 + 0.2 * exp(-pmax(fixing - middle, 0)))
+  moving <- create_lmm(times, model$forwards, grid, beta = 0.3, discount_start = model$discount_start, backward_looking = TRUE)
+  caplets <- compute_lmm_caplet_value(moving, forward = c(1, 5, 10), strike = moving$forwards[c(1, 5, 10)], paths = 2000L, steps_per_period = 8L)
+  expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
+  s <- compute_lmm_swaption_value(moving, start = c(3, 5), end = c(7, 11), strike = c(0.023, 0.026), paths = 2000L, steps_per_period = 8L)
+  expect_true(all(abs(s$value - s$rebonato_value) < 4 * s$standard_error + 0.02 * s$rebonato_value))
+  expect_error(create_lmm(times, model$forwards, matrix(0.2, n, n), beta = 0.3), "must be 10 by 11")
+})

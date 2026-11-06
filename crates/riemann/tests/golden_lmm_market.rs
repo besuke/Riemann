@@ -34,6 +34,7 @@ fn market_model_pieces_match_quantlib() {
             discount_start: 1.0,
             backward_looking: false,
             model: riemann::options::ForwardModel::Black,
+            volatility_grid: None,
         };
         let mut check = |slot: usize, ours: f64, theirs: f64, what: String| {
             let error = (ours - theirs).abs() / theirs.abs().max(1e-3);

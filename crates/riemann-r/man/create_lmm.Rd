@@ -54,7 +54,9 @@ calibrate_lmm_correlation(model, start, end, volatility, beta_max = 5)
 
 \item{forwards}{Forward rates today, one per period.}
 
-\item{volatilities}{Lognormal volatilities, one per forward.}
+\item{volatilities}{Volatilities, one per forward (lognormal for \code{"black"}, in rate units for \code{"bachelier"}), or a matrix
+with a row per forward and \code{n + 1} columns for volatilities that change over time: column \code{k} holds on
+\verb{(times[k - 1], times[k]]}, column 1 up to \code{times[1]}. A rate uses its row while it moves.}
 
 \item{correlation}{A correlation matrix of the forwards, or \code{NULL} with \code{beta}.}
 

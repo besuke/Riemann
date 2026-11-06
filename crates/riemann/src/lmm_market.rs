@@ -56,6 +56,10 @@ pub struct LmmSpec {
     /// `Black`: lognormal rates, `dR / R = ... + sigma dW`. `Bachelier`: normal rates, `dR = ... + sigma dW`,
     /// with `sigma` in rate units; the rates may then turn negative.
     pub model: ForwardModel,
+    /// `None` for the constant `volatilities`. Otherwise `n` rows of `n + 1` values, by rows: column `k` is
+    /// the volatility on `(T_{k-1}, T_k]`, column 0 the one up to `T_0` (and before, for the periods under
+    /// way). A rate uses its row while it moves; `volatilities` is then unused by the paths.
+    pub volatility_grid: Option<Vec<f64>>,
 }
 
 impl LmmSpec {
@@ -90,10 +94,27 @@ impl LmmSpec {
             || self.volatilities.iter().any(|v| !(*v >= 0.0) || !v.is_finite()) {
             return invalid("the forwards must be positive and the volatilities finite and non-negative".into());
         }
+        if let Some(grid) = &self.volatility_grid {
+            if grid.len() != self.count() * (self.count() + 1) || grid.iter().any(|v| !(*v >= 0.0) || !v.is_finite()) {
+                return invalid(format!("the volatility grid must have {} finite non-negative values", self.count() * (self.count() + 1)));
+            }
+        }
         if !(self.discount_start > 0.0) {
             return invalid("the discount factor to the first time must be positive".into());
         }
         check_correlation(&self.correlation, n)
+    }
+
+    /// The volatility of rate `i` at time `u`: its constant volatility, or the grid's column of the
+    /// tenor interval `(T_{k-1}, T_k]` that holds `u`.
+    pub fn volatility_at(&self, i: usize, u: f64) -> f64 {
+        match &self.volatility_grid {
+            None => self.volatilities[i],
+            Some(grid) => {
+                let k = self.times.iter().filter(|&&t| t < u).count();
+                grid[i * (self.count() + 1) + k]
+            }
+        }
     }
 
     /// The first period that has not ended by today: 0 unless periods of backward-looking rates ended
@@ -196,10 +217,12 @@ pub fn generate_lmm_paths_observed(
                     g_squared[i] = (g0 * g0 + g0 * g1 + g1 * g1) / 3.0;
                 }
                 let snapshot = l.clone();
-                let drift = drift_scaled(spec, alive, &snapshot, &g);
+                // the volatilities hold over the step: it lies within one tenor interval
+                let middle = from + (s as f64 + 0.5) * dt;
+                let sigma: Vec<f64> = (0..n).map(|i| spec.volatility_at(i, middle)).collect();
+                let drift = drift_with(spec, alive, &snapshot, &g, &sigma);
                 for k in alive..n {
-                    let sigma = spec.volatilities[k];
-                    let variance = sigma * sigma * g_squared[k];
+                    let variance = sigma[k] * sigma[k] * g_squared[k];
                     l[k] = match spec.model {
                         ForwardModel::Black => snapshot[k] * ((drift[k] - 0.5 * variance) * dt + (variance * dt).sqrt() * w[k]).exp(),
                         ForwardModel::Bachelier => snapshot[k] + drift[k] * dt + (variance * dt).sqrt() * w[k],
@@ -281,6 +304,11 @@ fn drift_of(spec: &LmmSpec, alive: usize, forwards: &[f64]) -> Vec<f64> {
 
 /// The drift with each volatility scaled by `g` (the FMM's decay of an accruing rate).
 fn drift_scaled(spec: &LmmSpec, alive: usize, forwards: &[f64], g: &[f64]) -> Vec<f64> {
+    drift_with(spec, alive, forwards, g, &spec.volatilities)
+}
+
+/// The drift with given volatilities.
+fn drift_with(spec: &LmmSpec, alive: usize, forwards: &[f64], g: &[f64], sigma: &[f64]) -> Vec<f64> {
     let n = spec.count();
     let mut drift = vec![0.0; n];
     for k in alive..n {
@@ -288,9 +316,9 @@ fn drift_scaled(spec: &LmmSpec, alive: usize, forwards: &[f64], g: &[f64]) -> Ve
         for j in alive..=k {
             let tau = spec.accrual(j);
             let level = if spec.model == ForwardModel::Black { forwards[j] } else { 1.0 };
-            sum += tau * spec.correlation[k * n + j] * spec.volatilities[j] * g[j] * level / (1.0 + tau * forwards[j]);
+            sum += tau * spec.correlation[k * n + j] * sigma[j] * g[j] * level / (1.0 + tau * forwards[j]);
         }
-        drift[k] = spec.volatilities[k] * g[k] * sum;
+        drift[k] = sigma[k] * g[k] * sum;
     }
     drift
 }
@@ -452,6 +480,65 @@ fn decay_overlap(spec: &LmmSpec, i: usize, j: usize, t: f64) -> f64 {
     integral / t
 }
 
+/// `int_0^t sigma_i(u) sigma_j(u) g_i(u) g_j(u) du / t`. With constant volatilities it is
+/// `sigma_i sigma_j` times [`decay_overlap`]; with a grid, the tenor dates join the breakpoints, so the
+/// pieces stay quadratic and Simpson's rule exact.
+fn covariance_overlap(spec: &LmmSpec, i: usize, j: usize, t: f64) -> f64 {
+    if spec.volatility_grid.is_none() {
+        return spec.volatilities[i] * spec.volatilities[j] * decay_overlap(spec, i, j, t);
+    }
+    let mut points = vec![0.0, t];
+    points.extend(spec.times.iter().filter(|&&x| x > 0.0 && x < t));
+    points.sort_by(f64::total_cmp);
+    points.dedup();
+    let mut integral = 0.0;
+    for w in points.windows(2) {
+        let (x0, x1) = (w[0], w[1]);
+        let middle = (x0 + x1) / 2.0;
+        let sigma = spec.volatility_at(i, middle) * spec.volatility_at(j, middle);
+        let product = |u: f64| decay(spec, i, u) * decay(spec, j, u);
+        let inside = |x: f64| product(x.clamp(x0 + 1e-15 * (x1 - x0), x1 - 1e-15 * (x1 - x0)));
+        integral += sigma * (x1 - x0) / 6.0 * (inside(x0) + 4.0 * product(middle) + inside(x1));
+    }
+    integral / t
+}
+
+/// The variance of rate `i` from today to `t`, `int_0^t sigma_i^2 g_i^2 du` (the total, not per year).
+pub fn compute_lmm_rate_variance(spec: &LmmSpec, i: usize, t: f64) -> Result<f64, Error> {
+    spec.check()?;
+    if i >= spec.count() || !(t > 0.0) {
+        return invalid(format!("give a rate below {} and a time after 0", spec.count()));
+    }
+    Ok(covariance_overlap(spec, i, i, t) * t)
+}
+
+/// The caplet on rate `i` by its formula (Black or Bachelier) with the rate's total variance to its
+/// fixing (`T_i`, or `T_{i+1}` for a backward-looking rate): the reference value of
+/// [`compute_lmm_caplet_value`], for constant and time-dependent volatilities.
+pub fn compute_lmm_caplet_formula(spec: &LmmSpec, i: usize, strike: f64) -> Result<f64, Error> {
+    spec.check()?;
+    if i >= spec.count() {
+        return invalid(format!("no forward {i}"));
+    }
+    if i < spec.first_open_period() {
+        return invalid(format!("the period of forward {i} ended before today: its caplet is fixed and paid"));
+    }
+    let fixing = if spec.backward_looking { spec.times[i + 1] } else { spec.times[i] };
+    let variance = if fixing > 0.0 { compute_lmm_rate_variance(spec, i, fixing)? } else { 0.0 };
+    crate::lmm::compute_caplet_value(
+        spec.model,
+        &crate::lmm::CapletTerms {
+            forward: spec.forwards[i],
+            strike,
+            volatility: variance.sqrt(),
+            expiry: 1.0,
+            accrual: spec.accrual(i),
+            discount_factor: spec.discount(i + 1),
+            notional: 1.0,
+        },
+    )
+}
+
 /// Rebonato's approximation at an exercise time `expiry`, which may lie between tenor dates: the time
 /// integral of each covariance is `int_0^expiry sigma_i sigma_j g_i g_j du`, with the decay `g` of
 /// backward-looking rates inside their period (Lyashenko and Mercurio). At `expiry = T_a` it is
@@ -477,7 +564,7 @@ pub fn compute_rebonato_swaption_volatility_at(spec: &LmmSpec, a: usize, b: usiz
     for i in a..b {
         for j in a..b {
             let levels = if spec.model == ForwardModel::Black { spec.forwards[i] * spec.forwards[j] } else { 1.0 };
-            sum += weights[i - a] * weights[j - a] * levels * spec.correlation[i * n + j] * spec.volatilities[i] * spec.volatilities[j] * decay_overlap(spec, i, j, expiry);
+            sum += weights[i - a] * weights[j - a] * levels * spec.correlation[i * n + j] * covariance_overlap(spec, i, j, expiry);
         }
     }
     // a lognormal volatility for Black, a normal one for Bachelier
@@ -581,7 +668,7 @@ mod tests {
         let forwards: Vec<f64> = (0..10).map(|k| 0.02 + 0.001 * k as f64).collect();
         let volatilities: Vec<f64> = (0..10).map(|k| 0.25 - 0.005 * k as f64).collect();
         let correlation = create_exponential_correlation(&times[..10], beta).unwrap();
-        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black }
+        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black, volatility_grid: None }
     }
 
     const PATHS: usize = 2000;
@@ -693,6 +780,7 @@ mod tests {
             discount_start: realized,
             backward_looking: true,
             model: ForwardModel::Black,
+            volatility_grid: None,
         };
         assert!((s.discount(1) - 0.9965).abs() < 1e-15);
         let paths = generate_lmm_paths(&s, PATHS, 8, 23).unwrap();
@@ -855,6 +943,7 @@ mod tests {
             discount_start: realized,
             backward_looking: true,
             model: ForwardModel::Black,
+            volatility_grid: None,
         };
         assert_eq!(full.first_open_period(), 2);
         // the same model without the complete periods
@@ -907,6 +996,65 @@ mod tests {
         assert!(compute_lmm_caplet_value(&full, &paths, 1, 0.02).is_err());
         assert!(compute_lmm_swaption_value(&full, &paths, 1, 5, 0.02).is_err());
         assert!(compute_formula_swaption_value_at(&full, 1, 5, 0.02, 0.2, 0.1).is_err());
+    }
+
+    #[test]
+    fn volatilities_that_change_over_time() {
+        let n = 10;
+        // a grid with the constant volatilities in every column gives the same paths and formulas
+        let constant = spec(0.3);
+        let flat_grid: Vec<f64> = (0..n).flat_map(|i| std::iter::repeat_n(constant.volatilities[i], n + 1)).collect();
+        let gridded = LmmSpec { volatility_grid: Some(flat_grid), ..constant.clone() };
+        let (p1, p2) = (generate_lmm_paths(&constant, 200, 4, 53).unwrap(), generate_lmm_paths(&gridded, 200, 4, 53).unwrap());
+        // the same values, NaN in the same places (NaN != NaN, so compare by bits)
+        let bits = |p: &LmmPaths| -> Vec<u64> { p.state.iter().flatten().flatten().chain(p.numeraire.iter().flatten()).map(|x| x.to_bits()).collect() };
+        assert_eq!(bits(&p1), bits(&p2));
+        assert!((compute_rebonato_swaption_volatility(&constant, 2, 7).unwrap() - compute_rebonato_swaption_volatility(&gridded, 2, 7).unwrap()).abs() < 1e-14);
+        // time-homogeneous volatilities: high near the fixing, low far from it,
+        // sigma_i(t) = 0.12 + 0.2 exp(-(T_i - t)), on each interval at its middle
+        for backward_looking in [false, true] {
+            let base = LmmSpec { backward_looking, ..spec(0.3) };
+            let grid: Vec<f64> = (0..n)
+                .flat_map(|i| {
+                    let times = base.times.clone();
+                    (0..=n).map(move |k| {
+                        let (lo, hi) = (if k == 0 { 0.0 } else { times[k - 1] }, times[k]);
+                        0.12 + 0.2 * (-(times[i] - (lo + hi) / 2.0).max(0.0)).exp()
+                    })
+                })
+                .collect();
+            let s = LmmSpec { volatility_grid: Some(grid), ..base };
+            let paths = generate_lmm_paths(&s, PATHS, 8, 59).unwrap();
+            for k in [1usize, 5, 10] {
+                let values: Vec<f64> = paths.numeraire.iter().map(|b| 1.0 / b[k]).collect();
+                let e = estimate(&values);
+                assert!((e.value - s.discount(k)).abs() < 4.0 * e.standard_error + 1e-12, "{backward_looking} P(0,T_{k})");
+            }
+            for i in [0usize, 4, 9] {
+                let strike = s.forwards[i];
+                let mc = compute_lmm_caplet_value(&s, &paths, i, strike).unwrap();
+                let formula = compute_lmm_caplet_formula(&s, i, strike).unwrap();
+                assert!((mc.value - formula).abs() < 4.0 * mc.standard_error, "{backward_looking} caplet {i}: {formula} against {} ± {}", mc.value, mc.standard_error);
+            }
+            for (a, b) in [(2usize, 6usize), (4, 10)] {
+                let (rate, _) = swap_rate_and_annuity(&s, a, b, &s.forwards);
+                let mc = compute_lmm_swaption_value(&s, &paths, a, b, rate).unwrap();
+                let approx = compute_formula_swaption_value(&s, a, b, rate, compute_rebonato_swaption_volatility(&s, a, b).unwrap()).unwrap();
+                assert!((mc.value - approx).abs() < 4.0 * mc.standard_error + 0.02 * approx, "{backward_looking} {a}x{b}: {approx} against {} ± {}", mc.value, mc.standard_error);
+            }
+        }
+        // the variance of a forward-looking rate is the sum over the intervals to its fixing
+        let grid: Vec<f64> = (0..n).flat_map(|i| (0..=n).map(move |k| 0.1 + 0.01 * (i + k) as f64)).collect();
+        let s = LmmSpec { volatility_grid: Some(grid), ..spec(0.3) };
+        let i = 3;
+        let mut expected = 0.0;
+        for k in 0..=i {
+            let (lo, hi) = (if k == 0 { 0.0 } else { s.times[k - 1] }, s.times[k]);
+            let v = 0.1 + 0.01 * (i + k) as f64;
+            expected += v * v * (hi - lo);
+        }
+        assert!((compute_lmm_rate_variance(&s, i, s.times[i]).unwrap() - expected).abs() < 1e-14);
+        assert!(generate_lmm_paths(&LmmSpec { volatility_grid: Some(vec![0.2; 5]), ..spec(0.3) }, 10, 4, 1).is_err());
     }
 
     #[test]

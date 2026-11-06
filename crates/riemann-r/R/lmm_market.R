@@ -29,7 +29,9 @@
 #'
 #' @param times Tenor dates in years from today, increasing, from 0 on.
 #' @param forwards Forward rates today, one per period.
-#' @param volatilities Lognormal volatilities, one per forward.
+#' @param volatilities Volatilities, one per forward (lognormal for `"black"`, in rate units for `"bachelier"`), or a matrix
+#'   with a row per forward and `n + 1` columns for volatilities that change over time: column `k` holds on
+#'   `(times[k - 1], times[k]]`, column 1 up to `times[1]`. A rate uses its row while it moves.
 #' @param correlation A correlation matrix of the forwards, or `NULL` with `beta`.
 #' @param beta Decay of the exponential correlation.
 #' @param discount_start The discount factor to `times[1]`. When the first period of backward-looking rates started before
@@ -71,7 +73,13 @@ create_lmm <- function(times, forwards, volatilities, correlation = NULL, beta =
     if (is.null(beta)) stop("Give `correlation` or `beta`.", call. = FALSE)
     correlation <- create_exponential_correlation(times[seq_len(n)], beta)
   }
-  structure(list(times = times, forwards = as.numeric(forwards), volatilities = as.numeric(volatilities),
+  grid <- NULL
+  if (is.matrix(volatilities)) {
+    if (!identical(dim(volatilities), c(n, n + 1L))) stop(sprintf("A volatility matrix must be %d by %d.", n, n + 1L), call. = FALSE)
+    grid <- as.numeric(t(volatilities))
+    volatilities <- rowMeans(volatilities)
+  }
+  structure(list(times = times, forwards = as.numeric(forwards), volatilities = as.numeric(volatilities), volatility_grid = grid,
                  correlation = matrix(as.numeric(correlation), n, n), discount_start = as.numeric(discount_start),
                  backward_looking = as_flag(backward_looking), model = match.arg(model, c("black", "bachelier"))), class = "riemann_lmm")
 }
@@ -93,14 +101,14 @@ create_exponential_correlation <- function(times, beta) {
 lmm_args <- function(model) {
   if (!inherits(model, "riemann_lmm")) stop("`model` must come from create_lmm().", call. = FALSE)
   list(model$times, model$forwards, model$volatilities, as.numeric(t(model$correlation)), model$discount_start, isTRUE(model$backward_looking),
-       if (is.null(model$model)) "black" else model$model)
+       if (is.null(model$model)) "black" else model$model, if (is.null(model$volatility_grid)) numeric() else model$volatility_grid)
 }
 
 #' @rdname create_lmm
 #' @export
 generate_lmm_paths <- function(model, paths, steps_per_period = 4L, seed = 1) {
   a <- lmm_args(model)
-  x <- checked(.Call(wrap__generate_lmm_paths, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
+  x <- checked(.Call(wrap__generate_lmm_paths, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
   n <- length(model$forwards)
   list(state = array(x$state, c(paths, n + 1L, n)), numeraire = matrix(x$numeraire, paths, n + 1L))
 }
@@ -110,7 +118,7 @@ generate_lmm_paths <- function(model, paths, steps_per_period = 4L, seed = 1) {
 compute_rebonato_swaption_volatility <- function(model, start, end, expiry = NULL) {
   a <- lmm_args(model)
   i <- tibble(start = as.integer(start), end = as.integer(end), expiry = if (is.null(expiry)) NA_real_ else as.numeric(expiry))
-  checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], i$start - 1L, i$end - 1L,
+  checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], i$start - 1L, i$end - 1L,
                 rep(0, nrow(i)), i$expiry))$volatility
 }
 
@@ -120,9 +128,9 @@ compute_lmm_swaption_value <- function(model, start, end, strike, expiry = NULL,
   a <- lmm_args(model)
   i <- tibble(start = as.integer(start), end = as.integer(end), strike = as.numeric(strike),
               expiry = if (is.null(expiry)) NA_real_ else as.numeric(expiry))
-  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], rep("swaption", nrow(i)), i$start - 1L, i$end - 1L, i$strike, i$expiry,
+  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], rep("swaption", nrow(i)), i$start - 1L, i$end - 1L, i$strike, i$expiry,
                       as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
-  approx <- checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], i$start - 1L, i$end - 1L, i$strike, i$expiry))
+  approx <- checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], i$start - 1L, i$end - 1L, i$strike, i$expiry))
   tibble::add_column(i, value = mc$value, standard_error = mc$standard_error, rebonato_volatility = approx$volatility,
                      rebonato_value = approx$black_value)
 }
@@ -132,23 +140,10 @@ compute_lmm_swaption_value <- function(model, start, end, strike, expiry = NULL,
 compute_lmm_caplet_value <- function(model, forward, strike, paths = 2000L, steps_per_period = 4L, seed = 1) {
   a <- lmm_args(model)
   i <- tibble(forward = as.integer(forward), strike = as.numeric(strike))
-  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], rep("caplet", nrow(i)), i$forward - 1L, i$forward, i$strike, rep(NA_real_, nrow(i)),
+  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], rep("caplet", nrow(i)), i$forward - 1L, i$forward, i$strike, rep(NA_real_, nrow(i)),
                       as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
-  n <- length(model$forwards)
-  # discount factors from the first period that has not ended (the complete ones are fixed and paid)
-  open <- which(model$times[-1] > 0)[1]
-  growth <- 1 + diff(model$times) * model$forwards
-  discount <- rep(NA_real_, n)
-  discount[open:n] <- model$discount_start / cumprod(growth[open:n])
-  black <- purrr::pmap_dbl(i, \(forward, strike) {
-    tau <- model$times[forward + 1L] - model$times[forward]
-    if (isTRUE(model$backward_looking)) {
-      return(compute_backward_caplet_value(model$forwards[forward], strike, model$volatilities[forward], model$times[forward],
-                                           model$times[forward + 1L], tau, discount[forward], model = a[[7]]))
-    }
-    compute_caplet_value(model$forwards[forward], strike, model$volatilities[forward], model$times[forward], tau, discount[forward], model = a[[7]])
-  })
-  tibble::add_column(i, value = mc$value, standard_error = mc$standard_error, formula_value = black)
+  # the formula with each rate's total variance to its fixing, as the paths define it
+  tibble::add_column(i, value = mc$value, standard_error = mc$standard_error, formula_value = mc$formula)
 }
 
 #' @rdname create_lmm
@@ -156,8 +151,10 @@ compute_lmm_caplet_value <- function(model, forward, strike, paths = 2000L, step
 calibrate_lmm_correlation <- function(model, start, end, volatility, beta_max = 5) {
   a <- lmm_args(model)
   i <- tibble(start = as.integer(start), end = as.integer(end), volatility = as.numeric(volatility))
-  x <- checked(.Call(wrap__calibrate_lmm_correlation, a[[1]], a[[2]], a[[3]], a[[5]], a[[7]], i$start - 1L, i$end - 1L, i$volatility, as.numeric(beta_max)))
+  x <- checked(.Call(wrap__calibrate_lmm_correlation, a[[1]], a[[2]], a[[3]], a[[5]], a[[7]], a[[8]], i$start - 1L, i$end - 1L, i$volatility, as.numeric(beta_max)))
   list(beta = x$beta, root_mean_square_error = x$root_mean_square_error, fitted = tibble::add_column(i, fitted_volatility = x$fitted),
-       model = create_lmm(model$times, model$forwards, model$volatilities, beta = x$beta, discount_start = model$discount_start,
+       model = create_lmm(model$times, model$forwards,
+                          if (is.null(model$volatility_grid)) model$volatilities else matrix(model$volatility_grid, length(model$forwards), byrow = TRUE),
+                          beta = x$beta, discount_start = model$discount_start,
                           backward_looking = isTRUE(model$backward_looking), model = a[[7]]))
 }
