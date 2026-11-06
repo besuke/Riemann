@@ -36,3 +36,18 @@ test_that("the yen asset swap on a curve equal to the constant-z forward gives t
   })
   expect_equal(moves[1] - moves[2], 10, tolerance = 0.05)
 })
+
+test_that("the time value of the collateral choice", {
+  today <- "2026-11-04"
+  yen <- create_zero_curve(as.Date(today) + c(0, 365, 3652), c(0.005, 0.005, 0.012), "actual_365_fixed")
+  usd <- create_zero_curve(as.Date(today) + c(0, 365, 3652), c(0.009, 0.009, 0.006), "actual_365_fixed")
+  dates <- as.Date(today) + c(365, 1826, 3652)
+  still <- compute_ctd_time_value(today, dates, list(JPY = yen, USD = usd), volatility = 0, paths = 10L)
+  intrinsic <- create_ctd_curve(today, dates[3], list(JPY = yen, USD = usd))
+  expect_equal(still$value, compute_discount(intrinsic, dates), tolerance = 1e-12)
+  r <- compute_ctd_time_value(today, dates, list(JPY = yen, USD = usd), volatility = 0.005, mean_reversion = 0.1, paths = 1000L)
+  expect_true(all(abs(log(r$first_order) - log(r$first_order_formula)) < 4 * r$log_standard_error))
+  expect_true(all(r$value >= r$first_order))
+  expect_gt(r$time_value[3], 4 * r$standard_error[3])
+  expect_error(compute_ctd_time_value(today, dates, list(JPY = yen, USD = usd), volatility = c(0.1, 0.1)))
+})

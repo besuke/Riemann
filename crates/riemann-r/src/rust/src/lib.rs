@@ -1470,6 +1470,63 @@ fn create_ctd_curve(reference_date: i32, end_date: i32, day_count: &str, names_o
     }))
 }
 #[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_ctd_time_value(
+    reference_date: i32,
+    dates: Vec<i32>,
+    day_count: &str,
+    names_of: Vec<String>,
+    curves: List,
+    volatility: Vec<f64>,
+    mean_reversion: Vec<f64>,
+    correlation: Vec<f64>,
+    paths: i32,
+    seed: f64,
+) -> List {
+    let run = || -> Core<List> {
+        if names_of.len() != curves.len() {
+            return Err(riemann::Error::InvalidInput { reason: "one name per curve is needed".into() });
+        }
+        if volatility.len() != mean_reversion.len() {
+            return Err(riemann::Error::InvalidInput { reason: "give one mean reversion per volatility".into() });
+        }
+        let options = curves
+            .values()
+            .zip(&names_of)
+            .map(|(c, name)| {
+                let curve = ExternalPtr::<OisCurve>::try_from(c)
+                    .map_err(|_| riemann::Error::InvalidInput { reason: "every curve must be a riemann_ois_curve".into() })?;
+                Ok(riemann::ctd::CollateralOption { name: name.clone(), curve: curve.curve.clone() })
+            })
+            .collect::<Core<Vec<_>>>()?;
+        let spreads: Vec<_> = volatility
+            .iter()
+            .zip(&mean_reversion)
+            .map(|(&v, &k)| riemann::ctd::SpreadDynamics { volatility: v, mean_reversion: k })
+            .collect();
+        let days = dates.iter().map(|&d| date(d)).collect::<Core<Vec<_>>>()?;
+        let r = riemann::ctd::compute_ctd_time_value(
+            date(reference_date)?,
+            &days,
+            &names::parse_day_count(day_count)?,
+            &options,
+            &spreads,
+            &correlation,
+            paths.max(0) as usize,
+            seed as u64,
+        )?;
+        Ok(list!(
+            intrinsic = r.intrinsic,
+            value = r.value,
+            standard_error = r.standard_error,
+            first_order = r.first_order,
+            log_standard_error = r.log_standard_error,
+            first_order_formula = r.first_order_formula.unwrap_or_else(|| vec![f64::NAN; days.len()])
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
 fn compute_future_basis(
     bond: ExternalPtr<FixedRateBond>,
     clean_price: f64,
@@ -3194,6 +3251,7 @@ extendr_module! {
     fn compute_yen_asset_swap_on_basis_curve;
     fn bootstrap_xccy_curve;
     fn create_ctd_curve;
+    fn compute_ctd_time_value;
     fn compute_future_basis;
     fn compute_hull_white_bond_option_value;
     fn compute_hull_white_swaption_value;

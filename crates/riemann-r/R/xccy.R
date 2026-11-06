@@ -136,3 +136,48 @@ create_ctd_curve <- function(reference_date, end_date, curves, day_count = "actu
                           days = as.integer(x$end - x$start), advantage = x$advantage)
   curve
 }
+
+#' Time value of the choice of collateral currency
+#'
+#' The discount factors of the Cheapest to Deposit (CTD) choice when the collateral spreads move. The first curve is
+#' the reference; for each other currency the deviation of its daily forward spread over the reference from today's
+#' forward spread is an Ornstein-Uhlenbeck process, `dX = -mean_reversion X dt + volatility dW` (rate units a year,
+#' correlated by `correlation`). Each day the poster picks the highest forward, so the discount factor is
+#' `P_ref(T) E[exp(-sum_d max(0, max_c (s_c(d) + X_c(t_d) Delta_d)))]`, by Monte Carlo with exact one-day steps.
+#' The reference's rate is taken as independent of the spreads, and the spreads' expectations as today's forward
+#' spreads (a modelling choice, not a market convention). With two curves, `first_order_formula` gives `exp(-E[L])` in
+#' closed form (each day's choice is a Bachelier floor on the spread), which the simulated `first_order` matches up to
+#' its standard error `log_standard_error` (in logs). `value` is at least `first_order` on the same paths (Jensen).
+#'
+#' @inheritParams create_ctd_curve
+#' @param dates Dates of the result, increasing, after `reference_date`.
+#' @param volatility,mean_reversion One per curve after the first.
+#' @param correlation Correlation matrix of the spreads (`NULL` for one spread, or for independent spreads).
+#' @param paths,seed Number of paths and the seed.
+#' @return A tibble with `date`, `intrinsic` (the choice by today's forwards, as [create_ctd_curve()]), `value`,
+#'   `standard_error`, `time_value` (`intrinsic - value`, the poster's gain per unit paid at `date`), `first_order`,
+#'   `log_standard_error` and `first_order_formula` (`NA` unless there are two curves).
+#' @examples
+#' today <- "2026-11-04"
+#' yen <- create_zero_curve(as.Date(today) + c(0, 365, 3652), c(0.005, 0.005, 0.012), "actual_365_fixed")
+#' usd <- create_zero_curve(as.Date(today) + c(0, 365, 3652), c(0.009, 0.009, 0.006), "actual_365_fixed")
+#' compute_ctd_time_value(today, as.Date(today) + c(365, 1826, 3652), list(JPY = yen, USD = usd),
+#'                        volatility = 0.005, mean_reversion = 0.1, paths = 500L)
+#' @export
+compute_ctd_time_value <- function(reference_date, dates, curves, volatility, mean_reversion = 0, correlation = NULL,
+                                   paths = 2000L, seed = 1, day_count = "actual_365_fixed") {
+  if (!is.list(curves) || is.null(names(curves)) || any(names(curves) == "") ||
+      !all(purrr::map_lgl(curves, \(c) inherits(c, "riemann_ois_curve")))) {
+    stop("`curves` must be a named list of curves.", call. = FALSE)
+  }
+  m <- length(curves) - 1L
+  volatility <- as.numeric(volatility)
+  mean_reversion <- rep_len(as.numeric(mean_reversion), length(volatility))
+  if (is.null(correlation)) correlation <- diag(max(m, 0L))
+  x <- checked(.Call(wrap__compute_ctd_time_value, as_serial(reference_date), as_serial(dates), day_count, names(curves),
+                     purrr::map(curves, "pointer"), volatility, mean_reversion, as.numeric(t(as.matrix(correlation))),
+                     as.integer(paths), as.numeric(seed)))
+  tibble(date = as.Date(dates), intrinsic = x$intrinsic, value = x$value, standard_error = x$standard_error,
+         time_value = x$intrinsic - x$value, first_order = x$first_order, log_standard_error = x$log_standard_error,
+         first_order_formula = x$first_order_formula)
+}
