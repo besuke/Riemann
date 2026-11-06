@@ -175,3 +175,16 @@ test_that("the predictor-corrector steps", {
   expect_true(all(abs(s$value - s$rebonato_value) < 4 * s$standard_error + 0.02 * s$rebonato_value))
   expect_error(create_lmm(times, model$forwards, model$volatilities, beta = 0.3, discretization = "milstein"))
 })
+
+test_that("Bermudan swaptions", {
+  one <- compute_lmm_bermudan_swaption(model, exercise = 3, end = 11, strike = 0.0254, paths = 2000L, seed = 3)
+  european <- compute_lmm_swaption_value(model, start = 3, end = 11, strike = 0.0254, paths = 2000L, seed = 3)
+  expect_equal(one$value, european$value, tolerance = 1e-14)
+  purrr::walk(c(TRUE, FALSE), \(payer) {
+    b <- compute_lmm_bermudan_swaption(model, exercise = 3:10, end = 11, strike = 0.0254, payer = payer, paths = 2000L)
+    expect_gt(b$value, max(b$dates$european_value))
+    expect_lte(b$value, b$hindsight_value)
+    expect_equal(sum(b$dates$exercised_paths) + b$unexercised_paths, 2000L)
+  })
+  expect_error(compute_lmm_bermudan_swaption(model, exercise = c(5, 3), end = 11, strike = 0.025), "increasing")
+})

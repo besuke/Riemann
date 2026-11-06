@@ -10,6 +10,7 @@
 \alias{compute_lmm_caplet_value}
 \alias{calibrate_lmm_correlation}
 \alias{calibrate_lmm_volatilities}
+\alias{compute_lmm_bermudan_swaption}
 \title{Forward market model with joint paths}
 \usage{
 create_lmm(
@@ -57,6 +58,18 @@ compute_lmm_caplet_value(
 calibrate_lmm_correlation(model, start, end, volatility, beta_max = 5)
 
 calibrate_lmm_volatilities(model, start, end, volatility)
+
+compute_lmm_bermudan_swaption(
+  model,
+  exercise,
+  end,
+  strike,
+  payer = TRUE,
+  paths = 2000L,
+  steps_per_period = 4L,
+  seed = 1,
+  training_seed = seed + 1
+)
 }
 \arguments{
 \item{times}{Tenor dates in years from today, increasing, from 0 on.}
@@ -110,6 +123,13 @@ tenor date; Rebonato's approximation integrates the decay of each backward-looki
 \item{volatility}{Volatilities of the swaptions to fit (Black, or normal for \code{"bachelier"}).}
 
 \item{beta_max}{Upper end of the search for \code{beta}.}
+
+\item{exercise}{Positions in \code{times} of the exercise dates of a Bermudan swaption, increasing, before \code{end}.}
+
+\item{payer}{\code{TRUE} for a payer swaption, \code{FALSE} for a receiver.}
+
+\item{training_seed}{Seed of the paths of the regressions, different from \code{seed} for an exercise rule fixed
+before the valuation.}
 }
 \value{
 \code{create_lmm()} a \code{riemann_lmm}. \code{create_exponential_correlation()} and \code{create_reduced_correlation()} a matrix.
@@ -135,6 +155,11 @@ the reduction to rank \code{m} of \code{create_reduced_correlation()}.
 and \code{numeraire[p, k]} the numeraire at \code{times[k]}.
 \item \code{compute_lmm_swaption_value()} and \code{compute_lmm_caplet_value()} value payer swaptions and caplets on the
 paths, with their standard errors, next to Rebonato's approximation and Black's formula.
+\item \code{compute_lmm_bermudan_swaption()} values a Bermudan swaption, exercisable at \code{times[exercise]} into the swap to
+\code{times[end]}, by Longstaff and Schwartz: the exercise rule comes from regressions on training paths (seed
+\code{training_seed}) of the continuation value on 1, the swap rate, its square and the exercise value, and the value
+from separate paths (seed \code{seed}). It returns the Europeans of each date on the same paths, and the hindsight
+value (each path at its best date), which no exercise rule exceeds on those paths.
 \item \code{compute_rebonato_swaption_volatility()} gives Rebonato's approximation of the Black volatility of the
 swaption exercised at \code{times[start]} into the swap to \code{times[end]}.
 \item \code{calibrate_lmm_correlation()} fits \code{beta} to swaption volatilities by least squares on Rebonato's

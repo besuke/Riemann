@@ -15,6 +15,11 @@
 #'   and `numeraire[p, k]` the numeraire at `times[k]`.
 #' * `compute_lmm_swaption_value()` and `compute_lmm_caplet_value()` value payer swaptions and caplets on the
 #'   paths, with their standard errors, next to Rebonato's approximation and Black's formula.
+#' * `compute_lmm_bermudan_swaption()` values a Bermudan swaption, exercisable at `times[exercise]` into the swap to
+#'   `times[end]`, by Longstaff and Schwartz: the exercise rule comes from regressions on training paths (seed
+#'   `training_seed`) of the continuation value on 1, the swap rate, its square and the exercise value, and the value
+#'   from separate paths (seed `seed`). It returns the Europeans of each date on the same paths, and the hindsight
+#'   value (each path at its best date), which no exercise rule exceeds on those paths.
 #' * `compute_rebonato_swaption_volatility()` gives Rebonato's approximation of the Black volatility of the
 #'   swaption exercised at `times[start]` into the swap to `times[end]`.
 #' * `calibrate_lmm_correlation()` fits `beta` to swaption volatilities by least squares on Rebonato's
@@ -66,6 +71,10 @@
 #'   backward-looking rates. The Monte Carlo then keeps the rates at that time and defers the payoff to the next
 #'   tenor date; Rebonato's approximation integrates the decay of each backward-looking rate up to `expiry`.
 #' @param forward Position of the forward of a caplet (1 to n).
+#' @param exercise Positions in `times` of the exercise dates of a Bermudan swaption, increasing, before `end`.
+#' @param payer `TRUE` for a payer swaption, `FALSE` for a receiver.
+#' @param training_seed Seed of the paths of the regressions, different from `seed` for an exercise rule fixed
+#'   before the valuation.
 #' @param strike Strike rates.
 #' @param volatility Volatilities of the swaptions to fit (Black, or normal for `"bachelier"`).
 #' @param beta_max Upper end of the search for `beta`.
@@ -202,4 +211,18 @@ calibrate_lmm_volatilities <- function(model, start, end, volatility) {
                           discount_start = model$discount_start, backward_looking = isTRUE(model$backward_looking), model = a[[7]],
                           factors = model$factors, measure = a[[10]], discretization = a[[11]]),
        fitted = tibble::add_column(i, fitted_volatility = x$fitted), max_error = x$max_error)
+}
+
+#' @rdname create_lmm
+#' @export
+compute_lmm_bermudan_swaption <- function(model, exercise, end, strike, payer = TRUE, paths = 2000L, steps_per_period = 4L, seed = 1,
+                                          training_seed = seed + 1) {
+  a <- lmm_args(model)
+  x <- checked(.Call(wrap__compute_lmm_bermudan_swaption, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], a[[8]], a[[9]], a[[10]], a[[11]],
+                     as.integer(exercise) - 1L, as.integer(end) - 1L, as.numeric(strike), as_flag(payer), as.integer(paths),
+                     as.integer(steps_per_period), as.numeric(seed), as.numeric(training_seed)))
+  list(value = x$value, standard_error = x$standard_error, hindsight_value = x$hindsight_value,
+       dates = tibble(exercise = as.integer(exercise), european_value = x$european_value,
+                      european_standard_error = x$european_standard_error, exercised_paths = x$exercised_paths),
+       unexercised_paths = x$unexercised_paths)
 }

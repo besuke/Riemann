@@ -751,6 +751,152 @@ pub struct SwaptionQuote {
     pub volatility: f64,
 }
 
+
+/// A Bermudan swaption on the paths: its value on the evaluation paths, with the exercise rule that the
+/// regressions found on the training paths.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LmmBermudanResult {
+    pub value: f64,
+    /// `sd / sqrt(paths)` over the evaluation paths.
+    pub standard_error: f64,
+    /// The European swaption exercised at each date into the swap to the end, on the evaluation paths.
+    pub european: Vec<LmmEstimate>,
+    /// The evaluation paths that exercise at each date.
+    pub exercised_paths: Vec<usize>,
+    /// The evaluation paths that never exercise.
+    pub unexercised_paths: usize,
+    /// The mean over the evaluation paths of the best exercise value in hindsight (each path exercising
+    /// where its exercise value divided by the numeraire is largest): no exercise rule does better on the
+    /// same paths. It bounds the estimate, not the true value.
+    pub hindsight_value: f64,
+}
+
+/// The exercise value at `T_k` into the swap from `T_k` to `T_end`, in money at `T_k`, and the
+/// regression's basis: 1, the swap rate, its square and the exercise value.
+fn bermudan_exercise(spec: &LmmSpec, state: &[f64], k: usize, end: usize, strike: f64, payer: bool) -> (f64, [f64; 4]) {
+    let (rate, annuity) = swap_rate_and_annuity(spec, k, end, state);
+    let value = annuity * if payer { rate - strike } else { strike - rate }.max(0.0);
+    (value, [1.0, rate, rate * rate, value])
+}
+
+/// A Bermudan swaption by the Longstaff-Schwartz method: exercisable at the tenor dates `T_k` for `k` in
+/// `exercise` into the swap from `T_k` to `T_end` at the fixed rate `strike` (payer or receiver), per unit
+/// notional, today. The exercise rule comes from regressions on `training` (rolling back from the last
+/// date, at each date the paths in the money regress the value of the cash flows already chosen, in money
+/// at that date, on 1, the swap rate, its square and the exercise value; a path exercises when the
+/// exercise value exceeds the fitted continuation value; at the last date every path in the money
+/// exercises). The value is then the mean over `paths` of the exercise value divided by the numeraire.
+/// With `training` and `paths` from different seeds the rule is fixed before the evaluation, so the
+/// estimate is biased downward only by the rule's suboptimality; with the same paths it is biased upward.
+/// A date with fewer paths in the money than the four basis functions holds.
+pub fn compute_lmm_bermudan_swaption(
+    spec: &LmmSpec,
+    training: &LmmPaths,
+    paths: &LmmPaths,
+    exercise: &[usize],
+    end: usize,
+    strike: f64,
+    payer: bool,
+) -> Result<LmmBermudanResult, Error> {
+    spec.check()?;
+    let n = spec.count();
+    if exercise.is_empty() || exercise.windows(2).any(|w| !(w[0] < w[1])) {
+        return invalid("give the exercise dates as increasing tenor indices".into());
+    }
+    if !(end <= n && exercise[exercise.len() - 1] < end) {
+        return invalid(format!("the exercise dates must come before the end T_end, with end <= {n}"));
+    }
+    if spec.times[exercise[0]] <= 0.0 {
+        return invalid(format!("the first exercise date T_{} = {} must be after today", exercise[0], spec.times[exercise[0]]));
+    }
+    if !strike.is_finite() {
+        return invalid("the strike must be finite".into());
+    }
+    let shape_ok = |p: &LmmPaths| !p.state.is_empty() && p.state.iter().all(|s| s.len() == n + 1) && p.numeraire.iter().all(|b| b.len() == n + 1);
+    if !shape_ok(training) || !shape_ok(paths) || training.numeraire.len() != training.state.len() || paths.numeraire.len() != paths.state.len() {
+        return invalid(format!("the paths must hold {} dates of {n} forwards", n + 1));
+    }
+    let last = exercise.len() - 1;
+
+    // rolling back on the training paths: the cash flow chosen so far, divided by its numeraire
+    let mut cash: Vec<f64> = training
+        .state
+        .iter()
+        .zip(&training.numeraire)
+        .map(|(state, numeraire)| bermudan_exercise(spec, &state[exercise[last]], exercise[last], end, strike, payer).0 / numeraire[exercise[last]])
+        .collect();
+    let mut rules: Vec<Option<[f64; 4]>> = vec![None; exercise.len()];
+    for d in (0..last).rev() {
+        let k = exercise[d];
+        let mut design = Vec::new();
+        let mut target = Vec::new();
+        let mut candidates = Vec::new();
+        for (p, (state, numeraire)) in training.state.iter().zip(&training.numeraire).enumerate() {
+            let (value, basis) = bermudan_exercise(spec, &state[k], k, end, strike, payer);
+            if value > 0.0 {
+                design.extend_from_slice(&basis);
+                // the continuation in money at T_k
+                target.push(cash[p] * numeraire[k]);
+                candidates.push((p, value, basis, numeraire[k]));
+            }
+        }
+        if target.len() < 4 {
+            continue;
+        }
+        let coefficients = crate::math::linear::solve_least_squares(&design, 4, &target)?;
+        let rule: [f64; 4] = [coefficients[0], coefficients[1], coefficients[2], coefficients[3]];
+        for (p, value, basis, level) in candidates {
+            let continuation: f64 = rule.iter().zip(&basis).map(|(c, x)| c * x).sum();
+            if value > continuation {
+                cash[p] = value / level;
+            }
+        }
+        rules[d] = Some(rule);
+    }
+
+    // the evaluation paths follow the rule
+    let mut values = Vec::with_capacity(paths.state.len());
+    let mut hindsight = Vec::with_capacity(paths.state.len());
+    let mut exercised_paths = vec![0usize; exercise.len()];
+    let mut unexercised_paths = 0;
+    let mut european = vec![Vec::with_capacity(paths.state.len()); exercise.len()];
+    for (state, numeraire) in paths.state.iter().zip(&paths.numeraire) {
+        let mut paid = None;
+        let mut best: f64 = 0.0;
+        for (d, &k) in exercise.iter().enumerate() {
+            let (value, basis) = bermudan_exercise(spec, &state[k], k, end, strike, payer);
+            let deflated = value / numeraire[k];
+            european[d].push(deflated);
+            best = best.max(deflated);
+            if paid.is_none() && value > 0.0 {
+                let go = match (d == last, rules[d]) {
+                    (true, _) => true,
+                    (false, Some(rule)) => value > rule.iter().zip(&basis).map(|(c, x)| c * x).sum::<f64>(),
+                    (false, None) => false,
+                };
+                if go {
+                    paid = Some(deflated);
+                    exercised_paths[d] += 1;
+                }
+            }
+        }
+        if paid.is_none() {
+            unexercised_paths += 1;
+        }
+        values.push(paid.unwrap_or(0.0));
+        hindsight.push(best);
+    }
+    let e = estimate(&values);
+    Ok(LmmBermudanResult {
+        value: e.value,
+        standard_error: e.standard_error,
+        european: european.iter().map(|v| estimate(v)).collect(),
+        exercised_paths,
+        unexercised_paths,
+        hindsight_value: estimate(&hindsight).value,
+    })
+}
+
 /// The fit of the correlation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CorrelationFit {
@@ -1660,6 +1806,91 @@ mod tests {
             let e = estimate(&fine.numeraire.iter().map(|b| 1.0 / b[k]).collect::<Vec<_>>());
             assert!((e.value - euler.discount(k)).abs() < 4.0 * e.standard_error, "P(0,T_{k})");
         }
+    }
+
+    #[test]
+    fn a_bermudan_with_one_date_is_the_european_and_more_dates_add_value() {
+        let s = spec(0.3);
+        let training = generate_lmm_paths(&s, PATHS, 4, 101).unwrap();
+        let paths = generate_lmm_paths(&s, PATHS, 4, 103).unwrap();
+        let (rate, _) = swap_rate_and_annuity(&s, 2, 10, &s.forwards);
+        // one date: the European swaption on the same paths
+        let one = compute_lmm_bermudan_swaption(&s, &training, &paths, &[2], 10, rate, true).unwrap();
+        let european = compute_lmm_swaption_value(&s, &paths, 2, 10, rate).unwrap();
+        assert!((one.value - european.value).abs() < 1e-15 && (one.standard_error - european.standard_error).abs() < 1e-15);
+        for payer in [true, false] {
+            let dates = [2usize, 3, 4, 5, 6, 7, 8, 9];
+            let b = compute_lmm_bermudan_swaption(&s, &training, &paths, &dates, 10, rate, payer).unwrap();
+            let best_european = b.european.iter().map(|e| e.value).fold(0.0, f64::max);
+            // at least each European exercise (up to the noise of a suboptimal rule), at most hindsight
+            assert!(b.value > best_european, "{payer}: {} against {best_european}", b.value);
+            assert!(b.value <= b.hindsight_value);
+            assert_eq!(b.exercised_paths.iter().sum::<usize>() + b.unexercised_paths, PATHS);
+            assert!(b.exercised_paths[..dates.len() - 1].iter().sum::<usize>() > 0, "{payer}: no early exercise");
+            // the receiver's Europeans are the payers' less the swaps (parity on the same paths)
+            if !payer {
+                let p = compute_lmm_bermudan_swaption(&s, &training, &paths, &dates, 10, rate, true).unwrap();
+                for (d, &k) in dates.iter().enumerate() {
+                    let swap: Vec<f64> = paths
+                        .state
+                        .iter()
+                        .zip(&paths.numeraire)
+                        .map(|(st, nu)| {
+                            let (r, a) = swap_rate_and_annuity(&s, k, 10, &st[k]);
+                            a * (r - rate) / nu[k]
+                        })
+                        .collect();
+                    let swap = estimate(&swap).value;
+                    assert!((p.european[d].value - b.european[d].value - swap).abs() < 1e-15, "date {k}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_nearly_deterministic_bermudan_exercises_at_its_best_date() {
+        // volatilities near 0: the value is the largest exercise value today, max_k P(0,T_k) A_k (S_k - K)^+
+        let s = LmmSpec { volatilities: vec![1e-8; 10], ..spec(0.3) };
+        let training = generate_lmm_paths(&s, 200, 2, 107).unwrap();
+        let paths = generate_lmm_paths(&s, 200, 2, 109).unwrap();
+        for (strike, payer) in [(0.022, true), (0.03, false)] {
+            let dates = [1usize, 3, 5, 7, 9];
+            let b = compute_lmm_bermudan_swaption(&s, &training, &paths, &dates, 10, strike, payer).unwrap();
+            let intrinsic: Vec<f64> = dates
+                .iter()
+                .map(|&k| {
+                    let (r, a) = swap_rate_and_annuity(&s, k, 10, &s.forwards);
+                    s.discount(k) * a * if payer { r - strike } else { strike - r }.max(0.0)
+                })
+                .collect();
+            let best = intrinsic.iter().copied().fold(0.0, f64::max);
+            let at = intrinsic.iter().position(|v| *v == best).unwrap();
+            assert!((b.value - best).abs() < 1e-6 * best, "{payer}: {} against {best}", b.value);
+            assert_eq!(b.exercised_paths[at], 200, "{payer}: {:?}", b.exercised_paths);
+        }
+    }
+
+    #[test]
+    fn bermudans_agree_across_measures_and_models() {
+        let cases = [spec(0.3), LmmSpec { backward_looking: true, ..spec(0.3) }, LmmSpec { volatilities: vec![0.006; 10], model: ForwardModel::Bachelier, ..spec(0.3) }];
+        for (case, spot) in cases.into_iter().enumerate() {
+            let terminal = LmmSpec { measure: Measure::Terminal, ..spot.clone() };
+            let (rate, _) = swap_rate_and_annuity(&spot, 2, 10, &spot.forwards);
+            let dates = [2usize, 4, 6, 8];
+            let value = |s: &LmmSpec, seed: u64| {
+                let training = generate_lmm_paths(s, PATHS, 4, seed).unwrap();
+                let paths = generate_lmm_paths(s, PATHS, 4, seed + 1).unwrap();
+                compute_lmm_bermudan_swaption(s, &training, &paths, &dates, 10, rate, false).unwrap()
+            };
+            let (a, b) = (value(&spot, 111), value(&terminal, 113));
+            let both = (a.standard_error.powi(2) + b.standard_error.powi(2)).sqrt();
+            assert!((a.value - b.value).abs() < 4.0 * both, "case {case}: spot {} terminal {} ± {both}", a.value, b.value);
+        }
+        let s = spec(0.3);
+        let p = generate_lmm_paths(&s, 10, 4, 1).unwrap();
+        assert!(compute_lmm_bermudan_swaption(&s, &p, &p, &[3, 2], 10, 0.02, true).is_err());
+        assert!(compute_lmm_bermudan_swaption(&s, &p, &p, &[2, 10], 10, 0.02, true).is_err());
+        assert!(compute_lmm_bermudan_swaption(&s, &p, &p, &[], 10, 0.02, true).is_err());
     }
 
     #[test]

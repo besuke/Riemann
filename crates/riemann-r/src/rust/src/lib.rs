@@ -2482,6 +2482,48 @@ fn calibrate_lmm_volatilities(
     outcome(run())
 }
 #[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_lmm_bermudan_swaption(
+    times: Vec<f64>,
+    forwards: Vec<f64>,
+    volatilities: Vec<f64>,
+    correlation: Vec<f64>,
+    discount_start: f64,
+    backward_looking: bool,
+    model: &str,
+    volatility_grid: Vec<f64>,
+    factors: i32,
+    measure: &str,
+    discretization: &str,
+    exercise: Vec<i32>,
+    end: i32,
+    strike: f64,
+    payer: bool,
+    paths: i32,
+    steps_per_period: i32,
+    seed: f64,
+    training_seed: f64,
+) -> List {
+    let run = || -> Core<List> {
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid, factors, measure, discretization)?;
+        let (paths, steps) = (paths.max(0) as usize, steps_per_period.max(0) as usize);
+        let training = riemann::lmm_market::generate_lmm_paths(&spec, paths, steps, training_seed as u64)?;
+        let evaluation = riemann::lmm_market::generate_lmm_paths(&spec, paths, steps, seed as u64)?;
+        let dates: Vec<usize> = exercise.iter().map(|&k| k.max(0) as usize).collect();
+        let r = riemann::lmm_market::compute_lmm_bermudan_swaption(&spec, &training, &evaluation, &dates, end.max(0) as usize, strike, payer)?;
+        Ok(list!(
+            value = r.value,
+            standard_error = r.standard_error,
+            hindsight_value = r.hindsight_value,
+            european_value = r.european.iter().map(|e| e.value).collect::<Vec<_>>(),
+            european_standard_error = r.european.iter().map(|e| e.standard_error).collect::<Vec<_>>(),
+            exercised_paths = r.exercised_paths.iter().map(|&c| c as i32).collect::<Vec<_>>(),
+            unexercised_paths = r.unexercised_paths as i32
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
 fn compute_backward_period_state(
     curve: ExternalPtr<OisCurve>,
     start_date: i32,
@@ -3188,6 +3230,7 @@ extendr_module! {
     fn compute_rebonato_swaption_volatility;
     fn calibrate_lmm_correlation;
     fn calibrate_lmm_volatilities;
+    fn compute_lmm_bermudan_swaption;
     fn compute_caplet_from_normals;
     fn compute_correlated_normals;
     fn generate_correlated_normals;

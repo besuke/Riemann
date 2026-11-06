@@ -49,6 +49,7 @@ counterparts <- tribble(
   "compute_rebonato_swaption_volatility", "None; Rebonato's formula",
   "calibrate_lmm_correlation", "None; least squares on Rebonato's formula",
   "calibrate_lmm_volatilities", "None; cascade on Rebonato's formula",
+  "compute_lmm_bermudan_swaption", "None; Longstaff-Schwartz on LMM paths (QuantLib market models not exposed in R)",
   "create_lmm", "None; model inputs",
   "create_exponential_correlation", "None; exp(-beta |Ti - Tj|)",
   "create_reduced_correlation", "rankReducedSqrt (its steps on SymmetricSchurDecomposition)",
