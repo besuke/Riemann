@@ -2016,6 +2016,68 @@ fn prdc_list(s: PrdcSensitivity) -> List {
 }
 #[extendr]
 #[allow(clippy::too_many_arguments)]
+fn compute_prdc_three_factor_value(
+    spot: f64,
+    fx_volatility: f64,
+    domestic_curve: ExternalPtr<OisCurve>,
+    foreign_curve: ExternalPtr<OisCurve>,
+    domestic_rate: Vec<f64>,
+    foreign_rate: Vec<f64>,
+    correlation: Vec<f64>,
+    coupon_times: Vec<f64>,
+    accrual_fractions: Vec<f64>,
+    fixed_rates: Vec<f64>,
+    fx_base: f64,
+    leverage: f64,
+    subtraction: f64,
+    floor: f64,
+    cap: f64,
+    notional: f64,
+    redemption: f64,
+    paths: i32,
+    steps_per_year: i32,
+    seed: f64,
+) -> List {
+    let run = || -> Core<List> {
+        if domestic_rate.len() != 2 || foreign_rate.len() != 2 || correlation.len() != 3 {
+            return Err(riemann::Error::InvalidInput {
+                reason: "give each rate as (mean reversion, volatility) and three correlations".into(),
+            });
+        }
+        let terms = PrdcTerms {
+            notional,
+            redemption,
+            coupon_times,
+            accrual_fractions,
+            fixed_rates: fixed_rates.iter().map(|&r| if r.is_nan() { None } else { Some(r) }).collect(),
+            fx_base,
+            leverage,
+            subtraction,
+            floor,
+            cap,
+        };
+        let model = prdc::PrdcThreeFactor {
+            spot,
+            fx_volatility,
+            domestic: &domestic_curve.curve,
+            foreign: &foreign_curve.curve,
+            domestic_rate: prdc::HullWhiteFactor { mean_reversion: domestic_rate[0], volatility: domestic_rate[1] },
+            foreign_rate: prdc::HullWhiteFactor { mean_reversion: foreign_rate[0], volatility: foreign_rate[1] },
+            correlation: [correlation[0], correlation[1], correlation[2]],
+        };
+        let analytic = prdc::compute_prdc_three_factor_analytic(&terms, &model)?;
+        let (value, standard_error) = if paths > 0 {
+            prdc::compute_prdc_three_factor_monte_carlo(&terms, &model, paths as usize, steps_per_year.max(0) as usize, seed as u64)?
+        } else {
+            (analytic, 0.0)
+        };
+        let effective: Vec<f64> = terms.coupon_times.iter().map(|&t| (model.fx_forward_variance(t) / t).sqrt()).collect();
+        Ok(list!(value = value, standard_error = standard_error, analytic = analytic, effective_volatility = effective))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
 fn compute_prdc_value(
     spot: f64,
     volatility: f64,
@@ -3270,6 +3332,7 @@ extendr_module! {
     fn compute_cds_quote_sensitivity;
     fn compute_cds_maturity;
     fn compute_prdc_value;
+    fn compute_prdc_three_factor_value;
     fn compute_european_option_value;
     fn compute_barrier_option_value;
     fn compute_binomial_option_value;

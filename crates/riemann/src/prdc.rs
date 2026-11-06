@@ -2,12 +2,21 @@
 //! paid on the domestic notional. The definitions follow GaussQuant `prdc_coupon_GQL` and
 //! LagrangeFinance II-9 and III-7.
 //!
-//! The model is theirs: an FX rate that is lognormal between coupon dates, with deterministic domestic
+//! The first model is theirs: an FX rate that is lognormal between coupon dates, with deterministic domestic
 //! and foreign curves and one volatility. Rates are not stochastic, there is one source of randomness,
 //! and there is no call, target redemption or knock-out. The many sensitivities come from the curves.
 //!
 //! Each coupon is a constant plus a call spread on the FX rate, so the value has a closed form, which
 //! tests the Monte Carlo. Both are generic over [`Operand`].
+//!
+//! A second model has stochastic rates ([`PrdcThreeFactor`]): Hull-White domestic and foreign rates and
+//! a lognormal FX rate under the domestic measure, with a closed form per coupon (the FX forward is
+//! lognormal under each coupon's forward measure) and a Monte Carlo of the three factors, in `f64`
+//! without sensitivities (`docs/spec_prdc.md` 5 章).
+//!
+//! A second model has stochastic rates: Hull-White domestic and foreign short rates and a lognormal FX
+//! rate ([`PrdcThreeFactor`], `docs/spec_prdc.md` 5 章), in f64 only, with a closed form on each coupon's
+//! forward measure and a Monte Carlo of the three factors.
 
 // `!(x > 0.0)` is intended: it also rejects NaN
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
@@ -279,6 +288,245 @@ fn on_workers(
     sensitivity(&recorder, npv, standard_error, s, v, &d.inputs, &f.inputs)
 }
 
+// ---- the three-factor model: Hull-White domestic and foreign rates and a lognormal FX rate ----
+
+/// A Hull-White short rate `r = x + phi(t)`, `dx = -a x dt + sigma dW`, with `phi` fitting the curve.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HullWhiteFactor {
+    pub mean_reversion: f64,
+    pub volatility: f64,
+}
+
+/// The three-factor market of a note, under the domestic risk-neutral measure:
+/// `dr_d = (theta_d - a_d r_d) dt + sigma_d dW_d`,
+/// `dr_f = (theta_f - a_f r_f - rho_fX sigma_f sigma_X) dt + sigma_f dW_f` (the quanto drift),
+/// `dS / S = (r_d - r_f) dt + sigma_X dW_X`.
+#[derive(Debug, Clone, Copy)]
+pub struct PrdcThreeFactor<'c> {
+    /// Domestic per foreign.
+    pub spot: f64,
+    pub fx_volatility: f64,
+    pub domestic: &'c YieldCurve,
+    pub foreign: &'c YieldCurve,
+    pub domestic_rate: HullWhiteFactor,
+    pub foreign_rate: HullWhiteFactor,
+    /// `rho(W_d, W_f)`, `rho(W_d, W_X)`, `rho(W_f, W_X)`.
+    pub correlation: [f64; 3],
+}
+
+/// `B(tau) = (1 - exp(-a tau)) / a`, `tau` when `a` is 0.
+fn hull_white_b(a: f64, tau: f64) -> f64 {
+    if (a * tau).abs() < 1e-10 {
+        tau * (1.0 - 0.5 * a * tau)
+    } else {
+        (1.0 - (-a * tau).exp()) / a
+    }
+}
+
+/// `Var(int_0^T x du)` for `dx = -a x dt + sigma dW`, `x(0) = 0`.
+fn integrated_variance(f: &HullWhiteFactor, t: f64) -> f64 {
+    let a = f.mean_reversion;
+    if (a * t).abs() < 1e-6 {
+        return f.volatility * f.volatility * t * t * t / 3.0;
+    }
+    f.volatility * f.volatility / (a * a) * (t - 2.0 * hull_white_b(a, t) + hull_white_b(2.0 * a, t))
+}
+
+impl PrdcThreeFactor<'_> {
+    fn check(&self) -> Result<Vec<Vec<f64>>, Error> {
+        if !(self.spot > 0.0) || !(self.fx_volatility > 0.0) || !self.spot.is_finite() || !self.fx_volatility.is_finite() {
+            return invalid("the spot and FX volatility must be positive and finite".into());
+        }
+        for f in [self.domestic_rate, self.foreign_rate] {
+            if !(f.mean_reversion >= 0.0) || !(f.volatility >= 0.0) || !f.mean_reversion.is_finite() || !f.volatility.is_finite() {
+                return invalid("the rates' mean reversions and volatilities must be finite and non-negative".into());
+            }
+        }
+        let [df, dx, fx] = self.correlation;
+        let rho = [1.0, df, dx, df, 1.0, fx, dx, fx, 1.0];
+        crate::lmm::check_correlation_entries(&rho, 3)?;
+        // positive semi-definite: the determinant and the minors
+        let det = 1.0 + 2.0 * df * dx * fx - df * df - dx * dx - fx * fx;
+        if det < -1e-12 {
+            return invalid("the correlations are not a correlation matrix (negative determinant)".into());
+        }
+        Ok(vec![vec![1.0, df, dx], vec![df, 1.0, fx], vec![dx, fx, 1.0]])
+    }
+
+    /// The variance of `ln F(T, T)` with `F(t, T) = S(t) P_f(t, T) / P_d(t, T)`, a martingale under the
+    /// domestic `T`-forward measure: `int_0^T |sigma_X dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d|^2`, by
+    /// Simpson's rule on 2000 intervals (the integrand is smooth).
+    pub fn fx_forward_variance(&self, t: f64) -> f64 {
+        let [df, dx, fx] = self.correlation;
+        let (d, f) = (self.domestic_rate, self.foreign_rate);
+        let sx = self.fx_volatility;
+        let integrand = |u: f64| {
+            let bd = d.volatility * hull_white_b(d.mean_reversion, t - u);
+            let bf = f.volatility * hull_white_b(f.mean_reversion, t - u);
+            sx * sx + bf * bf + bd * bd - 2.0 * fx * sx * bf + 2.0 * dx * sx * bd - 2.0 * df * bd * bf
+        };
+        let intervals = 2000;
+        let h = t / intervals as f64;
+        let mut sum = integrand(0.0) + integrand(t);
+        for k in 1..intervals {
+            sum += integrand(k as f64 * h) * if k % 2 == 1 { 4.0 } else { 2.0 };
+        }
+        sum * h / 3.0
+    }
+}
+
+/// The closed-form value of the note in the three-factor model: each coupon is the call spread of
+/// [`compute_prdc_analytic_value`] on the forward `S P_f(0, T) / P_d(0, T)`, with the volatility
+/// `sqrt(V(T) / T)` of [`PrdcThreeFactor::fx_forward_variance`], discounted by `P_d(0, T)`. Exact,
+/// since the coupon depends only on the FX rate on its own date.
+pub fn compute_prdc_three_factor_analytic(terms: &PrdcTerms, model: &PrdcThreeFactor) -> Result<f64, Error> {
+    terms.check()?;
+    model.check()?;
+    let mut value = 0.0;
+    let mut last_discount = 1.0;
+    for i in 0..terms.coupon_times.len() {
+        let t = terms.coupon_times[i];
+        let one = PrdcTerms {
+            coupon_times: vec![t],
+            accrual_fractions: vec![terms.accrual_fractions[i]],
+            fixed_rates: vec![terms.fixed_rates[i]],
+            redemption: 0.0,
+            ..terms.clone()
+        };
+        let volatility = (model.fx_forward_variance(t) / t).sqrt();
+        let market = PrdcMarket { spot: model.spot, volatility, domestic: model.domestic, foreign: model.foreign };
+        value += compute_prdc_analytic_value(&one, &market)?;
+        last_discount = model.domestic.discount_at(t, true)?;
+    }
+    Ok(value + last_discount * terms.redemption)
+}
+
+/// The states of the three-factor paths on the coupon dates: `discount[p][i]` is
+/// `exp(-int_0^{T_i} r_d)` and `fx[p][i]` is `S(T_i)` on path `p`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrdcThreeFactorPaths {
+    pub discount: Vec<Vec<f64>>,
+    pub fx: Vec<Vec<f64>>,
+}
+
+/// Paths of the three factors on the coupon dates, with steps of at most `1 / steps_per_year` years
+/// between them. `x_d` and `x_f` move by their exact Ornstein-Uhlenbeck transitions (with the quanto
+/// drift on `x_f`) jointly with `W_X`; the integrals of `x` are by the trapezoid rule. With `phi` fitting
+/// each curve, `exp(-int r_d) = P_d(0, T) exp(-I_d - V_d / 2)` and
+/// `ln S(T) = ln S + ln(P_f(0, T) / P_d(0, T)) + I_d - I_f + (V_d - V_f) / 2 - sigma_X^2 T / 2 + sigma_X W_X(T)`,
+/// with `I = int_0^T x` and `V = Var(I)` (the foreign one under the foreign measure).
+pub fn generate_prdc_three_factor_paths(
+    coupon_times: &[f64],
+    model: &PrdcThreeFactor,
+    paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+) -> Result<PrdcThreeFactorPaths, Error> {
+    let correlation = model.check()?;
+    if coupon_times.is_empty() || coupon_times[0] <= 0.0 || coupon_times.windows(2).any(|w| w[1] <= w[0]) {
+        return invalid("coupon times must be positive and increasing".into());
+    }
+    if paths < 2 || steps_per_year == 0 || paths.saturating_mul(coupon_times.len()) > 100_000_000 {
+        return invalid(format!("give at least 2 paths and 1 step a year, and not too many paths ({paths})"));
+    }
+    // the time grid
+    let mut grid = vec![0.0];
+    for &t in coupon_times {
+        let from = *grid.last().expect("not empty");
+        let pieces = ((t - from) * steps_per_year as f64).ceil().max(1.0) as usize;
+        for k in 1..=pieces {
+            grid.push(if k == pieces { t } else { from + (t - from) * k as f64 / pieces as f64 });
+        }
+    }
+    let (d, f) = (model.domestic_rate, model.foreign_rate);
+    let sx = model.fx_volatility;
+    let [_, _, rho_fx] = model.correlation;
+    // the conditional covariance of (x_d, x_f, W_X) over a step of length h, as Ornstein-Uhlenbeck
+    // increments (W_X with no mean reversion), and its Cholesky factor (zero volatilities left out)
+    let sigma = [d.volatility, f.volatility, sx];
+    let kappa = [d.mean_reversion, f.mean_reversion, 0.0];
+    let active: Vec<usize> = (0..3).filter(|&j| sigma[j] > 0.0).collect();
+    let step_factor = |h: f64| -> Result<Vec<Vec<f64>>, Error> {
+        let cov: Vec<Vec<f64>> = active
+            .iter()
+            .map(|&a| active.iter().map(|&b| correlation[a][b] * sigma[a] * sigma[b] * hull_white_b(kappa[a] + kappa[b], h)).collect())
+            .collect();
+        crate::math::linear::compute_cholesky(&cov)
+    };
+    let factors: Vec<Vec<Vec<f64>>> = grid.windows(2).map(|w| step_factor(w[1] - w[0])).collect::<Result<_, _>>()?;
+    let mut fixed = Vec::with_capacity(coupon_times.len());
+    for &t in coupon_times {
+        let (pd, pf) = (model.domestic.discount_at(t, true)?, model.foreign.discount_at(t, true)?);
+        let (vd, vf) = (integrated_variance(&d, t), integrated_variance(&f, t));
+        fixed.push((pd, (model.spot * pf / pd).ln() + 0.5 * (vd - vf) - 0.5 * sx * sx * t, vd));
+    }
+    let results: Vec<(Vec<f64>, Vec<f64>)> = (0..paths)
+        .into_par_iter()
+        .map(|p| {
+            let (mut xd, mut xf, mut w) = (0.0, 0.0, 0.0);
+            let (mut id, mut i_f) = (0.0, 0.0);
+            let mut next = 0;
+            let mut discount = Vec::with_capacity(coupon_times.len());
+            let mut fx = Vec::with_capacity(coupon_times.len());
+            for (k, step) in grid.windows(2).enumerate() {
+                let h = step[1] - step[0];
+                let z: Vec<f64> = (0..active.len()).map(|j| generate_standard_normal(seed, p as u64, (3 * k + j) as u64)).collect();
+                let mut shock = [0.0; 3];
+                for (row, &a) in active.iter().enumerate() {
+                    shock[a] = factors[k][row].iter().zip(&z).map(|(l, x)| l * x).sum();
+                }
+                let new_xd = xd * (-d.mean_reversion * h).exp() + shock[0];
+                let new_xf = xf * (-f.mean_reversion * h).exp() - rho_fx * f.volatility * sx * hull_white_b(f.mean_reversion, h) + shock[1];
+                id += 0.5 * h * (xd + new_xd);
+                i_f += 0.5 * h * (xf + new_xf);
+                xd = new_xd;
+                xf = new_xf;
+                w += shock[2];
+                if step[1] == coupon_times[next] {
+                    let (pd, log_fx, vd) = fixed[next];
+                    discount.push(pd * (-id - 0.5 * vd).exp());
+                    fx.push((log_fx + id - i_f + w).exp());
+                    next += 1;
+                }
+            }
+            (discount, fx)
+        })
+        .collect();
+    let (discount, fx) = results.into_iter().unzip();
+    Ok(PrdcThreeFactorPaths { discount, fx })
+}
+
+/// The note's value on the three-factor paths, with its standard error.
+pub fn compute_prdc_three_factor_monte_carlo(
+    terms: &PrdcTerms,
+    model: &PrdcThreeFactor,
+    paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+) -> Result<(f64, f64), Error> {
+    terms.check()?;
+    let states = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
+    let scale = terms.leverage / terms.fx_base;
+    let n = terms.coupon_times.len();
+    let values: Vec<f64> = states
+        .discount
+        .iter()
+        .zip(&states.fx)
+        .map(|(discount, fx)| {
+            let mut total = 0.0;
+            for i in 0..n {
+                let rate = terms.fixed_rates[i].unwrap_or_else(|| (fx[i] * scale - terms.subtraction).max(terms.floor).min(terms.cap));
+                total += rate * discount[i] * terms.notional * terms.accrual_fractions[i];
+            }
+            total + discount[n - 1] * terms.redemption
+        })
+        .collect();
+    let count = values.len() as f64;
+    let mean = values.iter().sum::<f64>() / count;
+    let variance = values.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (count - 1.0);
+    Ok((mean, (variance / count).sqrt()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,6 +573,73 @@ mod tests {
             floor: 0.0,
             cap: 0.08,
         }
+    }
+
+    fn three_factor<'c>(d: &'c YieldCurve, f: &'c YieldCurve, rates: [f64; 2], correlation: [f64; 3]) -> PrdcThreeFactor<'c> {
+        PrdcThreeFactor {
+            spot: 150.0,
+            fx_volatility: 0.11,
+            domestic: d,
+            foreign: f,
+            domestic_rate: HullWhiteFactor { mean_reversion: 0.03, volatility: rates[0] },
+            foreign_rate: HullWhiteFactor { mean_reversion: 0.05, volatility: rates[1] },
+            correlation,
+        }
+    }
+
+    #[test]
+    fn without_rate_volatility_the_three_factor_model_is_the_simple_one() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.0, 0.0], [0.3, -0.2, 0.4]);
+        for t in [0.5, 1.0, 5.0] {
+            assert!((model.fx_forward_variance(t) - 0.11 * 0.11 * t).abs() < 1e-15);
+        }
+        let simple = compute_prdc_analytic_value(&terms(), &PrdcMarket { spot: 150.0, volatility: 0.11, domestic: &d, foreign: &f }).unwrap();
+        let three = compute_prdc_three_factor_analytic(&terms(), &model).unwrap();
+        assert!((three - simple).abs() < 1e-14 * simple.abs(), "{three} against {simple}");
+    }
+
+    #[test]
+    fn the_three_factor_paths_keep_no_arbitrage_and_match_the_closed_form() {
+        let (d, f) = (jpy(), foreign());
+        // rate volatilities of 1% a year, correlated with each other and with the FX rate
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let times = terms().coupon_times;
+        let paths = generate_prdc_three_factor_paths(&times, &model, 20_000, 12, 5).unwrap();
+        let mean_se = |v: Vec<f64>| -> (f64, f64) {
+            let n = v.len() as f64;
+            let m = v.iter().sum::<f64>() / n;
+            (m, (v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / (n - 1.0) / n).sqrt())
+        };
+        for (i, &t) in times.iter().enumerate() {
+            // domestic bonds: E[exp(-int r_d)] = P_d(0, T)
+            let (bond, se) = mean_se(paths.discount.iter().map(|x| x[i]).collect());
+            let pd = d.discount_at(t, true).unwrap();
+            assert!((bond - pd).abs() < 4.0 * se, "bond {t}: {bond} against {pd} ± {se}");
+            // the FX forward: E[exp(-int r_d) S(T)] = S P_f(0, T), with the quanto drift
+            let (forward, se) = mean_se(paths.discount.iter().zip(&paths.fx).map(|(x, s)| x[i] * s[i]).collect());
+            let expected = 150.0 * f.discount_at(t, true).unwrap();
+            assert!((forward - expected).abs() < 4.0 * se, "forward {t}: {forward} against {expected} ± {se}");
+            // the variance of ln S(T) under the T-forward measure: E[D S^2] / (P_d F^2) = exp(V(T))
+            let fwd = expected / pd;
+            let (second, se) = mean_se(paths.discount.iter().zip(&paths.fx).map(|(x, s)| x[i] * s[i] * s[i] / (pd * fwd * fwd)).collect());
+            let exact = model.fx_forward_variance(t).exp();
+            assert!((second - exact).abs() < 4.0 * se, "second moment {t}: {second} against {exact} ± {se}");
+        }
+        // the note: the paths against the closed form, which the rates move away from the simple model
+        let (mc, se) = compute_prdc_three_factor_monte_carlo(&terms(), &model, 20_000, 12, 7).unwrap();
+        let exact = compute_prdc_three_factor_analytic(&terms(), &model).unwrap();
+        assert!((mc - exact).abs() < 4.0 * se, "{mc} against {exact} ± {se}");
+        let simple = compute_prdc_analytic_value(&terms(), &PrdcMarket { spot: 150.0, volatility: 0.11, domestic: &d, foreign: &f }).unwrap();
+        assert!((exact - simple).abs() > 1e-3 * simple, "the rates should matter: {exact} against {simple}");
+        // the long-dated FX variance grows with the rate volatilities when the FX rate is
+        // positively correlated with the domestic rate and negatively with the foreign one
+        let more = three_factor(&d, &f, [0.01, 0.012], [0.0, 0.5, -0.5]);
+        assert!(more.fx_forward_variance(5.0) > 0.11 * 0.11 * 5.0);
+        // invalid inputs
+        assert!(generate_prdc_three_factor_paths(&times, &three_factor(&d, &f, [0.01, 0.01], [0.9, 0.9, -0.9]), 10, 4, 1).is_err());
+        assert!(generate_prdc_three_factor_paths(&times, &three_factor(&d, &f, [-0.01, 0.01], [0.0; 3]), 10, 4, 1).is_err());
+        assert!(generate_prdc_three_factor_paths(&[2.0, 1.0], &model, 10, 4, 1).is_err());
     }
 
     fn settings(threads: usize) -> PrdcMonteCarlo {
