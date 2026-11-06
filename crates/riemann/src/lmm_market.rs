@@ -111,13 +111,35 @@ pub fn create_exponential_correlation(times: &[f64], beta: f64) -> Result<Vec<f6
 pub struct LmmPaths {
     pub state: Vec<Vec<Vec<f64>>>,
     pub numeraire: Vec<Vec<f64>>,
+    /// The time of `observed`, when the paths were asked for one.
+    pub observation: Option<f64>,
+    /// `observed[p][i]` is rate `i` on path `p` at the observation time (fixed rates at their fixing).
+    pub observed: Vec<Vec<f64>>,
 }
 
 /// Simulates `paths` paths with `steps_per_period` log-Euler steps in each period (and from 0 to
 /// `T_0`). The normal variate of path `p`, step `s` and forward `i` is the library's counter-based
 /// draw for `(seed, p, s n + i)`, correlated by the Cholesky factor of `rho`.
 pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize, seed: u64) -> Result<LmmPaths, Error> {
+    generate_lmm_paths_observed(spec, paths, steps_per_period, seed, None)
+}
+
+/// The paths with the rates also kept at `observation` (years, after 0 and not after the last time),
+/// for a swaption exercised between tenor dates. The period that holds the observation is simulated in
+/// two parts of `steps_per_period` steps each, so the draws differ from paths without an observation.
+pub fn generate_lmm_paths_observed(
+    spec: &LmmSpec,
+    paths: usize,
+    steps_per_period: usize,
+    seed: u64,
+    observation: Option<f64>,
+) -> Result<LmmPaths, Error> {
     let lower = spec.check()?;
+    if let Some(t) = observation {
+        if !(t > 0.0 && t <= spec.times[spec.count()]) {
+            return invalid(format!("the observation time must be after 0 and not after the last time, not {t}"));
+        }
+    }
     if paths == 0 || steps_per_period == 0 {
         return invalid("give at least one path and one step per period".into());
     }
@@ -127,7 +149,9 @@ pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize,
     }
     let mut state = Vec::with_capacity(paths);
     let mut numeraire = Vec::with_capacity(paths);
+    let mut observed = Vec::with_capacity(if observation.is_some() { paths } else { 0 });
     for p in 0..paths {
+        let mut seen: Option<Vec<f64>> = None;
         let mut l = spec.forwards.clone();
         let mut path_state = vec![vec![f64::NAN; n]; n + 1];
         let mut path_numeraire = vec![0.0; n + 1];
@@ -165,29 +189,45 @@ pub fn generate_lmm_paths(spec: &LmmSpec, paths: usize, steps_per_period: usize,
                 }
             }
         };
+        let mut segment = |l: &mut Vec<f64>, from: f64, to: f64, alive: usize, accruing: Option<usize>, seen: &mut Option<Vec<f64>>| {
+            match observation {
+                Some(t) if seen.is_none() && from < t && t <= to => {
+                    evolve(l, from, t, alive, accruing);
+                    *seen = Some(l.clone());
+                    if t < to {
+                        evolve(l, t, to, alive, accruing);
+                    }
+                }
+                _ => evolve(l, from, to, alive, accruing),
+            }
+        };
         if spec.times[0] > 0.0 {
-            evolve(&mut l, 0.0, spec.times[0], 0, None);
+            segment(&mut l, 0.0, spec.times[0], 0, None, &mut seen);
         }
         path_state[0].clone_from(&l);
         for k in 0..n {
             if spec.backward_looking {
                 // rate k accrues over [T_k, T_{k+1}] and is known at its end; a period started before
                 // today moves only from today, its fixings so far being in `discount_start`
-                evolve(&mut l, spec.times[k].max(0.0), spec.times[k + 1], k, Some(k));
+                segment(&mut l, spec.times[k].max(0.0), spec.times[k + 1], k, Some(k), &mut seen);
                 path_numeraire[k + 1] = path_numeraire[k] * (1.0 + spec.accrual(k) * l[k]);
                 path_state[k + 1][k..n].copy_from_slice(&l[k..n]);
             } else {
                 path_numeraire[k + 1] = path_numeraire[k] * (1.0 + spec.accrual(k) * l[k]);
                 if k + 1 < n {
-                    evolve(&mut l, spec.times[k], spec.times[k + 1], k + 1, None);
+                    segment(&mut l, spec.times[k], spec.times[k + 1], k + 1, None, &mut seen);
                     path_state[k + 1][(k + 1)..n].copy_from_slice(&l[(k + 1)..n]);
                 }
             }
         }
         state.push(path_state);
         numeraire.push(path_numeraire);
+        if observation.is_some() {
+            // an observation after the last rate's start of a forward-looking model sees the rates as fixed
+            observed.push(seen.unwrap_or(l));
+        }
     }
-    Ok(LmmPaths { state, numeraire })
+    Ok(LmmPaths { state, numeraire, observation, observed })
 }
 
 /// A Monte Carlo value with its standard error.
@@ -277,6 +317,44 @@ pub fn compute_lmm_swaption_value(spec: &LmmSpec, paths: &LmmPaths, a: usize, b:
     Ok(estimate(&values))
 }
 
+/// A payer swaption exercised at the paths' observation time `t_e` (between 0 and `T_{a+1}`) into the
+/// swap from `T_a` to `T_b`. At `t_e` the swap's payoff `A (S - K)^+` is known in units of
+/// `P(t_e, T_m)`, where `T_m` is the first tenor date at or after `t_e`: the discount ratios
+/// `P(t_e, T_{j+1}) / P(t_e, T_m)` are products of the rates at `t_e`. The value is then
+/// `E[Y / B(T_m)]`, since `P(t_e, T_m) / B(t_e) = E_{t_e}[1 / B(T_m)]`. For a backward-looking first
+/// rate exercised during its period, its value at `t_e` is its forward, the fixings so far and the
+/// expected rest.
+pub fn compute_lmm_swaption_value_at(spec: &LmmSpec, paths: &LmmPaths, a: usize, b: usize, strike: f64) -> Result<LmmEstimate, Error> {
+    spec.check()?;
+    let n = spec.count();
+    let Some(expiry) = paths.observation else {
+        return invalid("the paths have no observation time; use generate_lmm_paths_observed".into());
+    };
+    if !(a < b && b <= n) {
+        return invalid(format!("the swap must run from T_a to T_b with a < b <= {n}"));
+    }
+    if expiry > spec.times[a + 1] {
+        return invalid(format!("the exercise {expiry} is after the end of the swap's first period {}", spec.times[a + 1]));
+    }
+    let m = spec.times.iter().position(|&t| t >= expiry).expect("the expiry is not after the last time");
+    let values: Vec<f64> = paths
+        .observed
+        .iter()
+        .zip(&paths.numeraire)
+        .map(|(rates, numeraire)| {
+            // P(t_e, T_{j+1}) / P(t_e, T_m) for the swap's payments
+            let (mut annuity, mut floating) = (0.0, 0.0);
+            for j in a..b {
+                let ratio: f64 = (m..=j).map(|l| 1.0 / (1.0 + spec.accrual(l) * rates[l])).product();
+                annuity += spec.accrual(j) * ratio;
+                floating += spec.accrual(j) * rates[j] * ratio;
+            }
+            (floating - strike * annuity).max(0.0) / numeraire[m]
+        })
+        .collect();
+    Ok(estimate(&values))
+}
+
 /// A caplet on `L_i` paid at `T_{i+1}`, per unit notional, on the paths.
 pub fn compute_lmm_caplet_value(spec: &LmmSpec, paths: &LmmPaths, i: usize, strike: f64) -> Result<LmmEstimate, Error> {
     spec.check()?;
@@ -304,6 +382,51 @@ pub fn compute_lmm_caplet_value(spec: &LmmSpec, paths: &LmmPaths, i: usize, stri
 /// decay before the exercise.
 pub fn compute_rebonato_swaption_volatility(spec: &LmmSpec, a: usize, b: usize) -> Result<f64, Error> {
     spec.check()?;
+    compute_rebonato_swaption_volatility_at(spec, a, b, spec.times.get(a).copied().unwrap_or(f64::NAN))
+}
+
+/// The volatility of the rate `i` relative to its level at time `u`: 1 until the rate starts (or
+/// fixes, for a forward-looking rate), then, for a backward-looking rate, falling linearly to 0 at the
+/// end of its period.
+fn decay(spec: &LmmSpec, i: usize, u: f64) -> f64 {
+    let (start, end) = (spec.times[i], spec.times[i + 1]);
+    if u <= start {
+        1.0
+    } else if spec.backward_looking && u < end {
+        (end - u) / (end - start)
+    } else {
+        0.0
+    }
+}
+
+/// `int_0^t g_i(u) g_j(u) du / t`: Simpson's rule between the breakpoints, exact for these pieces.
+fn decay_overlap(spec: &LmmSpec, i: usize, j: usize, t: f64) -> f64 {
+    if t <= spec.times[i].min(spec.times[j]) {
+        return 1.0;
+    }
+    let mut points = vec![0.0, t];
+    points.extend([spec.times[i], spec.times[i + 1], spec.times[j], spec.times[j + 1]].iter().filter(|&&x| x > 0.0 && x < t));
+    points.sort_by(f64::total_cmp);
+    let product = |u: f64| decay(spec, i, u) * decay(spec, j, u);
+    let mut integral = 0.0;
+    for w in points.windows(2) {
+        let (x0, x1) = (w[0], w[1]);
+        // the decay is 1 or 0 at a breakpoint from the left: evaluate just inside the piece
+        let inside = |x: f64| product(x.clamp(x0 + 1e-15 * (x1 - x0), x1 - 1e-15 * (x1 - x0)));
+        integral += (x1 - x0) / 6.0 * (inside(x0) + 4.0 * product((x0 + x1) / 2.0) + inside(x1));
+    }
+    integral / t
+}
+
+/// Rebonato's approximation at an exercise time `expiry`, which may lie between tenor dates: the time
+/// integral of each covariance is `int_0^expiry sigma_i sigma_j g_i g_j du`, with the decay `g` of
+/// backward-looking rates inside their period (Lyashenko and Mercurio). At `expiry = T_a` it is
+/// [`compute_rebonato_swaption_volatility`]. The volatility is per year of `expiry`.
+pub fn compute_rebonato_swaption_volatility_at(spec: &LmmSpec, a: usize, b: usize, expiry: f64) -> Result<f64, Error> {
+    spec.check()?;
+    if !(expiry > 0.0) || (a < spec.count() && expiry > spec.times[a + 1]) {
+        return invalid(format!("the exercise time must be after 0 and not after the end of the swap's first period, not {expiry}"));
+    }
     let n = spec.count();
     if !(a < b && b <= n) {
         return invalid(format!("the swap must run from T_a to T_b with a < b <= {n}"));
@@ -320,7 +443,7 @@ pub fn compute_rebonato_swaption_volatility(spec: &LmmSpec, a: usize, b: usize) 
     for i in a..b {
         for j in a..b {
             let levels = if spec.model == ForwardModel::Black { spec.forwards[i] * spec.forwards[j] } else { 1.0 };
-            sum += weights[i - a] * weights[j - a] * levels * spec.correlation[i * n + j] * spec.volatilities[i] * spec.volatilities[j];
+            sum += weights[i - a] * weights[j - a] * levels * spec.correlation[i * n + j] * spec.volatilities[i] * spec.volatilities[j] * decay_overlap(spec, i, j, expiry);
         }
     }
     // a lognormal volatility for Black, a normal one for Bachelier
@@ -331,11 +454,17 @@ pub fn compute_rebonato_swaption_volatility(spec: &LmmSpec, a: usize, b: usize) 
 /// notional, today.
 pub fn compute_formula_swaption_value(spec: &LmmSpec, a: usize, b: usize, strike: f64, volatility: f64) -> Result<f64, Error> {
     spec.check()?;
+    compute_formula_swaption_value_at(spec, a, b, strike, volatility, spec.times[a])
+}
+
+/// The formula value of the swaption exercised at `expiry`, with a volatility per year of `expiry`.
+pub fn compute_formula_swaption_value_at(spec: &LmmSpec, a: usize, b: usize, strike: f64, volatility: f64, expiry: f64) -> Result<f64, Error> {
+    spec.check()?;
     let (rate, annuity) = swap_rate_and_annuity(spec, a, b, &spec.forwards);
     let value = compute_forward_value(
         spec.model,
         OptionType::Call,
-        &ForwardInputs { forward: rate, strike, volatility, time: spec.times[a], discount: 1.0 },
+        &ForwardInputs { forward: rate, strike, volatility, time: expiry, discount: 1.0 },
     )?;
     Ok(spec.discount(a) * annuity * value)
 }
@@ -629,6 +758,47 @@ mod tests {
             let combined = (bl.standard_error.powi(2) + fl.standard_error.powi(2)).sqrt();
             assert!((bl.value - fl.value).abs() < 4.0 * combined, "{a}x{b}: {} against {} ± {combined}", bl.value, fl.value);
         }
+    }
+
+    #[test]
+    fn swaptions_exercised_between_tenor_dates() {
+        let fmm = LmmSpec { backward_looking: true, ..spec(0.3) };
+        let (a, b) = (4usize, 9usize);
+        // at T_a the observed paths and the formula are those of the usual swaption
+        let at_start = generate_lmm_paths_observed(&fmm, PATHS, 8, 37, Some(fmm.times[a])).unwrap();
+        let (rate, _) = swap_rate_and_annuity(&fmm, a, b, &fmm.forwards);
+        let usual = compute_lmm_swaption_value(&fmm, &at_start, a, b, rate).unwrap();
+        let observed = compute_lmm_swaption_value_at(&fmm, &at_start, a, b, rate).unwrap();
+        assert!((usual.value - observed.value).abs() < 1e-14, "{} against {}", usual.value, observed.value);
+        assert_eq!(compute_rebonato_swaption_volatility(&fmm, a, b).unwrap(), compute_rebonato_swaption_volatility_at(&fmm, a, b, fmm.times[a]).unwrap());
+        // inside the first period of the swap, and inside the period before its start
+        for expiry in [fmm.times[a] + 0.5 * fmm.accrual(a), fmm.times[a] + 0.9 * fmm.accrual(a), fmm.times[a] - 0.25 * fmm.accrual(a - 1)] {
+            let paths = generate_lmm_paths_observed(&fmm, PATHS, 8, 41, Some(expiry)).unwrap();
+            let mc = compute_lmm_swaption_value_at(&fmm, &paths, a, b, rate).unwrap();
+            let v = compute_rebonato_swaption_volatility_at(&fmm, a, b, expiry).unwrap();
+            let approx = compute_formula_swaption_value_at(&fmm, a, b, rate, v, expiry).unwrap();
+            assert!((mc.value - approx).abs() < 4.0 * mc.standard_error + 0.02 * approx, "exercise {expiry}: {approx} against {} ± {}", mc.value, mc.standard_error);
+            // no arbitrage: with a strike of 0 the swaption is the floating leg, P(0, T_a) - P(0, T_b)
+            let floating = compute_lmm_swaption_value_at(&fmm, &paths, a, b, 0.0).unwrap();
+            let leg = fmm.discount(a) - fmm.discount(b);
+            assert!((floating.value - leg).abs() < 4.0 * floating.standard_error + 1e-12, "exercise {expiry}: {leg} against {} ± {}", floating.value, floating.standard_error);
+        }
+        // the decay of the first rate adds variance as the exercise moves into its period, less than
+        // a whole period of full volatility would
+        let at = |t: f64| compute_rebonato_swaption_volatility_at(&fmm, a, b, t).unwrap().powi(2) * t;
+        let (t_a, t_mid) = (fmm.times[a], fmm.times[a] + 0.5 * fmm.accrual(a));
+        assert!(at(t_mid) > at(t_a));
+        let forward_looking = spec(0.3);
+        let full = |t: f64| compute_rebonato_swaption_volatility_at(&forward_looking, a, b, t).unwrap().powi(2) * t;
+        assert!(at(t_mid) - at(t_a) > 0.0 && full(t_a) == at(t_a));
+        // the integral of g_a^2 and g_a over [0, t] in the first period, in closed form
+        let (s, e, tau) = (fmm.times[a], fmm.times[a + 1], fmm.accrual(a));
+        let squared = (s + (tau.powi(3) - (e - t_mid).powi(3)) / (3.0 * tau * tau)) / t_mid;
+        let single = (s + (tau * tau - (e - t_mid).powi(2)) / (2.0 * tau)) / t_mid;
+        assert!((decay_overlap(&fmm, a, a, t_mid) - squared).abs() < 1e-12);
+        assert!((decay_overlap(&fmm, a, a + 2, t_mid) - single).abs() < 1e-12);
+        assert!(compute_rebonato_swaption_volatility_at(&fmm, a, b, fmm.times[a + 1] + 0.01).is_err());
+        assert!(compute_lmm_swaption_value_at(&fmm, &generate_lmm_paths(&fmm, 10, 4, 1).unwrap(), a, b, rate).is_err());
     }
 
     #[test]

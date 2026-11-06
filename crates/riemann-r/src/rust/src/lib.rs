@@ -2296,18 +2296,25 @@ fn compute_lmm_monte_carlo(
     start: Vec<i32>,
     end: Vec<i32>,
     strike: Vec<f64>,
+    expiry: Vec<f64>,
     paths: i32,
     steps_per_period: i32,
     seed: f64,
 ) -> List {
     let run = || -> Core<List> {
         let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model)?;
-        let simulated = riemann::lmm_market::generate_lmm_paths(&spec, paths.max(0) as usize, steps_per_period.max(0) as usize, seed as u64)?;
+        let (paths, steps) = (paths.max(0) as usize, steps_per_period.max(0) as usize);
+        let simulated = riemann::lmm_market::generate_lmm_paths(&spec, paths, steps, seed as u64)?;
         let (mut value, mut standard_error) = (Vec::new(), Vec::new());
         for i in 0..kind.len() {
             let (a, b) = (start[i] as usize, end[i] as usize);
             let e = match kind[i].as_str() {
-                "swaption" => riemann::lmm_market::compute_lmm_swaption_value(&spec, &simulated, a, b, strike[i])?,
+                "swaption" if expiry[i].is_nan() => riemann::lmm_market::compute_lmm_swaption_value(&spec, &simulated, a, b, strike[i])?,
+                "swaption" => {
+                    // exercised between tenor dates: paths observed at that time
+                    let observed = riemann::lmm_market::generate_lmm_paths_observed(&spec, paths, steps, seed as u64, Some(expiry[i]))?;
+                    riemann::lmm_market::compute_lmm_swaption_value_at(&spec, &observed, a, b, strike[i])?
+                }
                 "caplet" => riemann::lmm_market::compute_lmm_caplet_value(&spec, &simulated, a, strike[i])?,
                 other => return Err(riemann::Error::InvalidInput { reason: format!("type must be swaption or caplet, not {other}") }),
             };
@@ -2368,15 +2375,18 @@ fn compute_rebonato_swaption_volatility(
     start: Vec<i32>,
     end: Vec<i32>,
     strike: Vec<f64>,
+    expiry: Vec<f64>,
 ) -> List {
     let run = || -> Core<List> {
         let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model)?;
         let (mut vol, mut black) = (Vec::new(), Vec::new());
         for i in 0..start.len() {
             let (a, b) = (start[i] as usize, end[i] as usize);
-            let v = riemann::lmm_market::compute_rebonato_swaption_volatility(&spec, a, b)?;
+            // NaN: exercised at the swap's start
+            let t = if expiry[i].is_nan() { times.get(a).copied().unwrap_or(f64::NAN) } else { expiry[i] };
+            let v = riemann::lmm_market::compute_rebonato_swaption_volatility_at(&spec, a, b, t)?;
             // a strike of 0 or less asks for the volatility only
-            black.push(if strike[i] > 0.0 { riemann::lmm_market::compute_formula_swaption_value(&spec, a, b, strike[i], v)? } else { f64::NAN });
+            black.push(if strike[i] > 0.0 { riemann::lmm_market::compute_formula_swaption_value_at(&spec, a, b, strike[i], v, t)? } else { f64::NAN });
             vol.push(v);
         }
         Ok(list!(volatility = vol, black_value = black))

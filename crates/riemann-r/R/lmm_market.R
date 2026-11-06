@@ -40,7 +40,11 @@
 #'   and which may turn negative. Rebonato's volatility and the formula values follow the model.
 #' @param model A model from `create_lmm()`.
 #' @param paths,steps_per_period,seed Number of paths, log-Euler steps in each period, and the seed.
-#' @param start,end Positions in `times`: exercise at `times[start]`, swap to `times[end]`.
+#' @param start,end Positions in `times`: the swap runs from `times[start]` to `times[end]`.
+#' @param expiry `NULL` to exercise at `times[start]`, or exercise times in years, after 0 and not after the end of
+#'   the swap's first period (`times[start + 1]`): between tenor dates, or during the first period of
+#'   backward-looking rates. The Monte Carlo then keeps the rates at that time and defers the payoff to the next
+#'   tenor date; Rebonato's approximation integrates the decay of each backward-looking rate up to `expiry`.
 #' @param forward Position of the forward of a caplet (1 to n).
 #' @param strike Strike rates.
 #' @param volatility Black volatilities of the swaptions to fit.
@@ -99,21 +103,22 @@ generate_lmm_paths <- function(model, paths, steps_per_period = 4L, seed = 1) {
 
 #' @rdname create_lmm
 #' @export
-compute_rebonato_swaption_volatility <- function(model, start, end) {
+compute_rebonato_swaption_volatility <- function(model, start, end, expiry = NULL) {
   a <- lmm_args(model)
-  i <- tibble(start = as.integer(start), end = as.integer(end))
+  i <- tibble(start = as.integer(start), end = as.integer(end), expiry = if (is.null(expiry)) NA_real_ else as.numeric(expiry))
   checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], i$start - 1L, i$end - 1L,
-                rep(0, nrow(i))))$volatility
+                rep(0, nrow(i)), i$expiry))$volatility
 }
 
 #' @rdname create_lmm
 #' @export
-compute_lmm_swaption_value <- function(model, start, end, strike, paths = 2000L, steps_per_period = 4L, seed = 1) {
+compute_lmm_swaption_value <- function(model, start, end, strike, expiry = NULL, paths = 2000L, steps_per_period = 4L, seed = 1) {
   a <- lmm_args(model)
-  i <- tibble(start = as.integer(start), end = as.integer(end), strike = as.numeric(strike))
-  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], rep("swaption", nrow(i)), i$start - 1L, i$end - 1L, i$strike,
+  i <- tibble(start = as.integer(start), end = as.integer(end), strike = as.numeric(strike),
+              expiry = if (is.null(expiry)) NA_real_ else as.numeric(expiry))
+  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], rep("swaption", nrow(i)), i$start - 1L, i$end - 1L, i$strike, i$expiry,
                       as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
-  approx <- checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], i$start - 1L, i$end - 1L, i$strike))
+  approx <- checked(.Call(wrap__compute_rebonato_swaption_volatility, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], i$start - 1L, i$end - 1L, i$strike, i$expiry))
   tibble::add_column(i, value = mc$value, standard_error = mc$standard_error, rebonato_volatility = approx$volatility,
                      rebonato_value = approx$black_value)
 }
@@ -123,7 +128,7 @@ compute_lmm_swaption_value <- function(model, start, end, strike, paths = 2000L,
 compute_lmm_caplet_value <- function(model, forward, strike, paths = 2000L, steps_per_period = 4L, seed = 1) {
   a <- lmm_args(model)
   i <- tibble(forward = as.integer(forward), strike = as.numeric(strike))
-  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], rep("caplet", nrow(i)), i$forward - 1L, i$forward, i$strike,
+  mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], rep("caplet", nrow(i)), i$forward - 1L, i$forward, i$strike, rep(NA_real_, nrow(i)),
                       as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
   n <- length(model$forwards)
   discount <- model$discount_start / cumprod(1 + diff(model$times) * model$forwards)

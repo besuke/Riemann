@@ -66,3 +66,16 @@ test_that("normal rates keep bonds martingales and follow Bachelier's formulas",
   expect_lt(abs(b$value - b$formula_value), 4 * b$standard_error)
   expect_error(create_lmm(times, model$forwards, rep(0.006, 10), beta = 0.3, model = "sabr"), "should be one of")
 })
+
+test_that("swaptions exercised between tenor dates and during a backward-looking period", {
+  fmm <- create_lmm(times, model$forwards, model$volatilities, beta = 0.3, discount_start = model$discount_start, backward_looking = TRUE)
+  expiry <- c(NA, times[5] + 0.25, times[5] - 0.125)
+  s <- compute_lmm_swaption_value(fmm, start = 5, end = 10, strike = 0.025, expiry = expiry, paths = 2000L, steps_per_period = 8L)
+  expect_true(all(abs(s$value - s$rebonato_value) < 4 * s$standard_error + 0.02 * s$rebonato_value))
+  expect_equal(compute_rebonato_swaption_volatility(fmm, 5, 10, expiry = times[5]), compute_rebonato_swaption_volatility(fmm, 5, 10))
+  # no arbitrage: a strike of 0 values the floating leg
+  bonds <- fmm$discount_start / cumprod(1 + diff(times) * fmm$forwards)
+  leg <- compute_lmm_swaption_value(fmm, start = 5, end = 10, strike = 0, expiry = times[5] + 0.25, paths = 2000L, steps_per_period = 8L)
+  expect_lt(abs(leg$value - (bonds[4] - bonds[9])), 4 * leg$standard_error + 1e-12)
+  expect_error(compute_lmm_swaption_value(fmm, 5, 10, 0.025, expiry = times[6] + 0.1, paths = 10L), "after the end")
+})

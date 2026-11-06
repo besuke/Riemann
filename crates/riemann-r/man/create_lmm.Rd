@@ -25,13 +25,14 @@ create_exponential_correlation(times, beta)
 
 generate_lmm_paths(model, paths, steps_per_period = 4L, seed = 1)
 
-compute_rebonato_swaption_volatility(model, start, end)
+compute_rebonato_swaption_volatility(model, start, end, expiry = NULL)
 
 compute_lmm_swaption_value(
   model,
   start,
   end,
   strike,
+  expiry = NULL,
   paths = 2000L,
   steps_per_period = 4L,
   seed = 1
@@ -69,7 +70,12 @@ the whole period from \code{\link[=compute_backward_forward_rate]{compute_backwa
 
 \item{paths, steps_per_period, seed}{Number of paths, log-Euler steps in each period, and the seed.}
 
-\item{start, end}{Positions in \code{times}: exercise at \code{times[start]}, swap to \code{times[end]}.}
+\item{start, end}{Positions in \code{times}: the swap runs from \code{times[start]} to \code{times[end]}.}
+
+\item{expiry}{\code{NULL} to exercise at \code{times[start]}, or exercise times in years, after 0 and not after the end of
+the swap's first period (\code{times[start + 1]}): between tenor dates, or during the first period of
+backward-looking rates. The Monte Carlo then keeps the rates at that time and defers the payoff to the next
+tenor date; Rebonato's approximation integrates the decay of each backward-looking rate up to \code{expiry}.}
 
 \item{strike}{Strike rates.}
 
