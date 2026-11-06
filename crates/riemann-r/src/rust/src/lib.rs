@@ -2042,6 +2042,9 @@ fn compute_prdc_three_factor_value(
     training_seed: f64,
     training_paths: i32,
     bump: f64,
+    target: f64,
+    target_coupon: &str,
+    make_whole: bool,
 ) -> List {
     let run = || -> Core<List> {
         if domestic_rate.len() != 2 || foreign_rate.len() != 2 || correlation.len() != 3 {
@@ -2072,6 +2075,7 @@ fn compute_prdc_three_factor_value(
         };
         let sens = prdc::compute_prdc_three_factor_sensitivity(&terms, &model)?;
         let analytic = sens.npv;
+        let effective_all: Vec<f64> = terms.coupon_times.iter().map(|&t| (model.fx_forward_variance(t) / t).sqrt()).collect();
         let parameter: Vec<String> = ["spot", "fx_volatility", "domestic_mean_reversion", "domestic_volatility", "foreign_mean_reversion", "foreign_volatility", "rho_domestic_foreign", "rho_domestic_fx", "rho_foreign_fx"].iter().map(|s| s.to_string()).collect();
         let d_parameter = vec![sens.fx_delta, sens.fx_vega, sens.domestic_mean_reversion, sens.domestic_volatility, sens.foreign_mean_reversion, sens.foreign_volatility, sens.correlation[0], sens.correlation[1], sens.correlation[2]];
         let (mut curve, mut curve_date, mut curve_time, mut d_curve) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -2082,6 +2086,39 @@ fn compute_prdc_three_factor_value(
                 curve_time.push(time);
                 d_curve.push(c.d_npv);
             }
+        }
+        if target.is_finite() || make_whole {
+            if !call_dates.is_empty() || paths <= 0 {
+                return Err(riemann::Error::InvalidInput { reason: "a target redemption needs paths and no call dates".into() });
+            }
+            let coupon = match target_coupon {
+                "capped" => prdc::TargetCoupon::Capped,
+                "full" => prdc::TargetCoupon::Full,
+                other => return Err(riemann::Error::InvalidInput { reason: format!("unknown target coupon {other:?}: use \"capped\" or \"full\"") }),
+            };
+            let r = prdc::compute_target_redemption_prdc(
+                &terms,
+                &model,
+                &prdc::TargetRedemption { target, coupon, make_whole },
+                paths as usize,
+                steps_per_year.max(0) as usize,
+                seed as u64,
+            )?;
+            return Ok(list!(
+                value = r.value,
+                standard_error = r.standard_error,
+                analytic = analytic,
+                effective_volatility = effective_all.clone(),
+                parameter = parameter,
+                d_parameter = d_parameter,
+                curve = curve,
+                curve_date = curve_date,
+                curve_time = curve_time,
+                d_curve = d_curve,
+                plain_value = r.plain_value,
+                expected_life = r.expected_life,
+                redemption_probability = r.redemption_probability
+            ));
         }
         if !call_dates.is_empty() {
             if paths <= 0 {

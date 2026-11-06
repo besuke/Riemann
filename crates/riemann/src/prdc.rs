@@ -1011,6 +1011,114 @@ pub fn compute_callable_prdc_three_factor_sensitivity<'c>(
     })
 }
 
+// ---- target redemption ----
+
+/// What the coupon of the date that reaches the target pays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetCoupon {
+    /// The whole coupon, even beyond the target.
+    Full,
+    /// Only what is left up to the target (an exact target).
+    Capped,
+}
+
+/// The target redemption of a note: once the sum of the coupon rates times their accrual fractions
+/// (fixed coupons included) reaches `target`, the note pays that date's coupon (see [`TargetCoupon`])
+/// and the redemption, and ends. With `make_whole`, a note that has not reached the target by the last
+/// date also pays the shortfall then.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TargetRedemption {
+    /// In units of the notional, as the sum of `rate * accrual_fraction`. Infinity for no target.
+    pub target: f64,
+    pub coupon: TargetCoupon,
+    pub make_whole: bool,
+}
+
+/// A target redemption note on the three-factor paths.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetRedemptionResult {
+    pub value: f64,
+    pub standard_error: f64,
+    /// The note without the target on the same paths.
+    pub plain_value: f64,
+    /// The share of paths that reach the target on each coupon date (the last includes a target reached
+    /// on that date, not the paths that end there without it).
+    pub redemption_probability: Vec<f64>,
+    /// The mean time to the note's end, in years.
+    pub expected_life: f64,
+}
+
+/// One path of a target redemption note: its discounted cash flows, the date it ends, and whether it
+/// reached the target.
+fn follow_target(terms: &PrdcTerms, target: &TargetRedemption, discount: &[f64], fx: &[f64]) -> (f64, usize, bool) {
+    let n = terms.coupon_times.len();
+    let scale = terms.leverage / terms.fx_base;
+    let mut sum = 0.0;
+    let mut value = 0.0;
+    for i in 0..n {
+        let rate = terms.fixed_rates[i].unwrap_or_else(|| (fx[i] * scale - terms.subtraction).max(terms.floor).min(terms.cap));
+        let accrued = rate * terms.accrual_fractions[i];
+        if sum + accrued >= target.target {
+            let paid = match target.coupon {
+                TargetCoupon::Full => accrued,
+                TargetCoupon::Capped => target.target - sum,
+            };
+            value += (paid * terms.notional + terms.redemption) * discount[i];
+            return (value, i, true);
+        }
+        sum += accrued;
+        value += accrued * terms.notional * discount[i];
+    }
+    let shortfall = if target.make_whole { (target.target - sum).max(0.0) * terms.notional } else { 0.0 };
+    value += (terms.redemption + shortfall) * discount[n - 1];
+    (value, n - 1, false)
+}
+
+/// A target redemption note (see [`TargetRedemption`]) on the paths of the three-factor model, by Monte
+/// Carlo: the note is path-dependent, but needs no regression. With zero rate volatilities it is the
+/// note of the first model.
+pub fn compute_target_redemption_prdc(
+    terms: &PrdcTerms,
+    model: &PrdcThreeFactor,
+    target: &TargetRedemption,
+    paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+) -> Result<TargetRedemptionResult, Error> {
+    terms.check()?;
+    if !(target.target > 0.0) {
+        return invalid(format!("the target must be positive (infinity for none), not {}", target.target));
+    }
+    if target.make_whole && !target.target.is_finite() {
+        return invalid("a make-whole needs a finite target".into());
+    }
+    let n = terms.coupon_times.len();
+    let states = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
+    let no_target = TargetRedemption { target: f64::INFINITY, coupon: TargetCoupon::Full, make_whole: false };
+    let mut values = Vec::with_capacity(paths);
+    let mut plain = 0.0;
+    let mut reached = vec![0usize; n];
+    let mut life = 0.0;
+    for (discount, fx) in states.discount.iter().zip(&states.fx) {
+        let (value, end, hit) = follow_target(terms, target, discount, fx);
+        values.push(value);
+        if hit {
+            reached[end] += 1;
+        }
+        life += terms.coupon_times[end];
+        plain += follow_target(terms, &no_target, discount, fx).0;
+    }
+    let e = mean_and_error(&values);
+    let count = paths as f64;
+    Ok(TargetRedemptionResult {
+        value: e.value,
+        standard_error: e.standard_error,
+        plain_value: plain / count,
+        redemption_probability: reached.iter().map(|&c| c as f64 / count).collect(),
+        expected_life: life / count,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1380,6 +1488,69 @@ mod tests {
         let re_estimated = (value(&PrdcThreeFactor { spot: 158.5, ..model }) - value(&PrdcThreeFactor { spot: 157.5, ..model })) / 1.0;
         assert!((s.fx_delta.value - re_estimated).abs() < 0.02 * re_estimated.abs(), "{} against {re_estimated}", s.fx_delta.value);
         assert!(compute_callable_prdc_three_factor_sensitivity(&t, &model, &dates, t.redemption, 10, 10, 4, 3, 5, 0.0).is_err());
+    }
+
+    #[test]
+    fn a_target_redemption_note_against_its_limits() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let t = terms();
+        // no target: the note on the same paths
+        let none = TargetRedemption { target: f64::INFINITY, coupon: TargetCoupon::Full, make_whole: false };
+        let r = compute_target_redemption_prdc(&t, &model, &none, 4000, 12, 7).unwrap();
+        let (plain, _) = compute_prdc_three_factor_monte_carlo(&t, &model, 4000, 12, 7).unwrap();
+        assert!((r.value / plain - 1.0).abs() < 1e-12 && (r.plain_value / plain - 1.0).abs() < 1e-12);
+        assert!(r.redemption_probability.iter().all(|&q| q == 0.0) && r.expected_life == 5.0);
+        // a target below the floor: every path ends on the first date, paying the target and the redemption
+        let floored = PrdcTerms { floor: 0.01, ..t.clone() };
+        let tiny = TargetRedemption { target: 0.005, coupon: TargetCoupon::Capped, make_whole: false };
+        let r = compute_target_redemption_prdc(&floored, &model, &tiny, 4000, 12, 7).unwrap();
+        assert_eq!(r.redemption_probability[0], 1.0);
+        assert!((r.expected_life - 1.0).abs() < 1e-15);
+        let exact = (0.005 * floored.notional + floored.redemption) * d.discount_at(1.0, true).unwrap();
+        assert!((r.value - exact).abs() < 4.0 * r.standard_error + 1e-9 * exact, "{} against {exact} ± {}", r.value, r.standard_error);
+        // the same paths: a full last coupon pays at least the capped one, a make-whole at least nothing
+        for target in [0.06, 0.12, 0.2] {
+            let capped = compute_target_redemption_prdc(&t, &model, &TargetRedemption { target, coupon: TargetCoupon::Capped, make_whole: false }, 4000, 12, 7).unwrap();
+            let full = compute_target_redemption_prdc(&t, &model, &TargetRedemption { target, coupon: TargetCoupon::Full, make_whole: false }, 4000, 12, 7).unwrap();
+            let whole = compute_target_redemption_prdc(&t, &model, &TargetRedemption { target, coupon: TargetCoupon::Capped, make_whole: true }, 4000, 12, 7).unwrap();
+            assert!(full.value >= capped.value && whole.value >= capped.value, "{target}");
+            assert_eq!(full.redemption_probability, capped.redemption_probability);
+            assert!(capped.redemption_probability.iter().sum::<f64>() <= 1.0);
+            assert!(capped.expected_life <= 5.0);
+        }
+        assert!(compute_target_redemption_prdc(&t, &model, &TargetRedemption { target: 0.0, coupon: TargetCoupon::Full, make_whole: false }, 10, 4, 1).is_err());
+        assert!(compute_target_redemption_prdc(&t, &model, &TargetRedemption { make_whole: true, ..none }, 10, 4, 1).is_err());
+    }
+
+    #[test]
+    fn a_nearly_deterministic_target_redemption_follows_its_forward_path() {
+        let (d, f) = (jpy(), foreign());
+        let t = terms();
+        for (spot, target) in [(158.0, 0.15), (165.0, 0.1), (140.0, 0.02)] {
+            let model = PrdcThreeFactor { spot, fx_volatility: 1e-9, ..three_factor(&d, &f, [0.0, 0.0], [0.0; 3]) };
+            let rule = TargetRedemption { target, coupon: TargetCoupon::Capped, make_whole: true };
+            let r = compute_target_redemption_prdc(&t, &model, &rule, 50, 4, 3).unwrap();
+            // the coupons on the forwards, until the sum reaches the target
+            let scale = t.leverage / t.fx_base;
+            let (mut sum, mut value) = (0.0, 0.0);
+            for i in 0..5 {
+                let time = t.coupon_times[i];
+                let (pd, pf) = (d.discount_at(time, true).unwrap(), f.discount_at(time, true).unwrap());
+                let rate = (spot * pf / pd * scale - t.subtraction).max(t.floor).min(t.cap);
+                if sum + rate >= target {
+                    value += ((target - sum) * t.notional + t.redemption) * pd;
+                    sum = f64::NAN;
+                    break;
+                }
+                sum += rate;
+                value += rate * t.notional * pd;
+                if i == 4 {
+                    value += (t.redemption + (target - sum) * t.notional) * pd;
+                }
+            }
+            assert!((r.value / value - 1.0).abs() < 1e-7, "{spot} {target}: {} against {value} (sum {sum})", r.value);
+        }
     }
 
     fn settings(threads: usize) -> PrdcMonteCarlo {

@@ -29,7 +29,10 @@ compute_prdc_three_factor_value(
   call_price = redemption,
   training_seed = seed + 1,
   training_paths = paths,
-  bump = 0.001
+  bump = 0.001,
+  target = Inf,
+  target_coupon = "capped",
+  make_whole = FALSE
 )
 }
 \arguments{
@@ -70,6 +73,12 @@ no call. A call needs \code{paths > 0}.}
 
 \item{bump}{Step of the callable note's central differences. Paths that cross the fixed rule's boundary add a jump
 divided by the step, so a small step makes the estimate noisy.}
+
+\item{target}{The target, in units of the notional; \code{Inf} for none.}
+
+\item{target_coupon}{\code{"capped"} or \code{"full"}: the coupon of the date that reaches the target.}
+
+\item{make_whole}{\code{TRUE} to pay the shortfall at the last date if the target is not reached.}
 }
 \value{
 A list with \code{summary}, a one-row tibble with \code{value}, \code{standard_error} (0 for the closed form) and
@@ -81,7 +90,8 @@ on the node's continuous zero rate). The derivatives are of the note without the
 With call dates, \code{summary} adds \code{noncallable_value} and \code{hindsight_value}, and \code{calls} is a
 tibble of the call dates' \code{call_probability}, \code{call_sensitivity} a tibble (\code{parameter}, \code{d_npv},
 \code{standard_error}) of the callable note's derivatives, and \code{call_curve_sensitivity} its curve nodes, with
-\code{standard_error}.
+\code{standard_error}. With a target, \code{summary} adds \code{plain_value} (no target, same paths) and \code{expected_life}, and
+\code{target_redemption} is a tibble of each coupon date's \code{redemption_probability}.
 }
 \description{
 The note of \code{\link[=compute_prdc_value]{compute_prdc_value()}} in a three-factor model under the domestic risk-neutral measure: Hull-White
@@ -93,9 +103,16 @@ forward measure of that date the FX forward is lognormal with the variance of
 \code{\link[=compute_prdc_value]{compute_prdc_value()}} with each coupon's \code{effective_volatility}. With \code{paths > 0} the value is a Monte Carlo of
 the three factors (exact Ornstein-Uhlenbeck steps of at most \code{1 / steps_per_year} years, trapezoid integrals of the
 rates), next to the closed form. The closed form's first derivatives with respect to every input come from
-automatic differentiation in one pass. No target redemption or knock-out.
+automatic differentiation in one pass. No knock-out.
 }
 \details{
+With a finite \code{target}, the note is a target redemption note: once the sum of the coupon rates times their accrual
+fractions (fixed coupons included) reaches \code{target}, it pays that date's coupon (\code{target_coupon = "capped"} only up
+to the target, \code{"full"} the whole coupon) and the redemption, and ends. With \code{make_whole}, a note that has not
+reached the target by the last date also pays the shortfall then. Its value is a Monte Carlo on the three-factor
+paths (no regression), next to the note without the target on the same paths. No call with a target, and no
+derivatives of the target note (its cash flows jump where the target is reached).
+
 With \code{call_dates}, the issuer may redeem the note at \code{call_price} on those coupon dates, right after paying their
 coupons, and calls when the rest of the note is worth more than the call price. The rule comes from Longstaff and
 Schwartz on paths from \code{training_seed} (the rest's value at the date regressed on 1, \code{S / fx_base}, its square and
