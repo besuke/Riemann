@@ -22,7 +22,8 @@ create_lmm(
   backward_looking = FALSE,
   model = "black",
   factors = NULL,
-  measure = "spot"
+  measure = "spot",
+  discretization = "euler"
 )
 
 create_exponential_correlation(times, beta)
@@ -88,6 +89,10 @@ drifts and Rebonato's approximation all use, and the paths draw \code{m} normals
 
 \item{measure}{\code{"spot"} (the numeraire rolls from one tenor date to the next) or \code{"terminal"} (the bond to the
 last time). Only the paths' drift and numeraire change; the values agree up to the simulation error.}
+
+\item{discretization}{\code{"euler"} (the drift at the start of each step) or \code{"predictor_corrector"} (the step again
+with the mean of the drifts at its start and at the predicted rates, as QuantLib's \code{LogNormalFwdRatePc}), which
+allows longer steps.}
 
 \item{paths, steps_per_period, seed}{Number of paths, log-Euler steps in each period, and the seed.}
 

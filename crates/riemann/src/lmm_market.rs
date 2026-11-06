@@ -80,6 +80,18 @@ pub struct LmmSpec {
     /// `Terminal` (the bond to `T_n`). The values are the same up to the simulation and discretization
     /// errors; only the drift and the numeraire on the paths change.
     pub measure: Measure,
+    /// The time steps: `Euler` (the drift at the start of each step) or `PredictorCorrector`.
+    pub discretization: Discretization,
+}
+
+/// How a step treats the drift, which depends on the rates. The shocks are the same.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Discretization {
+    /// The drift at the start of the step (log-Euler for lognormal rates, Euler for normal ones).
+    Euler,
+    /// A step with the drift at the start predicts the rates at the end; the step is then taken again
+    /// with the mean of the drifts at the start and at the predicted rates (Hunter, Jaeckel and Joshi).
+    PredictorCorrector,
 }
 
 /// The measure under which the paths move.
@@ -330,13 +342,25 @@ pub fn generate_lmm_paths_observed(
                 // the volatilities hold over the step: it lies within one tenor interval
                 let middle = from + (s as f64 + 0.5) * dt;
                 let sigma: Vec<f64> = (0..n).map(|i| spec.volatility_at(i, middle)).collect();
-                let drift = drift_with(spec, alive, &snapshot, &g, &sigma);
-                for k in alive..n {
-                    let variance = sigma[k] * sigma[k] * g_squared[k];
-                    l[k] = match spec.model {
+                let mut drift = drift_with(spec, alive, &snapshot, &g, &sigma);
+                let advance = |l: &mut Vec<f64>, drift: &[f64]| {
+                    for k in alive..n {
+                        let variance = sigma[k] * sigma[k] * g_squared[k];
+                        l[k] = match spec.model {
                         ForwardModel::Black => snapshot[k] * ((drift[k] - 0.5 * variance) * dt + (variance * dt).sqrt() * w[k]).exp(),
                         ForwardModel::Bachelier => snapshot[k] + drift[k] * dt + (variance * dt).sqrt() * w[k],
-                    };
+                        };
+                    }
+                };
+                advance(l, &drift);
+                if spec.discretization == Discretization::PredictorCorrector {
+                    // the drift again at the predicted rates, and the step with the mean of both drifts
+                    // and the same shocks (QuantLib's LogNormalFwdRatePc and NormalFwdRatePc)
+                    let predicted = drift_with(spec, alive, l, &g, &sigma);
+                    for k in alive..n {
+                        drift[k] = 0.5 * (drift[k] + predicted[k]);
+                    }
+                    advance(l, &drift);
                 }
             }
         };
@@ -901,7 +925,7 @@ mod tests {
         let forwards: Vec<f64> = (0..10).map(|k| 0.02 + 0.001 * k as f64).collect();
         let volatilities: Vec<f64> = (0..10).map(|k| 0.25 - 0.005 * k as f64).collect();
         let correlation = create_exponential_correlation(&times[..10], beta).unwrap();
-        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black, volatility_grid: None, factors: None, measure: Measure::Spot }
+        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black, volatility_grid: None, factors: None, measure: Measure::Spot, discretization: Discretization::Euler }
     }
 
     const PATHS: usize = 2000;
@@ -1016,6 +1040,7 @@ mod tests {
             volatility_grid: None,
             factors: None,
             measure: Measure::Spot,
+            discretization: Discretization::Euler,
         };
         assert!((s.discount(1) - 0.9965).abs() < 1e-15);
         let paths = generate_lmm_paths(&s, PATHS, 8, 23).unwrap();
@@ -1181,6 +1206,7 @@ mod tests {
             volatility_grid: None,
             factors: None,
             measure: Measure::Spot,
+            discretization: Discretization::Euler,
         };
         assert_eq!(full.first_open_period(), 2);
         // the same model without the complete periods
@@ -1455,6 +1481,7 @@ mod tests {
             volatility_grid: None,
             factors: None,
             measure: Measure::Spot,
+            discretization: Discretization::Euler,
         };
         let truth = LmmSpec { volatility_grid: Some(humped_grid(&base, 1.0)), ..base.clone() };
         let quotes = all_quotes(&truth, 1);
@@ -1503,6 +1530,7 @@ mod tests {
             volatility_grid: None,
             factors: None,
             measure: Measure::Spot,
+            discretization: Discretization::Euler,
         };
         for (case, spot) in [spec(0.3), backward, normal, normal_backward, reduced, under_way].into_iter().enumerate() {
             let terminal = LmmSpec { measure: Measure::Terminal, ..spot.clone() };
@@ -1544,6 +1572,97 @@ mod tests {
     }
 
     #[test]
+    fn a_predictor_corrector_step_follows_quantlib() {
+        // three rates, one step to T_0: QuantLib's order (predict with D1, D2 at the prediction, add
+        // (D2 - D1) / 2) by hand against the paths
+        let times = vec![0.5, 1.0, 1.5, 2.0];
+        for model in [ForwardModel::Black, ForwardModel::Bachelier] {
+            for measure in [Measure::Spot, Measure::Terminal] {
+                let s = LmmSpec {
+                    correlation: create_exponential_correlation(&times[..3], 0.4).unwrap(),
+                    times: times.clone(),
+                    forwards: vec![0.03, 0.035, 0.04],
+                    volatilities: if model == ForwardModel::Black { vec![0.4, 0.35, 0.3] } else { vec![0.01; 3] },
+                    discount_start: 0.99,
+                    backward_looking: false,
+                    model,
+                    volatility_grid: None,
+                    factors: None,
+                    measure,
+                    discretization: Discretization::PredictorCorrector,
+                };
+                let paths = generate_lmm_paths(&s, 1, 1, 41).unwrap();
+                let lower = s.check().unwrap();
+                let z: Vec<f64> = (0..3).map(|i| generate_standard_normal(41, 0, i)).collect();
+                let w: Vec<f64> = lower.iter().map(|row| row.iter().zip(&z).map(|(a, b)| a * b).sum()).collect();
+                let dt: f64 = 0.5;
+                let d1 = compute_lmm_drift(&s, 0, &s.forwards).unwrap();
+                let shock = |k: usize| s.volatilities[k] * dt.sqrt() * w[k];
+                let expected: Vec<f64> = match model {
+                    ForwardModel::Black => {
+                        let log0: Vec<f64> = s.forwards.iter().map(|f| f.ln()).collect();
+                        let fixed = |k: usize| -0.5 * s.volatilities[k] * s.volatilities[k] * dt;
+                        let predicted: Vec<f64> = (0..3).map(|k| (log0[k] + d1[k] * dt + fixed(k) + shock(k)).exp()).collect();
+                        let d2 = compute_lmm_drift(&s, 0, &predicted).unwrap();
+                        (0..3).map(|k| (predicted[k].ln() + (d2[k] - d1[k]) * dt / 2.0).exp()).collect()
+                    }
+                    ForwardModel::Bachelier => {
+                        let predicted: Vec<f64> = (0..3).map(|k| s.forwards[k] + d1[k] * dt + shock(k)).collect();
+                        let d2 = compute_lmm_drift(&s, 0, &predicted).unwrap();
+                        (0..3).map(|k| predicted[k] + (d2[k] - d1[k]) * dt / 2.0).collect()
+                    }
+                };
+                for k in 0..3 {
+                    let got = paths.state[0][0][k];
+                    assert!((got - expected[k]).abs() < 1e-15, "{model:?} {measure:?} rate {k}: {got} against {}", expected[k]);
+                }
+                // the corrector moved the rates away from the Euler step
+                let euler = generate_lmm_paths(&LmmSpec { discretization: Discretization::Euler, ..s.clone() }, 1, 1, 41).unwrap();
+                assert!((0..3).map(|k| (euler.state[0][0][k] - paths.state[0][0][k]).abs()).fold(0.0, f64::max) > 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn the_predictor_corrector_cuts_the_discretization_error_of_long_steps() {
+        // annual periods, a volatility of 50% and one step a period: the Euler drift is far off
+        let times: Vec<f64> = (0..=10).map(|k| 1.0 + k as f64).collect();
+        let euler = LmmSpec {
+            correlation: create_exponential_correlation(&times[..10], 0.1).unwrap(),
+            times,
+            forwards: vec![0.05; 10],
+            volatilities: vec![0.5; 10],
+            discount_start: 0.95,
+            backward_looking: false,
+            model: ForwardModel::Black,
+            volatility_grid: None,
+            factors: None,
+            measure: Measure::Spot,
+            discretization: Discretization::Euler,
+        };
+        let corrected = LmmSpec { discretization: Discretization::PredictorCorrector, ..euler.clone() };
+        let many = 20_000;
+        // the same shocks for both, so that the comparison sees the bias, not the noise
+        let (pe, pc) = (generate_lmm_paths(&euler, many, 1, 5).unwrap(), generate_lmm_paths(&corrected, many, 1, 5).unwrap());
+        let reference = generate_lmm_paths(&euler, many, 32, 99).unwrap();
+        let bond = |p: &LmmPaths| estimate(&p.numeraire.iter().map(|b| 1.0 / b[10]).collect::<Vec<_>>()).value - euler.discount(10);
+        let (rate, _) = swap_rate_and_annuity(&euler, 3, 10, &euler.forwards);
+        let target = compute_lmm_swaption_value(&euler, &reference, 3, 10, rate).unwrap().value;
+        let swaption = |s: &LmmSpec, p: &LmmPaths| compute_lmm_swaption_value(s, p, 3, 10, rate).unwrap().value - target;
+        let formula = compute_lmm_caplet_formula(&euler, 9, 0.05).unwrap();
+        let caplet = |s: &LmmSpec, p: &LmmPaths| compute_lmm_caplet_value(s, p, 9, 0.05).unwrap().value - formula;
+        assert!(bond(&pc).abs() < 0.6 * bond(&pe).abs(), "bond: {} against {}", bond(&pc), bond(&pe));
+        assert!(swaption(&corrected, &pc).abs() < 0.5 * swaption(&euler, &pe).abs(), "swaption: {} against {}", swaption(&corrected, &pc), swaption(&euler, &pe));
+        assert!(caplet(&corrected, &pc).abs() < 0.5 * caplet(&euler, &pe).abs(), "caplet: {} against {}", caplet(&corrected, &pc), caplet(&euler, &pe));
+        // with short steps both agree with the no-arbitrage values
+        let fine = generate_lmm_paths(&corrected, PATHS, 8, 7).unwrap();
+        for k in [1usize, 5, 10] {
+            let e = estimate(&fine.numeraire.iter().map(|b| 1.0 / b[k]).collect::<Vec<_>>());
+            assert!((e.value - euler.discount(k)).abs() < 4.0 * e.standard_error, "P(0,T_{k})");
+        }
+    }
+
+    #[test]
     fn invalid_inputs_are_errors() {
         let mut s = spec(0.2);
         assert!(generate_lmm_paths(&s, 0, 4, 1).is_err());
@@ -1553,3 +1672,4 @@ mod tests {
         assert!(generate_lmm_paths(&s, 10, 4, 1).is_err());
     }
 }
+

@@ -37,6 +37,7 @@ fn market_model_pieces_match_quantlib() {
             volatility_grid: None,
             factors: None,
             measure: riemann::lmm_market::Measure::Spot,
+            discretization: riemann::lmm_market::Discretization::Euler,
         };
         let mut check = |slot: usize, ours: f64, theirs: f64, what: String| {
             let error = (ours - theirs).abs() / theirs.abs().max(1e-3);
@@ -117,6 +118,7 @@ fn reduced_factors_match_quantlib() {
                 volatility_grid: None,
                 factors: Some(m),
                 measure: riemann::lmm_market::Measure::Spot,
+                discretization: riemann::lmm_market::Discretization::Euler,
             };
             for (i, j, v) in of(m, "correlation") {
                 let error = (reduced[i * n + j] - v).abs();

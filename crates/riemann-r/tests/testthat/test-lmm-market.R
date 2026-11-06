@@ -162,3 +162,16 @@ test_that("the terminal measure gives the spot measure's values", {
   expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
   expect_error(create_lmm(times, model$forwards, model$volatilities, beta = 0.3, measure = "forward"))
 })
+
+test_that("the predictor-corrector steps", {
+  pc <- create_lmm(times, model$forwards, model$volatilities, beta = 0.3, discount_start = model$discount_start, discretization = "predictor_corrector")
+  p <- generate_lmm_paths(pc, paths = 2000L, steps_per_period = 1L, seed = 3)
+  e <- generate_lmm_paths(model, paths = 2000L, steps_per_period = 1L, seed = 3)
+  expect_gt(max(abs(p$state - e$state), na.rm = TRUE), 1e-8)
+  bonds <- model$discount_start / cumprod(1 + diff(times) * model$forwards)
+  discounted <- 1 / p$numeraire[, 11]
+  expect_lt(abs(mean(discounted) - bonds[10]), 4 * sd(discounted) / sqrt(2000))
+  s <- compute_lmm_swaption_value(pc, start = c(3, 5), end = c(7, 11), strike = c(0.023, 0.026), paths = 2000L, steps_per_period = 1L)
+  expect_true(all(abs(s$value - s$rebonato_value) < 4 * s$standard_error + 0.02 * s$rebonato_value))
+  expect_error(create_lmm(times, model$forwards, model$volatilities, beta = 0.3, discretization = "milstein"))
+})
