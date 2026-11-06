@@ -188,3 +188,27 @@ test_that("a knock-out note against an Euler simulation written here", {
   euler <- mean(value); euler_se <- sd(value) / sqrt(n)
   expect_lt(abs(r$summary$value - euler), 4 * sqrt(r$summary$standard_error^2 + euler_se^2) + 2e-4)
 })
+
+test_that("the three-factor model is calibrated to swaptions and an FX option", {
+  today <- "2026-11-02"
+  jpy <- create_flat_curve(today, 0.012, "actual_365_fixed", "continuous")
+  usd <- create_flat_curve(today, 0.035, "actual_365_fixed", "continuous")
+  # swaption prices from known Hull-White parameters, fitted back
+  quotes <- function(curve, r, a, sigma) {
+    out <- purrr::map(c(0.5, 1, 2, 3), \(e) {
+      p <- exp(-r * c(e, e + 1, e + 2))
+      rate <- (p[1] - p[3]) / (p[2] + p[3])
+      tibble::tibble(payer = TRUE, maturity = e, payment_times = list(c(e + 1, e + 2)), coupons = list(c(rate, rate)))
+    }) |> purrr::list_rbind()
+    out$price <- purrr::map_dbl(seq_len(nrow(out)), \(k) compute_hull_white_swaption_value(TRUE, out$maturity[k], out$payment_times[[k]], out$coupons[[k]], a, sigma, curve)$value)
+    out
+  }
+  fit <- calibrate_prdc_three_factor(150, jpy, usd, quotes(jpy, 0.012, 0.03, 0.008), quotes(usd, 0.035, 0.06, 0.011), c(0.3, -0.2, 0.4),
+                                     fx_options = tibble::tibble(maturity = 3, volatility = 0.12))
+  expect_equal(fit$domestic_rate, c(0.03, 0.008), tolerance = 1e-5)
+  expect_equal(fit$foreign_rate, c(0.06, 0.011), tolerance = 1e-5)
+  expect_equal(fit$fx_fit$model_volatility, 0.12, tolerance = 1e-12)
+  r <- compute_prdc_three_factor_value(150, fit$fx_volatility, jpy, usd, fit$domestic_rate, fit$foreign_rate, c(0.3, -0.2, 0.4), 3, 1, 150,
+                                       0.8, 0.78)
+  expect_equal(r$coupons$effective_volatility, 0.12, tolerance = 1e-12)
+})

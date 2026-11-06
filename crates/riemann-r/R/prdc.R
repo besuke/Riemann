@@ -156,3 +156,32 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
   }
   out
 }
+
+#' Calibration of the three-factor PRDC model
+#'
+#' Calibrates the model of [compute_prdc_three_factor_value()]: each short rate's Hull-White mean reversion and
+#' volatility to its own currency's swaptions (or bond options) on its own curve, by [calibrate_hull_white()], then
+#' the FX volatility to FX option volatilities with those rates and the given correlations. Under each maturity's
+#' domestic forward measure the FX forward is lognormal with the three-factor variance `V(T)`, so a European FX
+#' option is Black's formula with `sqrt(V(T) / T)`; `V` is a quadratic in the FX volatility, so one quote is matched
+#' exactly and several are fitted by least squares on the volatilities. The correlations are inputs, not fitted.
+#'
+#' @inheritParams compute_prdc_three_factor_value
+#' @param domestic_swaptions,foreign_swaptions Swaptions of each currency, as `swaptions` of [calibrate_hull_white()].
+#' @param fx_options A data frame with `maturity` (years) and `volatility` (Black) of FX options.
+#' @param ... Passed to [calibrate_hull_white()] (starting point, `fix_mean_reversion`, ...).
+#' @return A list with `domestic_rate` and `foreign_rate` (`c(mean_reversion, volatility)`, for
+#'   [compute_prdc_three_factor_value()]), `fx_volatility`, the rate calibrations `domestic_fit` and `foreign_fit`, and
+#'   `fx_fit`, a tibble of the FX quotes with the model's volatilities.
+#' @export
+calibrate_prdc_three_factor <- function(spot, domestic_curve, foreign_curve, domestic_swaptions, foreign_swaptions, correlation = c(0, 0, 0),
+                                       fx_options, ...) {
+  domestic <- calibrate_hull_white(domestic_curve, swaptions = domestic_swaptions, ...)
+  foreign <- calibrate_hull_white(foreign_curve, swaptions = foreign_swaptions, ...)
+  rates <- list(c(domestic$mean_reversion, domestic$volatility), c(foreign$mean_reversion, foreign$volatility))
+  fx <- checked(.Call(wrap__calibrate_prdc_fx_volatility, as.numeric(spot), domestic_curve$pointer, foreign_curve$pointer, rates[[1]], rates[[2]],
+                      as.numeric(correlation), as.numeric(fx_options$maturity), as.numeric(fx_options$volatility)))
+  list(domestic_rate = rates[[1]], foreign_rate = rates[[2]], fx_volatility = fx$fx_volatility, domestic_fit = domestic, foreign_fit = foreign,
+       fx_fit = tibble(maturity = as.numeric(fx_options$maturity), volatility = as.numeric(fx_options$volatility),
+                       model_volatility = fx$model_volatilities))
+}

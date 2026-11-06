@@ -2191,6 +2191,38 @@ fn compute_prdc_three_factor_value(
 }
 #[extendr]
 #[allow(clippy::too_many_arguments)]
+fn calibrate_prdc_fx_volatility(
+    spot: f64,
+    domestic_curve: ExternalPtr<OisCurve>,
+    foreign_curve: ExternalPtr<OisCurve>,
+    domestic_rate: Vec<f64>,
+    foreign_rate: Vec<f64>,
+    correlation: Vec<f64>,
+    maturities: Vec<f64>,
+    volatilities: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        if domestic_rate.len() != 2 || foreign_rate.len() != 2 || correlation.len() != 3 {
+            return Err(riemann::Error::InvalidInput {
+                reason: "give each rate as (mean reversion, volatility) and three correlations".into(),
+            });
+        }
+        let model = prdc::PrdcThreeFactor {
+            spot,
+            fx_volatility: 1.0,
+            domestic: &domestic_curve.curve,
+            foreign: &foreign_curve.curve,
+            domestic_rate: prdc::HullWhiteFactor { mean_reversion: domestic_rate[0], volatility: domestic_rate[1] },
+            foreign_rate: prdc::HullWhiteFactor { mean_reversion: foreign_rate[0], volatility: foreign_rate[1] },
+            correlation: [correlation[0], correlation[1], correlation[2]],
+        };
+        let fit = prdc::calibrate_prdc_fx_volatility(&model, &maturities, &volatilities)?;
+        Ok(list!(fx_volatility = fit.fx_volatility, model_volatilities = fit.model_volatilities, root_mean_square_error = fit.root_mean_square_error))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
 fn compute_prdc_value(
     spot: f64,
     volatility: f64,
@@ -3446,6 +3478,7 @@ extendr_module! {
     fn compute_cds_maturity;
     fn compute_prdc_value;
     fn compute_prdc_three_factor_value;
+    fn calibrate_prdc_fx_volatility;
     fn compute_european_option_value;
     fn compute_barrier_option_value;
     fn compute_binomial_option_value;

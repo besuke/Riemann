@@ -1207,6 +1207,126 @@ pub fn compute_target_redemption_prdc(
     })
 }
 
+// ---- calibration of the three-factor model ----
+
+/// The fit of the FX volatility of the three-factor model to FX option volatilities.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FxVolatilityFit {
+    pub fx_volatility: f64,
+    /// `sqrt(V(T) / T)` of the fitted model at each quote's maturity.
+    pub model_volatilities: Vec<f64>,
+    pub root_mean_square_error: f64,
+}
+
+/// Fits the constant FX volatility `sigma_X` of the three-factor model, with its rates and correlations
+/// fixed, to the Black volatilities of FX options (`volatilities` at `maturities`, in years). Under the
+/// domestic forward measure of `T` the FX forward is lognormal with the variance `V(T)` of
+/// [`PrdcThreeFactor::fx_forward_variance`], so a European FX option is Black's formula with
+/// `sqrt(V(T) / T)`. `V` is a quadratic in `sigma_X` (`sigma_X^2 T + 2 sigma_X L + C`, with `L` and `C`
+/// from the rates): one quote is solved exactly, and several by least squares on the volatilities (a
+/// golden section on `(0, 3]`). A quote below what the rates alone give is an error. `model.fx_volatility`
+/// is not used.
+pub fn calibrate_prdc_fx_volatility(model: &PrdcThreeFactor, maturities: &[f64], volatilities: &[f64]) -> Result<FxVolatilityFit, Error> {
+    if maturities.is_empty() || maturities.len() != volatilities.len() {
+        return invalid("give one volatility per maturity".into());
+    }
+    if maturities.iter().any(|t| !(*t > 0.0) || !t.is_finite()) || volatilities.iter().any(|v| !(*v > 0.0) || !v.is_finite()) {
+        return invalid("the maturities and volatilities must be positive and finite".into());
+    }
+    let at = |sx: f64| PrdcThreeFactor { fx_volatility: sx, ..*model };
+    at(1.0).check()?;
+    // the quadratic's coefficients at each maturity, exactly: V(0) = C and V(1) = T + 2L + C
+    let terms: Vec<(f64, f64, f64)> = maturities
+        .iter()
+        .map(|&t| {
+            let c = at(0.0).fx_forward_variance(t);
+            let l = (at(1.0).fx_forward_variance(t) - t - c) / 2.0;
+            (t, l, c)
+        })
+        .collect();
+    let model_volatility = |sx: f64, (t, l, c): (f64, f64, f64)| ((sx * sx * t + 2.0 * sx * l + c).max(0.0) / t).sqrt();
+    let fx_volatility = if terms.len() == 1 {
+        let (t, l, c) = terms[0];
+        let v = volatilities[0];
+        let discriminant = l * l - t * (c - v * v * t);
+        let root = (-l + discriminant.max(0.0).sqrt()) / t;
+        if discriminant < 0.0 || !(root > 0.0) {
+            return invalid(format!("the FX volatility {v} at {t} years is below what the rates alone give"));
+        }
+        root
+    } else {
+        let objective = |sx: f64| -> f64 { terms.iter().zip(volatilities).map(|(&q, v)| (model_volatility(sx, q) - v).powi(2)).sum() };
+        let ratio = (5f64.sqrt() - 1.0) / 2.0;
+        let (mut lo, mut hi) = (1e-8, 3.0);
+        let mut x1 = hi - ratio * (hi - lo);
+        let mut x2 = lo + ratio * (hi - lo);
+        let (mut f1, mut f2) = (objective(x1), objective(x2));
+        for _ in 0..200 {
+            if hi - lo < 1e-13 {
+                break;
+            }
+            if f1 <= f2 {
+                hi = x2;
+                x2 = x1;
+                f2 = f1;
+                x1 = hi - ratio * (hi - lo);
+                f1 = objective(x1);
+            } else {
+                lo = x1;
+                x1 = x2;
+                f1 = f2;
+                x2 = lo + ratio * (hi - lo);
+                f2 = objective(x2);
+            }
+        }
+        (lo + hi) / 2.0
+    };
+    let model_volatilities: Vec<f64> = terms.iter().map(|&q| model_volatility(fx_volatility, q)).collect();
+    let root_mean_square_error =
+        (model_volatilities.iter().zip(volatilities).map(|(m, v)| (m - v).powi(2)).sum::<f64>() / volatilities.len() as f64).sqrt();
+    Ok(FxVolatilityFit { fx_volatility, model_volatilities, root_mean_square_error })
+}
+
+/// The calibration of the three-factor model.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrdcCalibration {
+    pub domestic: crate::hull_white::HullWhiteCalibration,
+    pub foreign: crate::hull_white::HullWhiteCalibration,
+    pub fx: FxVolatilityFit,
+}
+
+/// Calibrates the three-factor model: each short rate's Hull-White mean reversion and volatility to its
+/// own currency's option prices on its own curve ([`crate::hull_white::calibrate_hull_white`]), then the FX
+/// volatility to FX option volatilities with those rates and the given correlations
+/// ([`calibrate_prdc_fx_volatility`]). The correlations are inputs (historical estimates, for example),
+/// not fitted.
+#[allow(clippy::too_many_arguments)]
+pub fn calibrate_prdc_three_factor(
+    spot: f64,
+    domestic: &YieldCurve,
+    foreign: &YieldCurve,
+    domestic_quotes: &[crate::hull_white::CalibrationQuote],
+    foreign_quotes: &[crate::hull_white::CalibrationQuote],
+    correlation: [f64; 3],
+    fx_maturities: &[f64],
+    fx_volatilities: &[f64],
+    settings: &crate::hull_white::CalibrationSettings,
+) -> Result<PrdcCalibration, Error> {
+    let d = crate::hull_white::calibrate_hull_white(domestic_quotes, domestic, settings)?;
+    let f = crate::hull_white::calibrate_hull_white(foreign_quotes, foreign, settings)?;
+    let model = PrdcThreeFactor {
+        spot,
+        fx_volatility: 1.0,
+        domestic,
+        foreign,
+        domestic_rate: HullWhiteFactor { mean_reversion: d.mean_reversion, volatility: d.volatility },
+        foreign_rate: HullWhiteFactor { mean_reversion: f.mean_reversion, volatility: f.volatility },
+        correlation,
+    };
+    let fx = calibrate_prdc_fx_volatility(&model, fx_maturities, fx_volatilities)?;
+    Ok(PrdcCalibration { domestic: d, foreign: f, fx })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1706,6 +1826,81 @@ mod tests {
             }
             assert!((r.value / value - 1.0).abs() < 1e-7, "{spot} {level}: {} against {value}", r.value);
         }
+    }
+
+    /// ATM payer swaptions into two-year annual swaps, priced by Hull-White with `(a, sigma)` on `curve`.
+    fn swaption_quotes(curve: &YieldCurve, a: f64, sigma: f64) -> Vec<crate::hull_white::CalibrationQuote> {
+        use crate::hull_white::{compute_jamshidian_swaption, CalibrationInstrument, CalibrationQuote, HullWhite, SwaptionFlows};
+        let model = HullWhite { mean_reversion: a, volatility: sigma, curve };
+        [0.5, 1.0, 2.0, 3.0]
+            .iter()
+            .map(|&expiry| {
+                let payments = vec![expiry + 1.0, expiry + 2.0];
+                let p = |t: f64| curve.discount_at(t, true).unwrap();
+                let rate = (p(expiry) - p(expiry + 2.0)) / (p(expiry + 1.0) + p(expiry + 2.0));
+                let flows = SwaptionFlows { payer: true, maturity: expiry, value_time: expiry, payment_times: payments, coupons: vec![rate, rate], nominal: 1.0 };
+                let price = compute_jamshidian_swaption(&model, &flows).unwrap();
+                CalibrationQuote { instrument: CalibrationInstrument::Swaption(flows), price, weight: 1.0 }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_three_factor_calibration_gives_back_its_rates_and_fx_volatility() {
+        use crate::hull_white::{calibrate_hull_white, CalibrationSettings};
+        let (d, f) = (jpy(), foreign());
+        let (dq, fq) = (swaption_quotes(&d, 0.03, 0.008), swaption_quotes(&f, 0.06, 0.011));
+        let settings = CalibrationSettings::default();
+        let rho = [0.3, -0.2, 0.4];
+        let fit = calibrate_prdc_three_factor(150.0, &d, &f, &dq, &fq, rho, &[3.0], &[0.12], &settings).unwrap();
+        // the rates: each currency's own calibration, which gives back the parameters of its prices
+        assert_eq!(fit.domestic, calibrate_hull_white(&dq, &d, &settings).unwrap());
+        assert_eq!(fit.foreign, calibrate_hull_white(&fq, &f, &settings).unwrap());
+        assert!((fit.domestic.mean_reversion / 0.03 - 1.0).abs() < 1e-5 && (fit.domestic.volatility / 0.008 - 1.0).abs() < 1e-6, "{:?}", fit.domestic);
+        assert!((fit.foreign.mean_reversion / 0.06 - 1.0).abs() < 1e-5 && (fit.foreign.volatility / 0.011 - 1.0).abs() < 1e-6, "{:?}", fit.foreign);
+        // the FX volatility: one quote is matched exactly
+        let model = PrdcThreeFactor {
+            spot: 150.0,
+            fx_volatility: fit.fx.fx_volatility,
+            domestic: &d,
+            foreign: &f,
+            domestic_rate: HullWhiteFactor { mean_reversion: fit.domestic.mean_reversion, volatility: fit.domestic.volatility },
+            foreign_rate: HullWhiteFactor { mean_reversion: fit.foreign.mean_reversion, volatility: fit.foreign.volatility },
+            correlation: rho,
+        };
+        assert!((model.fx_forward_variance(3.0) / 3.0 - 0.0144).abs() < 1e-14 && fit.fx.root_mean_square_error < 1e-12);
+        // and the paths price an FX call at the quoted volatility
+        let paths = generate_prdc_three_factor_paths(&[3.0], &model, 40_000, 12, 31).unwrap();
+        let (pd, pf) = (d.discount_at(3.0, true).unwrap(), f.discount_at(3.0, true).unwrap());
+        let forward = 150.0 * pf / pd;
+        for strike in [130.0, 145.0, 160.0] {
+            let payoffs: Vec<f64> = paths.discount.iter().zip(&paths.fx).map(|(x, s)| x[0] * (s[0] - strike).max(0.0)).collect();
+            let e = mean_and_error(&payoffs);
+            let black = compute_forward_value(
+                ForwardModel::Black,
+                OptionType::Call,
+                &ForwardInputs { forward, strike, volatility: 0.12, time: 3.0, discount: pd },
+            )
+            .unwrap();
+            assert!((e.value - black).abs() < 4.0 * e.standard_error, "{strike}: {} against {black} ± {}", e.value, e.standard_error);
+        }
+        // without rate volatility the FX volatility is the quote
+        let still = PrdcThreeFactor { domestic_rate: HullWhiteFactor { mean_reversion: 0.03, volatility: 0.0 }, foreign_rate: HullWhiteFactor { mean_reversion: 0.06, volatility: 0.0 }, ..model };
+        assert!((calibrate_prdc_fx_volatility(&still, &[3.0], &[0.12]).unwrap().fx_volatility - 0.12).abs() < 1e-14);
+        // several quotes: a least-squares fit, no better one nearby
+        let (maturities, vols) = ([1.0, 3.0, 5.0], [0.115, 0.12, 0.118]);
+        let many = calibrate_prdc_fx_volatility(&model, &maturities, &vols).unwrap();
+        let rms = |sx: f64| {
+            let m = PrdcThreeFactor { fx_volatility: sx, ..model };
+            (maturities.iter().zip(&vols).map(|(&t, v)| ((m.fx_forward_variance(t) / t).sqrt() - v).powi(2)).sum::<f64>() / 3.0).sqrt()
+        };
+        assert!((rms(many.fx_volatility) - many.root_mean_square_error).abs() < 1e-14);
+        assert!(rms(many.fx_volatility + 1e-4) > many.root_mean_square_error && rms(many.fx_volatility - 1e-4) > many.root_mean_square_error);
+        // a quote below what the rates give, and invalid quotes
+        let wild = PrdcThreeFactor { domestic_rate: HullWhiteFactor { mean_reversion: 0.0, volatility: 0.05 }, correlation: [0.0, 0.0, 0.0], ..model };
+        assert!(calibrate_prdc_fx_volatility(&wild, &[5.0], &[0.01]).is_err());
+        assert!(calibrate_prdc_fx_volatility(&model, &[3.0], &[-0.1]).is_err());
+        assert!(calibrate_prdc_fx_volatility(&model, &[3.0, 4.0], &[0.1]).is_err());
     }
 
     fn settings(threads: usize) -> PrdcMonteCarlo {

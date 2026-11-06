@@ -105,6 +105,7 @@ counterparts <- tribble(
   "create_ois_instruments", "None; the helpers of the curve",
   "compute_prdc_value", "None; blackFormula for the closed form",
   "compute_prdc_three_factor_value", "None; Hull-White rates and a lognormal FX rate (no three-factor FX model in QuantLib 1.42)",
+  "calibrate_prdc_three_factor", "None; calibrateHullWhite per currency (as calibrate_hull_white), then the FX volatility in closed form",
   "compute_price_from_compound_yield", "None; GaussQuant R",
   "compute_price_from_simple_rate", "None; GaussQuant R",
   "get_quote_repricing", "Helper impliedQuote and dates",
