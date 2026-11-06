@@ -3,6 +3,7 @@
 \name{create_lmm}
 \alias{create_lmm}
 \alias{create_exponential_correlation}
+\alias{create_reduced_correlation}
 \alias{generate_lmm_paths}
 \alias{compute_rebonato_swaption_volatility}
 \alias{compute_lmm_swaption_value}
@@ -18,10 +19,13 @@ create_lmm(
   beta = NULL,
   discount_start = 1,
   backward_looking = FALSE,
-  model = "black"
+  model = "black",
+  factors = NULL
 )
 
 create_exponential_correlation(times, beta)
+
+create_reduced_correlation(correlation, factors)
 
 generate_lmm_paths(model, paths, steps_per_period = 4L, seed = 1)
 
@@ -74,6 +78,10 @@ forward from its daily fixings.}
 
 \item{model}{A model from \code{create_lmm()}.}
 
+\item{factors}{\code{NULL} for as many factors as forwards, or the number of factors \code{m}: the correlation is then replaced
+by its reduction to rank \code{m} (\code{create_reduced_correlation()}, QuantLib's \code{rankReducedSqrt}), which the paths, the
+drifts and Rebonato's approximation all use, and the paths draw \code{m} normals per step.}
+
 \item{paths, steps_per_period, seed}{Number of paths, log-Euler steps in each period, and the seed.}
 
 \item{start, end}{Positions in \code{times}: the swap runs from \code{times[start]} to \code{times[end]}.}
@@ -92,7 +100,8 @@ tenor date; Rebonato's approximation integrates the decay of each backward-looki
 \item{beta_max}{Upper end of the search for \code{beta}.}
 }
 \value{
-\code{create_lmm()} a \code{riemann_lmm}. \code{create_exponential_correlation()} a matrix. \code{generate_lmm_paths()} a list
+\code{create_lmm()} a \code{riemann_lmm}. \code{create_exponential_correlation()} and \code{create_reduced_correlation()} a matrix.
+\code{generate_lmm_paths()} a list
 with the array \code{state} and the matrix \code{numeraire}. The valuations a tibble. \code{compute_rebonato_swaption_volatility()}
 a numeric vector. \code{calibrate_lmm_correlation()} a list with \code{beta}, \code{root_mean_square_error}, a tibble \code{fitted}
 and the calibrated \code{model}.
@@ -107,7 +116,8 @@ to the next), with the drift that keeps every discounted bond a martingale, in l
 \details{
 \itemize{
 \item \code{create_lmm()} collects the model. Give \code{correlation}, or \code{beta} for \verb{exp(-beta |T_i - T_j|)} on the fixing
-times (\code{create_exponential_correlation()}).
+times (\code{create_exponential_correlation()}). With \code{factors = m}, the model has \code{m} factors: its correlation is
+the reduction to rank \code{m} of \code{create_reduced_correlation()}.
 \item \code{generate_lmm_paths()} returns the paths: \code{state[p, k, i]} is forward \code{i} at \code{times[k]} (\code{NA} once fixed),
 and \code{numeraire[p, k]} the numeraire at \code{times[k]}.
 \item \code{compute_lmm_swaption_value()} and \code{compute_lmm_caplet_value()} value payer swaptions and caplets on the

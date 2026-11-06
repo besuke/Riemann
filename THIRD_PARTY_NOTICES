@@ -116,6 +116,9 @@ used for verification:
   ql/termstructures/credit/interpolatedsurvivalprobabilitycurve.hpp
 - crates/riemann/src/time/schedule.rs (Cds and Cds2015 rules, cds_maturity):
   ql/time/schedule.cpp and ql/instruments/creditdefaultswap.cpp
+- crates/riemann/src/lmm_market.rs (compute_reduced_pseudo_root, create_reduced_correlation):
+  ql/math/matrixutilities/pseudosqrt.cpp, rankReducedSqrt and normalizePseudoRoot (Copyright (C) 2003,
+  2004, 2007 Ferdinando Ametrano; (C) 2006 Yiping Chen; (C) 2007 Neil Firth)
 
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.

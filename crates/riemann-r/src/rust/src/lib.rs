@@ -2267,7 +2267,7 @@ fn compute_backward_caplet_value(
         .collect();
     value_list(rows)
 }
-fn lmm_spec(times: &[f64], forwards: &[f64], volatilities: &[f64], correlation: &[f64], discount_start: f64, backward_looking: bool, model: &str, grid: &[f64]) -> Core<riemann::lmm_market::LmmSpec> {
+fn lmm_spec(times: &[f64], forwards: &[f64], volatilities: &[f64], correlation: &[f64], discount_start: f64, backward_looking: bool, model: &str, grid: &[f64], factors: i32) -> Core<riemann::lmm_market::LmmSpec> {
     Ok(riemann::lmm_market::LmmSpec {
         times: times.to_vec(),
         forwards: forwards.to_vec(),
@@ -2277,11 +2277,16 @@ fn lmm_spec(times: &[f64], forwards: &[f64], volatilities: &[f64], correlation: 
         backward_looking,
         model: names::parse_forward_model(model)?,
         volatility_grid: if grid.is_empty() { None } else { Some(grid.to_vec()) },
+        factors: if factors > 0 { Some(factors as usize) } else { None },
     })
 }
 #[extendr]
 fn create_exponential_correlation(times: Vec<f64>, beta: f64) -> List {
     outcome(riemann::lmm_market::create_exponential_correlation(&times, beta).map(|c| list!(value = c)))
+}
+#[extendr]
+fn create_reduced_correlation(correlation: Vec<f64>, n: i32, factors: i32) -> List {
+    outcome(riemann::lmm_market::create_reduced_correlation(&correlation, n.max(0) as usize, factors.max(0) as usize).map(|c| list!(value = c)))
 }
 #[extendr]
 #[allow(clippy::too_many_arguments)]
@@ -2294,6 +2299,7 @@ fn compute_lmm_monte_carlo(
     backward_looking: bool,
     model: &str,
     volatility_grid: Vec<f64>,
+    factors: i32,
     kind: Vec<String>,
     start: Vec<i32>,
     end: Vec<i32>,
@@ -2304,7 +2310,7 @@ fn compute_lmm_monte_carlo(
     seed: f64,
 ) -> List {
     let run = || -> Core<List> {
-        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid)?;
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid, factors)?;
         let (paths, steps) = (paths.max(0) as usize, steps_per_period.max(0) as usize);
         let simulated = riemann::lmm_market::generate_lmm_paths(&spec, paths, steps, seed as u64)?;
         let (mut value, mut standard_error, mut formula) = (Vec::new(), Vec::new(), Vec::new());
@@ -2339,12 +2345,13 @@ fn generate_lmm_paths(
     backward_looking: bool,
     model: &str,
     volatility_grid: Vec<f64>,
+    factors: i32,
     paths: i32,
     steps_per_period: i32,
     seed: f64,
 ) -> List {
     let run = || -> Core<List> {
-        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid)?;
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid, factors)?;
         let p = riemann::lmm_market::generate_lmm_paths(&spec, paths.max(0) as usize, steps_per_period.max(0) as usize, seed as u64)?;
         // R's array order: path fastest, then time, then forward
         let (n_paths, n) = (p.state.len(), forwards.len());
@@ -2377,13 +2384,14 @@ fn compute_rebonato_swaption_volatility(
     backward_looking: bool,
     model: &str,
     volatility_grid: Vec<f64>,
+    factors: i32,
     start: Vec<i32>,
     end: Vec<i32>,
     strike: Vec<f64>,
     expiry: Vec<f64>,
 ) -> List {
     let run = || -> Core<List> {
-        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid)?;
+        let spec = lmm_spec(&times, &forwards, &volatilities, &correlation, discount_start, backward_looking, model, &volatility_grid, factors)?;
         let (mut vol, mut black) = (Vec::new(), Vec::new());
         for i in 0..start.len() {
             let (a, b) = (start[i] as usize, end[i] as usize);
@@ -2407,6 +2415,7 @@ fn calibrate_lmm_correlation(
     discount_start: f64,
     model: &str,
     volatility_grid: Vec<f64>,
+    factors: i32,
     start: Vec<i32>,
     end: Vec<i32>,
     volatility: Vec<f64>,
@@ -2415,7 +2424,7 @@ fn calibrate_lmm_correlation(
     let run = || -> Core<List> {
         let n = forwards.len();
         let identity: Vec<f64> = (0..n * n).map(|k| if k / n == k % n { 1.0 } else { 0.0 }).collect();
-        let spec = lmm_spec(&times, &forwards, &volatilities, &identity, discount_start, false, model, &volatility_grid)?;
+        let spec = lmm_spec(&times, &forwards, &volatilities, &identity, discount_start, false, model, &volatility_grid, factors)?;
         let quotes: Vec<_> = (0..start.len())
             .map(|i| riemann::lmm_market::SwaptionQuote { start: start[i] as usize, end: end[i] as usize, volatility: volatility[i] })
             .collect();
@@ -3125,6 +3134,7 @@ extendr_module! {
     fn compute_backward_forward_rate;
     fn compute_backward_period_state;
     fn create_exponential_correlation;
+    fn create_reduced_correlation;
     fn compute_lmm_monte_carlo;
     fn generate_lmm_paths;
     fn compute_rebonato_swaption_volatility;

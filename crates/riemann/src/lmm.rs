@@ -98,9 +98,14 @@ pub fn compute_caplet_from_normals(terms: &CapletTerms, normals: &[f64]) -> Resu
     Ok(CapletSimulation { value: sum / n, standard_error: (variance / n).sqrt(), paths: normals.len() })
 }
 
+pub(crate) fn check_correlation(correlation: &[f64], dimension: usize) -> Result<Vec<Vec<f64>>, Error> {
+    compute_cholesky(&check_correlation_entries(correlation, dimension)?)
+}
+
+/// The rows of a correlation matrix, after checking its entries (not that it is positive definite).
 // the indices compare an entry with its transpose
 #[allow(clippy::needless_range_loop)]
-pub(crate) fn check_correlation(correlation: &[f64], dimension: usize) -> Result<Vec<Vec<f64>>, Error> {
+pub(crate) fn check_correlation_entries(correlation: &[f64], dimension: usize) -> Result<Vec<Vec<f64>>, Error> {
     if dimension == 0 || correlation.len() != dimension * dimension {
         return invalid(format!("the correlation must be {dimension} by {dimension}"));
     }
@@ -115,7 +120,7 @@ pub(crate) fn check_correlation(correlation: &[f64], dimension: usize) -> Result
             }
         }
     }
-    compute_cholesky(&rows)
+    Ok(rows)
 }
 
 /// Correlates rows of independent standard normals: each row `z` of `independent` (rows of

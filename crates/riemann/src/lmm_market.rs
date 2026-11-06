@@ -16,13 +16,19 @@
 //!
 //! The rates are generic forward-looking term rates. This is a model of term forwards, not an IBOR
 //! index: no fixings, no index curve (see `docs/quantlib_guide_inventory.md` on IBOR).
+//!
+//! With fewer factors, the reduced correlation follows QuantLib v1.42
+//! `ql/math/matrixutilities/pseudosqrt.cpp` (`rankReducedSqrt` and `normalizePseudoRoot`; Copyright (C)
+//! 2003, 2004, 2007 Ferdinando Ametrano; (C) 2006 Yiping Chen; (C) 2007 Neil Firth); modified BSD license.
+//! See THIRD_PARTY_NOTICES. The eigen decomposition is this crate's own Jacobi method.
 
 // `!(x > 0.0)` is intended: it also rejects NaN
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 // the forwards, accruals, volatilities and correlations share one index
 #![allow(clippy::needless_range_loop)]
 
-use crate::lmm::check_correlation;
+use crate::lmm::{check_correlation, check_correlation_entries};
+use crate::math::linear::compute_symmetric_eigen;
 use crate::math::random::generate_standard_normal;
 use crate::options::{compute_forward_value, ForwardInputs, ForwardModel, OptionType};
 use crate::Error;
@@ -60,6 +66,12 @@ pub struct LmmSpec {
     /// the volatility on `(T_{k-1}, T_k]`, column 0 the one up to `T_0` (and before, for the periods under
     /// way). A rate uses its row while it moves; `volatilities` is then unused by the paths.
     pub volatility_grid: Option<Vec<f64>>,
+    /// `None`: as many factors as forwards, the paths correlating `n` normals per step by the Cholesky
+    /// factor of `correlation`. `Some(m)`: `m` factors. `correlation` must then have rank at most `m`
+    /// (make it with [`create_reduced_correlation`]); the paths draw `m` normals per step and correlate
+    /// them by its pseudo-root from the `m` largest eigenvalues. The drift, the variances and Rebonato's
+    /// approximation use `correlation` itself, so the model stays one.
+    pub factors: Option<usize>,
 }
 
 impl LmmSpec {
@@ -71,6 +83,8 @@ impl LmmSpec {
         self.times[i + 1] - self.times[i]
     }
 
+    /// The rows that correlate the normals of a step: the Cholesky factor's rows up to the diagonal, or
+    /// the `m` columns of the reduced pseudo-root.
     fn check(&self) -> Result<Vec<Vec<f64>>, Error> {
         let n = self.count();
         if n == 0 || self.times.len() != n + 1 || self.volatilities.len() != n {
@@ -102,7 +116,24 @@ impl LmmSpec {
         if !(self.discount_start > 0.0) {
             return invalid("the discount factor to the first time must be positive".into());
         }
-        check_correlation(&self.correlation, n)
+        match self.factors {
+            None => check_correlation(&self.correlation, n).map_err(|_| Error::InvalidInput {
+                reason: "the correlation is not positive definite: for one of reduced rank, give the number of factors".into(),
+            }),
+            Some(m) => {
+                if m == 0 || m > n {
+                    return invalid(format!("the number of factors must be from 1 to {n}, not {m}"));
+                }
+                let (values, vectors) = compute_symmetric_eigen(&check_correlation_entries(&self.correlation, n)?)?;
+                let tolerance = 1e-10 * n as f64;
+                if values[n - 1] < -tolerance || (m < n && values[m] > tolerance) {
+                    return invalid(format!(
+                        "the correlation must be positive semi-definite with rank at most {m}: reduce it with create_reduced_correlation"
+                    ));
+                }
+                Ok(pseudo_root(&values, &vectors, m))
+            }
+        }
     }
 
     /// The volatility of rate `i` at time `u`: its constant volatility, or the grid's column of the
@@ -142,6 +173,63 @@ pub fn create_exponential_correlation(times: &[f64], beta: f64) -> Result<Vec<f6
     Ok(times.iter().flat_map(|&a| times.iter().map(move |&b| (-beta * (a - b).abs()).exp())).collect())
 }
 
+/// The pseudo-root from the `m` largest eigenvalues, `B[i][k] = v_k[i] sqrt(lambda_k)`, with each row
+/// rescaled to unit length so that `B B^T` has ones on its diagonal (QuantLib's `rankReducedSqrt` with
+/// all components retained up to the rank, and its `normalizePseudoRoot`).
+fn pseudo_root(values: &[f64], vectors: &[Vec<f64>], m: usize) -> Vec<Vec<f64>> {
+    vectors
+        .iter()
+        .map(|v| {
+            let row: Vec<f64> = (0..m).map(|k| v[k] * values[k].max(0.0).sqrt()).collect();
+            let norm = row.iter().map(|x| x * x).sum::<f64>().sqrt();
+            if norm > 0.0 { row.iter().map(|x| x / norm).collect() } else { row }
+        })
+        .collect()
+}
+
+/// The `n` by `m` pseudo-root of a correlation from its `m` largest eigenvalues, by rows, as QuantLib's
+/// `rankReducedSqrt(matrix, m, 1.0, SalvagingAlgorithm::None)`: a negative eigenvalue below `-1e-16` is
+/// an error.
+pub fn compute_reduced_pseudo_root(correlation: &[f64], n: usize, factors: usize) -> Result<Vec<f64>, Error> {
+    let rows = check_correlation_entries(correlation, n)?;
+    if factors == 0 || factors > n {
+        return invalid(format!("the number of factors must be from 1 to {n}, not {factors}"));
+    }
+    let (values, vectors) = compute_symmetric_eigen(&rows)?;
+    if values[n - 1] < -1e-16 {
+        return invalid(format!("the correlation has a negative eigenvalue ({:e})", values[n - 1]));
+    }
+    let root = pseudo_root(&values, &vectors, factors);
+    if root.iter().any(|row| row.iter().all(|x| *x == 0.0)) {
+        return invalid("a forward has no weight on the retained factors".into());
+    }
+    Ok(root.concat())
+}
+
+/// The correlation of `m` factors, `B B^T` for the pseudo-root `B` of [`compute_reduced_pseudo_root`]:
+/// symmetric, positive semi-definite, of rank `m`, with ones on its diagonal. With `m = n` it is the
+/// correlation itself (up to rounding).
+pub fn create_reduced_correlation(correlation: &[f64], n: usize, factors: usize) -> Result<Vec<f64>, Error> {
+    let root = compute_reduced_pseudo_root(correlation, n, factors)?;
+    let mut out = vec![0.0; n * n];
+    for i in 0..n {
+        for j in 0..n {
+            out[i * n + j] = if i == j {
+                1.0
+            } else {
+                (0..factors).map(|k| root[i * factors + k] * root[j * factors + k]).sum::<f64>().clamp(-1.0, 1.0)
+            };
+        }
+    }
+    // exactly symmetric
+    for i in 0..n {
+        for j in 0..i {
+            out[i * n + j] = out[j * n + i];
+        }
+    }
+    Ok(out)
+}
+
 /// Joint paths: `state[p][k][i]` is `L_i(T_k)` on path `p` for `i >= k`, and for a backward-looking rate
 /// also `i = k - 1`, its value at the end of its period (NaN for the others),
 /// and `numeraire[p][k]` is `B(T_k)`.
@@ -172,7 +260,8 @@ pub fn generate_lmm_paths_observed(
     seed: u64,
     observation: Option<f64>,
 ) -> Result<LmmPaths, Error> {
-    let lower = spec.check()?;
+    let root = spec.check()?;
+    let width = spec.factors.unwrap_or(spec.count());
     if let Some(t) = observation {
         if !(t > 0.0 && t <= spec.times[spec.count()]) {
             return invalid(format!("the observation time must be after 0 and not after the last time, not {t}"));
@@ -200,9 +289,9 @@ pub fn generate_lmm_paths_observed(
         let mut evolve = |l: &mut Vec<f64>, from: f64, to: f64, alive: usize, accruing: Option<usize>| {
             let dt = (to - from) / steps_per_period as f64;
             for s in 0..steps_per_period {
-                let z: Vec<f64> = (0..n).map(|i| generate_standard_normal(seed, p as u64, step_count * n as u64 + i as u64)).collect();
+                let z: Vec<f64> = (0..width).map(|i| generate_standard_normal(seed, p as u64, step_count * n as u64 + i as u64)).collect();
                 step_count += 1;
-                let w: Vec<f64> = (0..n).map(|i| lower[i][..=i].iter().zip(&z).map(|(a, b)| a * b).sum()).collect();
+                let w: Vec<f64> = root.iter().map(|row| row.iter().zip(&z).map(|(a, b)| a * b).sum()).collect();
                 // the decay of the accruing rate: g at the step's middle for the drift, and the mean
                 // of g^2 over the step for the variance (exact for the linear g)
                 let mut g = vec![1.0; n];
@@ -623,7 +712,13 @@ pub fn calibrate_lmm_correlation(spec: &LmmSpec, quotes: &[SwaptionQuote], beta_
     }
     let fixing_times = &spec.times[..spec.count()];
     let fitted_at = |beta: f64| -> Result<Vec<f64>, Error> {
-        let trial = LmmSpec { correlation: create_exponential_correlation(fixing_times, beta)?, ..spec.clone() };
+        let full = create_exponential_correlation(fixing_times, beta)?;
+        // with fewer factors, the reduced correlation of the exponential one
+        let correlation = match spec.factors {
+            None => full,
+            Some(m) => create_reduced_correlation(&full, spec.count(), m)?,
+        };
+        let trial = LmmSpec { correlation, ..spec.clone() };
         quotes.iter().map(|q| compute_rebonato_swaption_volatility(&trial, q.start, q.end)).collect()
     };
     let error_at = |beta: f64| -> Result<f64, Error> {
@@ -668,7 +763,7 @@ mod tests {
         let forwards: Vec<f64> = (0..10).map(|k| 0.02 + 0.001 * k as f64).collect();
         let volatilities: Vec<f64> = (0..10).map(|k| 0.25 - 0.005 * k as f64).collect();
         let correlation = create_exponential_correlation(&times[..10], beta).unwrap();
-        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black, volatility_grid: None }
+        LmmSpec { times, forwards, volatilities, correlation, discount_start: (-0.02f64).exp(), backward_looking: false, model: ForwardModel::Black, volatility_grid: None, factors: None }
     }
 
     const PATHS: usize = 2000;
@@ -781,6 +876,7 @@ mod tests {
             backward_looking: true,
             model: ForwardModel::Black,
             volatility_grid: None,
+            factors: None,
         };
         assert!((s.discount(1) - 0.9965).abs() < 1e-15);
         let paths = generate_lmm_paths(&s, PATHS, 8, 23).unwrap();
@@ -944,6 +1040,7 @@ mod tests {
             backward_looking: true,
             model: ForwardModel::Black,
             volatility_grid: None,
+            factors: None,
         };
         assert_eq!(full.first_open_period(), 2);
         // the same model without the complete periods
@@ -1055,6 +1152,74 @@ mod tests {
         }
         assert!((compute_lmm_rate_variance(&s, i, s.times[i]).unwrap() - expected).abs() < 1e-14);
         assert!(generate_lmm_paths(&LmmSpec { volatility_grid: Some(vec![0.2; 5]), ..spec(0.3) }, 10, 4, 1).is_err());
+    }
+
+    #[test]
+    fn fewer_factors_keep_bonds_martingales_and_follow_rebonato_with_the_reduced_correlation() {
+        let n = 10;
+        let full = spec(0.3);
+        // all factors give back the correlation; fewer give rank m with ones on the diagonal
+        let same = create_reduced_correlation(&full.correlation, n, n).unwrap();
+        assert!(same.iter().zip(&full.correlation).all(|(a, b)| (a - b).abs() < 1e-12));
+        for m in [1usize, 2, 3, 5] {
+            let reduced = create_reduced_correlation(&full.correlation, n, m).unwrap();
+            let rows: Vec<Vec<f64>> = reduced.chunks(n).map(<[f64]>::to_vec).collect();
+            let (values, _) = compute_symmetric_eigen(&rows).unwrap();
+            assert!(values[m..].iter().all(|v| v.abs() < 1e-12), "{m}: {values:?}");
+            assert!((0..n).all(|i| reduced[i * n + i] == 1.0 && (0..n).all(|j| reduced[i * n + j] == reduced[j * n + i])));
+            let root = compute_reduced_pseudo_root(&full.correlation, n, m).unwrap();
+            assert_eq!(root.len(), n * m);
+        }
+        // one factor: the rates move together
+        assert!(create_reduced_correlation(&full.correlation, n, 1).unwrap().iter().all(|r| (r - 1.0).abs() < 1e-12));
+
+        let s = LmmSpec { correlation: create_reduced_correlation(&full.correlation, n, 3).unwrap(), factors: Some(3), ..full.clone() };
+        let paths = generate_lmm_paths(&s, PATHS, 4, 61).unwrap();
+        for k in [1usize, 5, 10] {
+            let values: Vec<f64> = paths.numeraire.iter().map(|b| 1.0 / b[k]).collect();
+            let e = estimate(&values);
+            assert!((e.value - s.discount(k)).abs() < 4.0 * e.standard_error + 1e-12, "P(0,T_{k})");
+        }
+        // the caplets do not depend on the correlation
+        for i in [0usize, 4, 9] {
+            let strike = s.forwards[i];
+            let mc = compute_lmm_caplet_value(&s, &paths, i, strike).unwrap();
+            let formula = compute_lmm_caplet_formula(&s, i, strike).unwrap();
+            assert!((mc.value - formula).abs() < 4.0 * mc.standard_error, "caplet {i}: {formula} against {} ± {}", mc.value, mc.standard_error);
+        }
+        for (a, b) in [(2usize, 6usize), (4, 10), (1, 8)] {
+            let (rate, _) = swap_rate_and_annuity(&s, a, b, &s.forwards);
+            let mc = compute_lmm_swaption_value(&s, &paths, a, b, rate).unwrap();
+            let approx = compute_formula_swaption_value(&s, a, b, rate, compute_rebonato_swaption_volatility(&s, a, b).unwrap()).unwrap();
+            assert!((mc.value - approx).abs() < 4.0 * mc.standard_error + 0.02 * approx, "{a}x{b}: {approx} against {} ± {}", mc.value, mc.standard_error);
+            // fewer factors correlate the rates more, and raise the swaption's volatility
+            assert!(compute_rebonato_swaption_volatility(&s, a, b).unwrap() > compute_rebonato_swaption_volatility(&full, a, b).unwrap());
+        }
+        // the simulated correlation of the log changes to T_0 is the reduced one
+        let changes: Vec<Vec<f64>> = paths.state.iter().map(|st| (0..n).map(|i| (st[0][i] / s.forwards[i]).ln()).collect()).collect();
+        let column = |i: usize| -> Vec<f64> { changes.iter().map(|c| c[i]).collect() };
+        for (i, j) in [(0usize, 5usize), (0, 9), (3, 4)] {
+            let (x, y) = (column(i), column(j));
+            let (mx, my) = (x.iter().sum::<f64>() / x.len() as f64, y.iter().sum::<f64>() / y.len() as f64);
+            let cov: f64 = x.iter().zip(&y).map(|(a, b)| (a - mx) * (b - my)).sum();
+            let vx: f64 = x.iter().map(|a| (a - mx) * (a - mx)).sum();
+            let vy: f64 = y.iter().map(|b| (b - my) * (b - my)).sum();
+            let rho = cov / (vx * vy).sqrt();
+            assert!((rho - s.correlation[i * n + j]).abs() < 0.1, "{i} {j}: {rho} against {}", s.correlation[i * n + j]);
+        }
+        // the calibration fits beta with the reduced correlation
+        let quotes: Vec<SwaptionQuote> = [(2usize, 6usize), (4, 10), (1, 8), (6, 10)]
+            .iter()
+            .map(|&(a, b)| SwaptionQuote { start: a, end: b, volatility: compute_rebonato_swaption_volatility(&s, a, b).unwrap() })
+            .collect();
+        let fit = calibrate_lmm_correlation(&LmmSpec { factors: Some(3), ..spec(0.9) }, &quotes, 5.0).unwrap();
+        assert!((fit.beta - 0.3).abs() < 1e-6, "{}", fit.beta);
+        // the rank must fit the factors, and a reduced correlation needs its factors
+        assert!(generate_lmm_paths(&LmmSpec { factors: Some(3), ..full.clone() }, 10, 4, 1).is_err());
+        assert!(generate_lmm_paths(&LmmSpec { factors: Some(0), ..s.clone() }, 10, 4, 1).is_err());
+        assert!(generate_lmm_paths(&LmmSpec { factors: Some(11), ..s.clone() }, 10, 4, 1).is_err());
+        assert!(generate_lmm_paths(&LmmSpec { factors: None, ..s.clone() }, 10, 4, 1).is_err());
+        assert!(create_reduced_correlation(&full.correlation, n, 0).is_err());
     }
 
     #[test]

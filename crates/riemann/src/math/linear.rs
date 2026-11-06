@@ -1,4 +1,5 @@
-//! Dense linear algebra: Gaussian elimination with partial pivoting, and least squares by QR.
+//! Dense linear algebra: Gaussian elimination with partial pivoting, least squares by QR, Cholesky, and
+//! the eigenvalues of a symmetric matrix by Jacobi rotations.
 
 use crate::Error;
 
@@ -169,6 +170,72 @@ pub fn compute_cholesky(a: &[Vec<f64>]) -> Result<Vec<Vec<f64>>, Error> {
     Ok(l)
 }
 
+/// The eigenvalues of a symmetric matrix, in decreasing order, and its eigenvectors: column `k` of
+/// `vectors` (`vectors[i][k]`) is the unit eigenvector of value `k`. Cyclic Jacobi rotations, until the
+/// off-diagonal entries are negligible next to the matrix; the same input always gives the same result.
+#[allow(clippy::needless_range_loop)]
+pub fn compute_symmetric_eigen(a: &[Vec<f64>]) -> Result<(Vec<f64>, Vec<Vec<f64>>), Error> {
+    let n = a.len();
+    if n == 0 || a.iter().any(|row| row.len() != n || row.iter().any(|x| !x.is_finite())) {
+        return Err(invalid("the eigen decomposition needs a finite square matrix"));
+    }
+    for i in 0..n {
+        for j in 0..i {
+            if (a[i][j] - a[j][i]).abs() > 1e-12 * (a[i][j].abs() + a[j][i].abs()).max(1.0) {
+                return Err(invalid("the eigen decomposition needs a symmetric matrix"));
+            }
+        }
+    }
+    let mut m: Vec<Vec<f64>> = (0..n).map(|i| (0..n).map(|j| (a[i][j] + a[j][i]) / 2.0).collect()).collect();
+    let mut v: Vec<Vec<f64>> = (0..n).map(|i| (0..n).map(|j| if i == j { 1.0 } else { 0.0 }).collect()).collect();
+    let scale: f64 = m.iter().flatten().map(|x| x * x).sum();
+    let mut converged = scale == 0.0;
+    for _sweep in 0..100 {
+        let off: f64 = (0..n).flat_map(|i| (0..i).map(move |j| (i, j))).map(|(i, j)| m[i][j] * m[i][j]).sum();
+        if off <= 1e-32 * scale {
+            converged = true;
+            break;
+        }
+        for p in 0..n {
+            for q in p + 1..n {
+                if m[p][q] == 0.0 {
+                    continue;
+                }
+                // the rotation that zeroes m[p][q]: tan of its angle, the smaller root
+                let theta = (m[q][q] - m[p][p]) / (2.0 * m[p][q]);
+                let t = if theta.abs() > 1e150 { 0.5 / theta } else { theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt()) };
+                let c = 1.0 / (t * t + 1.0).sqrt();
+                let s = t * c;
+                for k in 0..n {
+                    let (x, y) = (m[k][p], m[k][q]);
+                    m[k][p] = c * x - s * y;
+                    m[k][q] = s * x + c * y;
+                }
+                for k in 0..n {
+                    let (x, y) = (m[p][k], m[q][k]);
+                    m[p][k] = c * x - s * y;
+                    m[q][k] = s * x + c * y;
+                }
+                m[p][q] = 0.0;
+                m[q][p] = 0.0;
+                for k in 0..n {
+                    let (x, y) = (v[k][p], v[k][q]);
+                    v[k][p] = c * x - s * y;
+                    v[k][q] = s * x + c * y;
+                }
+            }
+        }
+    }
+    if !converged {
+        return Err(invalid("the Jacobi rotations did not converge"));
+    }
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&x, &y| m[y][y].total_cmp(&m[x][x]).then(x.cmp(&y)));
+    let values = order.iter().map(|&k| m[k][k]).collect();
+    let vectors = (0..n).map(|i| order.iter().map(|&k| v[i][k]).collect()).collect();
+    Ok((values, vectors))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +256,32 @@ mod tests {
                 assert!((product - expected).abs() < 1e-14, "{i} {j} {product}");
             }
         }
+    }
+
+    #[test]
+    #[allow(clippy::needless_range_loop)]
+    fn symmetric_eigen_decomposition_rebuilds_the_matrix() {
+        let a = vec![
+            vec![4.0, 1.0, -2.0, 0.5],
+            vec![1.0, 3.0, 0.0, 1.0],
+            vec![-2.0, 0.0, 5.0, -1.0],
+            vec![0.5, 1.0, -1.0, 2.0],
+        ];
+        let (values, vectors) = compute_symmetric_eigen(&a).unwrap();
+        assert!(values.windows(2).all(|w| w[0] >= w[1]));
+        assert!((values.iter().sum::<f64>() - 14.0).abs() < 1e-13);
+        for i in 0..4 {
+            for j in 0..4 {
+                let rebuilt: f64 = (0..4).map(|k| vectors[i][k] * values[k] * vectors[j][k]).sum();
+                let dot: f64 = (0..4).map(|k| vectors[k][i] * vectors[k][j]).sum();
+                assert!((rebuilt - a[i][j]).abs() < 1e-13, "{i} {j} {rebuilt}");
+                assert!((dot - if i == j { 1.0 } else { 0.0 }).abs() < 1e-13);
+            }
+        }
+        // [[2, 1], [1, 2]] has the values 3 and 1
+        let (two, _) = compute_symmetric_eigen(&[vec![2.0, 1.0], vec![1.0, 2.0]]).unwrap();
+        assert!((two[0] - 3.0).abs() < 1e-15 && (two[1] - 1.0).abs() < 1e-15);
+        assert!(compute_symmetric_eigen(&[vec![1.0, 2.0], vec![0.0, 1.0]]).is_err());
     }
 
     #[test]
