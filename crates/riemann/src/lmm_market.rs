@@ -75,9 +75,15 @@ impl LmmSpec {
         if !self.times[0].is_finite() || self.times.windows(2).any(|w| !(w[1] > w[0])) {
             return invalid("the times must increase".into());
         }
-        // a period that started before today: only a backward-looking rate, and only the first one
-        if self.times[0] < 0.0 && !(self.backward_looking && self.times[1] > 0.0) {
-            return invalid("only the first period of backward-looking rates can have started before today".into());
+        // periods that started before today: only backward-looking rates. Those that ended on or before
+        // today are complete, and the next one is under way
+        if self.times[0] < 0.0 {
+            if !self.backward_looking {
+                return invalid("only backward-looking rates can have periods that started before today".into());
+            }
+            if !(self.times[self.count()] > 0.0) {
+                return invalid("the last period must end after today".into());
+            }
         }
         if (self.model == ForwardModel::Black && self.forwards.iter().any(|f| !(*f > 0.0)))
             || self.forwards.iter().any(|f| !f.is_finite())
@@ -90,9 +96,20 @@ impl LmmSpec {
         check_correlation(&self.correlation, n)
     }
 
-    /// `P(0, T_k)` from the forwards.
+    /// The first period that has not ended by today: 0 unless periods of backward-looking rates ended
+    /// on or before today. Those are complete: their rates are fixed and paid.
+    pub fn first_open_period(&self) -> usize {
+        (0..self.count()).find(|&i| self.times[i + 1] > 0.0).unwrap_or(self.count())
+    }
+
+    /// `P(0, T_k)` from the forwards, for `T_k` not before the first open period's start (`NaN` before).
+    /// `discount_start` is `P(0, T_c)` for that period `c`, or its realized compounding when it is under way.
     pub fn discount(&self, k: usize) -> f64 {
-        (0..k).fold(self.discount_start, |p, i| p / (1.0 + self.accrual(i) * self.forwards[i]))
+        let c = self.first_open_period();
+        if k < c {
+            return f64::NAN;
+        }
+        (c..k).fold(self.discount_start, |p, i| p / (1.0 + self.accrual(i) * self.forwards[i]))
     }
 }
 
@@ -154,8 +171,9 @@ pub fn generate_lmm_paths_observed(
         let mut seen: Option<Vec<f64>> = None;
         let mut l = spec.forwards.clone();
         let mut path_state = vec![vec![f64::NAN; n]; n + 1];
-        let mut path_numeraire = vec![0.0; n + 1];
-        path_numeraire[0] = 1.0 / spec.discount_start;
+        let mut path_numeraire = vec![f64::NAN; n + 1];
+        let open = spec.first_open_period();
+        path_numeraire[open] = 1.0 / spec.discount_start;
         let mut step_count: u64 = 0;
         // `accruing` is the backward-looking rate whose period is [from, to], if any
         let mut evolve = |l: &mut Vec<f64>, from: f64, to: f64, alive: usize, accruing: Option<usize>| {
@@ -204,8 +222,15 @@ pub fn generate_lmm_paths_observed(
         if spec.times[0] > 0.0 {
             segment(&mut l, 0.0, spec.times[0], 0, None, &mut seen);
         }
-        path_state[0].clone_from(&l);
-        for k in 0..n {
+        // complete periods keep their fixings; the state at their end dates holds them
+        for (k, row) in path_state.iter_mut().enumerate().take(open + 1) {
+            row.clone_from(&l);
+            if k > 0 {
+                row[..k.min(n)].fill(f64::NAN);
+                row[k - 1] = l[k - 1];
+            }
+        }
+        for k in open..n {
             if spec.backward_looking {
                 // rate k accrues over [T_k, T_{k+1}] and is known at its end; a period started before
                 // today moves only from today, its fixings so far being in `discount_start`
@@ -305,6 +330,9 @@ pub fn compute_lmm_swaption_value(spec: &LmmSpec, paths: &LmmPaths, a: usize, b:
     if !(a < b && b <= n) {
         return invalid(format!("the swap must run from T_a to T_b with a < b <= {n}"));
     }
+    if spec.times[a] < 0.0 {
+        return invalid(format!("the exercise T_a = {} is before today; give an exercise time with compute_lmm_swaption_value_at", spec.times[a]));
+    }
     let values: Vec<f64> = paths
         .state
         .iter()
@@ -333,6 +361,9 @@ pub fn compute_lmm_swaption_value_at(spec: &LmmSpec, paths: &LmmPaths, a: usize,
     if !(a < b && b <= n) {
         return invalid(format!("the swap must run from T_a to T_b with a < b <= {n}"));
     }
+    if a < spec.first_open_period() {
+        return invalid(format!("the swap starts in a period that ended before today ({a})"));
+    }
     if expiry > spec.times[a + 1] {
         return invalid(format!("the exercise {expiry} is after the end of the swap's first period {}", spec.times[a + 1]));
     }
@@ -360,6 +391,9 @@ pub fn compute_lmm_caplet_value(spec: &LmmSpec, paths: &LmmPaths, i: usize, stri
     spec.check()?;
     if i >= spec.count() {
         return invalid(format!("no forward {i}"));
+    }
+    if i < spec.first_open_period() {
+        return invalid(format!("the period of forward {i} ended before today: its caplet is fixed and paid"));
     }
     let tau = spec.accrual(i);
     let values: Vec<f64> = paths
@@ -460,6 +494,9 @@ pub fn compute_formula_swaption_value(spec: &LmmSpec, a: usize, b: usize, strike
 /// The formula value of the swaption exercised at `expiry`, with a volatility per year of `expiry`.
 pub fn compute_formula_swaption_value_at(spec: &LmmSpec, a: usize, b: usize, strike: f64, volatility: f64, expiry: f64) -> Result<f64, Error> {
     spec.check()?;
+    if a < spec.first_open_period() {
+        return invalid(format!("the swap starts in a period that ended before today ({a})"));
+    }
     let (rate, annuity) = swap_rate_and_annuity(spec, a, b, &spec.forwards);
     let value = compute_forward_value(
         spec.model,
@@ -799,6 +836,77 @@ mod tests {
         assert!((decay_overlap(&fmm, a, a + 2, t_mid) - single).abs() < 1e-12);
         assert!(compute_rebonato_swaption_volatility_at(&fmm, a, b, fmm.times[a + 1] + 0.01).is_err());
         assert!(compute_lmm_swaption_value_at(&fmm, &generate_lmm_paths(&fmm, 10, 4, 1).unwrap(), a, b, rate).is_err());
+    }
+
+    #[test]
+    fn complete_periods_before_the_one_under_way_are_fixed_and_left_out() {
+        use crate::fmm::{compute_backward_caplet_value, BackwardCapletTerms};
+        // quarterly periods from 0.6 years ago: two are complete, the third is under way
+        let times: Vec<f64> = (0..=10).map(|k| -0.6 + 0.25 * k as f64).collect();
+        let realized = 1.0012;
+        let mut forwards: Vec<f64> = (0..10).map(|k| 0.02 + 0.001 * k as f64).collect();
+        forwards[0] = 0.0185;
+        forwards[1] = 0.0190;
+        let full = LmmSpec {
+            correlation: create_exponential_correlation(&times[..10], 0.3).unwrap(),
+            times: times.clone(),
+            forwards: forwards.clone(),
+            volatilities: vec![0.25; 10],
+            discount_start: realized,
+            backward_looking: true,
+            model: ForwardModel::Black,
+        };
+        assert_eq!(full.first_open_period(), 2);
+        // the same model without the complete periods
+        let trimmed = LmmSpec {
+            correlation: create_exponential_correlation(&times[2..10], 0.3).unwrap(),
+            times: times[2..].to_vec(),
+            forwards: forwards[2..].to_vec(),
+            volatilities: vec![0.25; 8],
+            ..full.clone()
+        };
+        assert_eq!(trimmed.first_open_period(), 0);
+        for k in 2..=10 {
+            assert_eq!(full.discount(k), trimmed.discount(k - 2));
+        }
+        assert!(full.discount(1).is_nan());
+        assert_eq!(compute_rebonato_swaption_volatility(&full, 4, 9).unwrap(), compute_rebonato_swaption_volatility(&trimmed, 2, 7).unwrap());
+        let paths = generate_lmm_paths(&full, PATHS, 8, 43).unwrap();
+        // the complete periods stay at their fixings
+        assert!(paths.state.iter().all(|st| st[1][0] == 0.0185 && st[2][1] == 0.0190));
+        for k in [3usize, 6, 10] {
+            let values: Vec<f64> = paths.numeraire.iter().map(|b| 1.0 / b[k]).collect();
+            let e = estimate(&values);
+            assert!((e.value - full.discount(k)).abs() < 4.0 * e.standard_error + 1e-12, "P(0,T_{k}): {} against {} ± {}", full.discount(k), e.value, e.standard_error);
+        }
+        for i in [2usize, 5] {
+            let strike = full.forwards[i] + 0.0005;
+            let mc = compute_lmm_caplet_value(&full, &paths, i, strike).unwrap();
+            let formula = compute_backward_caplet_value(
+                ForwardModel::Black,
+                &BackwardCapletTerms {
+                    forward: full.forwards[i],
+                    strike,
+                    volatility: 0.25,
+                    time_to_start: full.times[i],
+                    time_to_end: full.times[i + 1],
+                    accrual: full.accrual(i),
+                    discount_factor: full.discount(i + 1),
+                    notional: 1.0,
+                },
+            )
+            .unwrap();
+            assert!((mc.value - formula).abs() < 4.0 * mc.standard_error, "caplet {i}: {formula} against {} ± {}", mc.value, mc.standard_error);
+        }
+        // the full and the trimmed models price a swaption alike
+        let trimmed_paths = generate_lmm_paths(&trimmed, PATHS, 8, 47).unwrap();
+        let rate = swap_rate_and_annuity(&full, 4, 9, &full.forwards).0;
+        let (f, t) = (compute_lmm_swaption_value(&full, &paths, 4, 9, rate).unwrap(), compute_lmm_swaption_value(&trimmed, &trimmed_paths, 2, 7, rate).unwrap());
+        assert!((f.value - t.value).abs() < 4.0 * (f.standard_error.powi(2) + t.standard_error.powi(2)).sqrt(), "{} against {}", f.value, t.value);
+        // instruments of the complete periods are refused
+        assert!(compute_lmm_caplet_value(&full, &paths, 1, 0.02).is_err());
+        assert!(compute_lmm_swaption_value(&full, &paths, 1, 5, 0.02).is_err());
+        assert!(compute_formula_swaption_value_at(&full, 1, 5, 0.02, 0.2, 0.1).is_err());
     }
 
     #[test]

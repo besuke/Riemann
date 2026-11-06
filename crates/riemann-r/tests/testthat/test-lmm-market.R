@@ -79,3 +79,18 @@ test_that("swaptions exercised between tenor dates and during a backward-looking
   expect_lt(abs(leg$value - (bonds[4] - bonds[9])), 4 * leg$standard_error + 1e-12)
   expect_error(compute_lmm_swaption_value(fmm, 5, 10, 0.025, expiry = times[6] + 0.1, paths = 10L), "after the end")
 })
+
+test_that("complete periods before the one under way are fixed and left out", {
+  times <- -0.6 + 0.25 * (0:10)
+  forwards <- c(0.0185, 0.019, 0.02 + 0.001 * (2:9))
+  full <- create_lmm(times, forwards, rep(0.25, 10), beta = 0.3, discount_start = 1.0012, backward_looking = TRUE)
+  trimmed <- create_lmm(times[-(1:2)], forwards[-(1:2)], rep(0.25, 8), beta = 0.3, discount_start = 1.0012, backward_looking = TRUE)
+  expect_equal(compute_rebonato_swaption_volatility(full, 5, 10), compute_rebonato_swaption_volatility(trimmed, 3, 8))
+  caplets <- compute_lmm_caplet_value(full, forward = c(3, 6), strike = forwards[c(3, 6)] + 0.0005, paths = 2000L, steps_per_period = 8L)
+  same <- compute_lmm_caplet_value(trimmed, forward = c(1, 4), strike = forwards[c(3, 6)] + 0.0005, paths = 2000L, steps_per_period = 8L)
+  expect_equal(caplets$formula_value, same$formula_value)
+  expect_true(all(abs(caplets$value - caplets$formula_value) < 4 * caplets$standard_error))
+  p <- generate_lmm_paths(full, paths = 50L)
+  expect_true(all(p$state[, 2, 1] == 0.0185 & p$state[, 3, 2] == 0.019))
+  expect_error(compute_lmm_caplet_value(full, forward = 2, strike = 0.02, paths = 10L), "ended before today")
+})

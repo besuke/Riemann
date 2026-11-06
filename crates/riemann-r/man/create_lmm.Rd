@@ -62,7 +62,11 @@ calibrate_lmm_correlation(model, start, end, volatility, beta_max = 5)
 
 \item{discount_start}{The discount factor to \code{times[1]}. When the first period of backward-looking rates started before
 today (\code{times[1] < 0}), the compounding factor of its fixings so far instead; \code{forwards[1]} is then the forward of
-the whole period from \code{\link[=compute_backward_forward_rate]{compute_backward_forward_rate()}}, and only the rest of the period is random.}
+the whole period from \code{\link[=compute_backward_forward_rate]{compute_backward_forward_rate()}}, and only the rest of the period is random. Earlier
+periods that ended on or before today are complete: give their fixed rates in \code{forwards}; they are not
+simulated, and the discount factors and the numeraire start from the period under way. Caplets and swaptions
+on complete periods are refused. \code{\link[=compute_backward_period_state]{compute_backward_period_state()}} gives that period's \code{discount_start} and
+forward from its daily fixings.}
 
 \item{backward_looking}{\code{FALSE} for forward-looking term rates, \code{TRUE} for backward-looking compounded rates.}
 

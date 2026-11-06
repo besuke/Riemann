@@ -34,7 +34,11 @@
 #' @param beta Decay of the exponential correlation.
 #' @param discount_start The discount factor to `times[1]`. When the first period of backward-looking rates started before
 #'   today (`times[1] < 0`), the compounding factor of its fixings so far instead; `forwards[1]` is then the forward of
-#'   the whole period from [compute_backward_forward_rate()], and only the rest of the period is random.
+#'   the whole period from [compute_backward_forward_rate()], and only the rest of the period is random. Earlier
+#'   periods that ended on or before today are complete: give their fixed rates in `forwards`; they are not
+#'   simulated, and the discount factors and the numeraire start from the period under way. Caplets and swaptions
+#'   on complete periods are refused. [compute_backward_period_state()] gives that period's `discount_start` and
+#'   forward from its daily fixings.
 #' @param backward_looking `FALSE` for forward-looking term rates, `TRUE` for backward-looking compounded rates.
 #' @param model `"black"` for lognormal rates, or `"bachelier"` for normal rates, whose volatilities are in rate units
 #'   and which may turn negative. Rebonato's volatility and the formula values follow the model.
@@ -131,7 +135,11 @@ compute_lmm_caplet_value <- function(model, forward, strike, paths = 2000L, step
   mc <- checked(.Call(wrap__compute_lmm_monte_carlo, a[[1]], a[[2]], a[[3]], a[[4]], a[[5]], a[[6]], a[[7]], rep("caplet", nrow(i)), i$forward - 1L, i$forward, i$strike, rep(NA_real_, nrow(i)),
                       as.integer(paths), as.integer(steps_per_period), as.numeric(seed)))
   n <- length(model$forwards)
-  discount <- model$discount_start / cumprod(1 + diff(model$times) * model$forwards)
+  # discount factors from the first period that has not ended (the complete ones are fixed and paid)
+  open <- which(model$times[-1] > 0)[1]
+  growth <- 1 + diff(model$times) * model$forwards
+  discount <- rep(NA_real_, n)
+  discount[open:n] <- model$discount_start / cumprod(growth[open:n])
   black <- purrr::pmap_dbl(i, \(forward, strike) {
     tau <- model$times[forward + 1L] - model$times[forward]
     if (isTRUE(model$backward_looking)) {
