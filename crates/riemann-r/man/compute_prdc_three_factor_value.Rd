@@ -67,7 +67,11 @@ no call. A call needs \code{paths > 0}.}
 \value{
 A list with \code{summary}, a one-row tibble with \code{value}, \code{standard_error} (0 for the closed form) and
 \code{analytic} (the closed form without the call), and \code{coupons}, a tibble with each coupon's \code{time} and
-\code{effective_volatility}. With call dates, \code{summary} adds \code{noncallable_value} and \code{hindsight_value}, and \code{calls} is a
+\code{effective_volatility}, \code{sensitivity}, a tibble of the closed form's derivatives (\code{parameter}, \code{d_npv}) with respect
+to the spot, the FX volatility, each rate's mean reversion and volatility and the three correlations, and
+\code{curve_sensitivity}, as in \code{\link[=compute_prdc_value]{compute_prdc_value()}} (\code{d_npv} per unit of log discount factor, \code{npv_per_bp} for +1bp
+on the node's continuous zero rate). The derivatives are of the note without the call.
+With call dates, \code{summary} adds \code{noncallable_value} and \code{hindsight_value}, and \code{calls} is a
 tibble of the call dates' \code{call_probability}.
 }
 \description{
@@ -79,7 +83,8 @@ forward measure of that date the FX forward is lognormal with the variance of
 \verb{fx_volatility dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d}, so the closed form is the call spread of
 \code{\link[=compute_prdc_value]{compute_prdc_value()}} with each coupon's \code{effective_volatility}. With \code{paths > 0} the value is a Monte Carlo of
 the three factors (exact Ornstein-Uhlenbeck steps of at most \code{1 / steps_per_year} years, trapezoid integrals of the
-rates), next to the closed form. No target redemption or knock-out; no sensitivities.
+rates), next to the closed form. The closed form's first derivatives with respect to every input come from
+automatic differentiation in one pass. No target redemption or knock-out.
 }
 \details{
 With \code{call_dates}, the issuer may redeem the note at \code{call_price} on those coupon dates, right after paying their

@@ -353,25 +353,108 @@ impl PrdcThreeFactor<'_> {
         Ok(vec![vec![1.0, df, dx], vec![df, 1.0, fx], vec![dx, fx, 1.0]])
     }
 
+}
+
+/// The parameters of the three-factor model as operands, for one definition of the variance and the
+/// closed form in `f64` and under automatic differentiation.
+#[derive(Debug, Clone, Copy)]
+struct ThreeFactorParameters<T> {
+    fx_volatility: T,
+    domestic: (T, T),
+    foreign: (T, T),
+    correlation: [T; 3],
+}
+
+/// The nodes and weights of Gauss-Legendre quadrature on `[-1, 1]` with 32 points, from the
+/// eigenvalues of the Jacobi matrix (Golub and Welsch).
+fn gauss_legendre() -> &'static (Vec<f64>, Vec<f64>) {
+    static RULE: std::sync::OnceLock<(Vec<f64>, Vec<f64>)> = std::sync::OnceLock::new();
+    RULE.get_or_init(|| {
+        let n = 32;
+        let mut jacobi = vec![vec![0.0; n]; n];
+        for k in 1..n {
+            let b = k as f64 / ((4 * k * k - 1) as f64).sqrt();
+            jacobi[k][k - 1] = b;
+            jacobi[k - 1][k] = b;
+        }
+        let (values, vectors) = crate::math::linear::compute_symmetric_eigen(&jacobi).expect("a symmetric matrix");
+        let weights = (0..n).map(|k| 2.0 * vectors[0][k] * vectors[0][k]).collect();
+        (values, weights)
+    })
+}
+
+/// `B(tau) = (1 - exp(-a tau)) / a` for an operand `a`, by its series when `a tau` is small.
+fn hull_white_b_of<T: Operand>(a: T, tau: f64) -> T {
+    let x = a * tau;
+    if x.primal().abs() < 1e-5 {
+        // tau (1 - x / 2 + x^2 / 6), the error below x^3 / 24
+        (x * x / 6.0 - x * 0.5 + 1.0) * tau
+    } else {
+        (-((-x).exp()) + 1.0) / a
+    }
+}
+
+/// `V(T)` of [`PrdcThreeFactor::fx_forward_variance`]: the integrand is smooth, and 32-point
+/// Gauss-Legendre quadrature integrates it to rounding for the mean reversions of practice.
+fn fx_forward_variance_of<T: Operand>(p: &ThreeFactorParameters<T>, t: f64) -> T {
+    let (nodes, weights) = gauss_legendre();
+    let [df, dx, fx] = p.correlation;
+    let sx = p.fx_volatility;
+    let mut sum = sx.like(0.0);
+    for (node, weight) in nodes.iter().zip(weights) {
+        // tau = T - u over [0, T]
+        let tau = 0.5 * t * (node + 1.0);
+        let bd = p.domestic.1 * hull_white_b_of(p.domestic.0, tau);
+        let bf = p.foreign.1 * hull_white_b_of(p.foreign.0, tau);
+        let integrand = sx * sx + bf * bf + bd * bd - fx * sx * bf * 2.0 + dx * sx * bd * 2.0 - df * bd * bf * 2.0;
+        sum = sum + integrand * (0.5 * t * weight);
+    }
+    sum
+}
+
+/// The closed form for operands: each coupon is the call spread of [`compute_prdc_analytic_value`] with
+/// the volatility `sqrt(V(T) / T)`.
+fn three_factor_analytic_of<T: Operand>(
+    terms: &PrdcTerms,
+    spot: T,
+    domestic: &YieldCurve<T>,
+    foreign: &YieldCurve<T>,
+    p: &ThreeFactorParameters<T>,
+) -> Result<T, Error> {
+    let mut value = spot.like(0.0);
+    let mut last_discount = spot.like(1.0);
+    for i in 0..terms.coupon_times.len() {
+        let t = terms.coupon_times[i];
+        let one = PrdcTerms {
+            coupon_times: vec![t],
+            accrual_fractions: vec![terms.accrual_fractions[i]],
+            fixed_rates: vec![terms.fixed_rates[i]],
+            redemption: 0.0,
+            ..terms.clone()
+        };
+        let volatility = (fx_forward_variance_of(p, t) / t).sqrt();
+        let market = PrdcMarket { spot, volatility, domestic, foreign };
+        value = value + compute_prdc_analytic_value(&one, &market)?;
+        last_discount = domestic.discount_at(t, true)?;
+    }
+    Ok(value + last_discount * terms.redemption)
+}
+
+impl PrdcThreeFactor<'_> {
+    fn parameters(&self) -> ThreeFactorParameters<f64> {
+        ThreeFactorParameters {
+            fx_volatility: self.fx_volatility,
+            domestic: (self.domestic_rate.mean_reversion, self.domestic_rate.volatility),
+            foreign: (self.foreign_rate.mean_reversion, self.foreign_rate.volatility),
+            correlation: self.correlation,
+        }
+    }
+
     /// The variance of `ln F(T, T)` with `F(t, T) = S(t) P_f(t, T) / P_d(t, T)`, a martingale under the
     /// domestic `T`-forward measure: `int_0^T |sigma_X dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d|^2`, by
-    /// Simpson's rule on 2000 intervals (the integrand is smooth).
+    /// 32-point Gauss-Legendre quadrature (the integrand is smooth).
     pub fn fx_forward_variance(&self, t: f64) -> f64 {
-        let [df, dx, fx] = self.correlation;
-        let (d, f) = (self.domestic_rate, self.foreign_rate);
-        let sx = self.fx_volatility;
-        let integrand = |u: f64| {
-            let bd = d.volatility * hull_white_b(d.mean_reversion, t - u);
-            let bf = f.volatility * hull_white_b(f.mean_reversion, t - u);
-            sx * sx + bf * bf + bd * bd - 2.0 * fx * sx * bf + 2.0 * dx * sx * bd - 2.0 * df * bd * bf
-        };
-        let intervals = 2000;
-        let h = t / intervals as f64;
-        let mut sum = integrand(0.0) + integrand(t);
-        for k in 1..intervals {
-            sum += integrand(k as f64 * h) * if k % 2 == 1 { 4.0 } else { 2.0 };
-        }
-        sum * h / 3.0
+        fx_forward_variance_of(&self.parameters(), t)
     }
 }
 
@@ -382,23 +465,64 @@ impl PrdcThreeFactor<'_> {
 pub fn compute_prdc_three_factor_analytic(terms: &PrdcTerms, model: &PrdcThreeFactor) -> Result<f64, Error> {
     terms.check()?;
     model.check()?;
-    let mut value = 0.0;
-    let mut last_discount = 1.0;
-    for i in 0..terms.coupon_times.len() {
-        let t = terms.coupon_times[i];
-        let one = PrdcTerms {
-            coupon_times: vec![t],
-            accrual_fractions: vec![terms.accrual_fractions[i]],
-            fixed_rates: vec![terms.fixed_rates[i]],
-            redemption: 0.0,
-            ..terms.clone()
-        };
-        let volatility = (model.fx_forward_variance(t) / t).sqrt();
-        let market = PrdcMarket { spot: model.spot, volatility, domestic: model.domestic, foreign: model.foreign };
-        value += compute_prdc_analytic_value(&one, &market)?;
-        last_discount = model.domestic.discount_at(t, true)?;
+    three_factor_analytic_of(terms, model.spot, model.domestic, model.foreign, &model.parameters())
+}
+
+/// The first derivatives of the three-factor closed form.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrdcThreeFactorSensitivity {
+    pub npv: f64,
+    pub fx_delta: f64,
+    pub fx_vega: f64,
+    /// With respect to the domestic rate's mean reversion and volatility.
+    pub domestic_mean_reversion: f64,
+    pub domestic_volatility: f64,
+    pub foreign_mean_reversion: f64,
+    pub foreign_volatility: f64,
+    /// With respect to `rho_df`, `rho_dX`, `rho_fX`.
+    pub correlation: [f64; 3],
+    /// With respect to the curves' inputs, as [`compute_prdc_analytic`].
+    pub curves: Vec<PrdcCurveSensitivity>,
+}
+
+/// The closed-form value of the note in the three-factor model and its derivatives with respect to
+/// every input, by automatic differentiation in one pass.
+pub fn compute_prdc_three_factor_sensitivity(terms: &PrdcTerms, model: &PrdcThreeFactor) -> Result<PrdcThreeFactorSensitivity, Error> {
+    terms.check()?;
+    model.check()?;
+    let recorder = Recorder::new();
+    let spot = recorder.input(model.spot);
+    let fx_volatility = recorder.input(model.fx_volatility);
+    let domestic = (recorder.input(model.domestic_rate.mean_reversion), recorder.input(model.domestic_rate.volatility));
+    let foreign = (recorder.input(model.foreign_rate.mean_reversion), recorder.input(model.foreign_rate.volatility));
+    let correlation = model.correlation.map(|r| recorder.input(r));
+    let d = model.domestic.lift(&recorder)?;
+    let f = model.foreign.lift(&recorder)?;
+    let p = ThreeFactorParameters { fx_volatility, domestic, foreign, correlation };
+    let npv = three_factor_analytic_of(terms, spot, &d.curve, &f.curve, &p)?;
+    let mut wrt = vec![spot, fx_volatility, domestic.0, domestic.1, foreign.0, foreign.1, correlation[0], correlation[1], correlation[2]];
+    let first_curve = wrt.len();
+    wrt.extend(d.inputs.iter().map(|(_, x)| *x));
+    wrt.extend(f.inputs.iter().map(|(_, x)| *x));
+    let g: Vec<f64> = recorder.gradient(npv, &wrt)?.iter().map(|x| x.mean()).collect();
+    let mut curves = Vec::with_capacity(d.inputs.len() + f.inputs.len());
+    for (k, (input, _)) in d.inputs.iter().enumerate() {
+        curves.push(PrdcCurveSensitivity { domestic: true, input: *input, d_npv: g[first_curve + k] });
     }
-    Ok(value + last_discount * terms.redemption)
+    for (k, (input, _)) in f.inputs.iter().enumerate() {
+        curves.push(PrdcCurveSensitivity { domestic: false, input: *input, d_npv: g[first_curve + d.inputs.len() + k] });
+    }
+    Ok(PrdcThreeFactorSensitivity {
+        npv: npv.primal(),
+        fx_delta: g[0],
+        fx_vega: g[1],
+        domestic_mean_reversion: g[2],
+        domestic_volatility: g[3],
+        foreign_mean_reversion: g[4],
+        foreign_volatility: g[5],
+        correlation: [g[6], g[7], g[8]],
+        curves,
+    })
 }
 
 /// The states of the three-factor paths on the coupon dates: `discount[p][i]` is
@@ -850,6 +974,85 @@ mod tests {
         assert!(compute_callable_prdc_three_factor(&t, &model, &[4], t.redemption, 10, 4, 1, 2).is_err());
         assert!(compute_callable_prdc_three_factor(&t, &model, &[2, 1], t.redemption, 10, 4, 1, 2).is_err());
         assert!(compute_callable_prdc_three_factor(&t, &model, &[1], -1.0, 10, 4, 1, 2).is_err());
+    }
+
+    /// The curve of `curve` with the log discount factor of node `node` (0 for the first year) moved by `h`.
+    fn bumped_curve(rates: &[f64], node: usize, h: f64) -> YieldCurve {
+        let today = Date::from_ymd(2026, 11, 2).unwrap();
+        let mut dates = vec![today];
+        let mut discounts = vec![1.0];
+        let mut sum = 0.0;
+        for (i, r) in rates.iter().enumerate() {
+            sum += r;
+            dates.push(Date::from_serial(today.serial() as i64 + 365 * (i as i64 + 1)).unwrap());
+            discounts.push((-sum + if i == node { h } else { 0.0 }).exp());
+        }
+        YieldCurve::interpolated_discounts(dates, discounts, dc(), LogDiscountInterpolation::LogLinear).unwrap()
+    }
+
+    #[test]
+    fn the_three_factor_derivatives_agree_with_numeric_differences() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let t = terms();
+        let a = compute_prdc_three_factor_sensitivity(&t, &model).unwrap();
+        assert!((a.npv - compute_prdc_three_factor_analytic(&t, &model).unwrap()).abs() < 1e-7);
+        let value = |m: &PrdcThreeFactor| compute_prdc_three_factor_analytic(&t, m).unwrap();
+        // central differences, each input moved by h
+        let check = |name: &str, got: f64, up: PrdcThreeFactor, down: PrdcThreeFactor, h: f64| {
+            let numeric = (value(&up) - value(&down)) / (2.0 * h);
+            assert!((got - numeric).abs() < 1e-5 * numeric.abs().max(1e3), "{name}: {got} against {numeric}");
+        };
+        check("spot", a.fx_delta, PrdcThreeFactor { spot: 150.0 + 1e-3, ..model }, PrdcThreeFactor { spot: 150.0 - 1e-3, ..model }, 1e-3);
+        check("fx vol", a.fx_vega, PrdcThreeFactor { fx_volatility: 0.11 + 1e-6, ..model }, PrdcThreeFactor { fx_volatility: 0.11 - 1e-6, ..model }, 1e-6);
+        let rate = |a: f64, s: f64| HullWhiteFactor { mean_reversion: a, volatility: s };
+        let h = 1e-6;
+        check("a_d", a.domestic_mean_reversion, PrdcThreeFactor { domestic_rate: rate(0.03 + h, 0.01), ..model }, PrdcThreeFactor { domestic_rate: rate(0.03 - h, 0.01), ..model }, h);
+        check("sigma_d", a.domestic_volatility, PrdcThreeFactor { domestic_rate: rate(0.03, 0.01 + h), ..model }, PrdcThreeFactor { domestic_rate: rate(0.03, 0.01 - h), ..model }, h);
+        check("a_f", a.foreign_mean_reversion, PrdcThreeFactor { foreign_rate: rate(0.05 + h, 0.012), ..model }, PrdcThreeFactor { foreign_rate: rate(0.05 - h, 0.012), ..model }, h);
+        check("sigma_f", a.foreign_volatility, PrdcThreeFactor { foreign_rate: rate(0.05, 0.012 + h), ..model }, PrdcThreeFactor { foreign_rate: rate(0.05, 0.012 - h), ..model }, h);
+        for k in 0..3 {
+            let (mut up, mut down) = (model.correlation, model.correlation);
+            up[k] += h;
+            down[k] -= h;
+            check("rho", a.correlation[k], PrdcThreeFactor { correlation: up, ..model }, PrdcThreeFactor { correlation: down, ..model }, h);
+        }
+        // every node of both curves, against rebuilding the curve
+        let (jpy_rates, foreign_rates) = ([0.01, 0.012, 0.014, 0.016, 0.018], [0.04, 0.038, 0.036, 0.034, 0.032]);
+        for domestic in [true, false] {
+            let nodes: Vec<f64> = a.curves.iter().filter(|c| c.domestic == domestic).map(|c| c.d_npv).collect();
+            assert_eq!(nodes.len(), 5);
+            for (node, got) in nodes.iter().enumerate() {
+                let at = |h: f64| {
+                    let (dd, ff) = if domestic { (bumped_curve(&jpy_rates, node, h), f.clone()) } else { (d.clone(), bumped_curve(&foreign_rates, node, h)) };
+                    compute_prdc_three_factor_analytic(&t, &PrdcThreeFactor { domestic: &dd, foreign: &ff, ..model }).unwrap()
+                };
+                let numeric = (at(1e-6) - at(-1e-6)) / 2e-6;
+                assert!((got - numeric).abs() < 1e-4 * numeric.abs().max(1e3), "{domestic} node {node}: {got} against {numeric}");
+            }
+        }
+        // without rate volatility the FX derivatives are the simple model's
+        let flat = three_factor(&d, &f, [0.0, 0.0], [0.3, -0.2, 0.4]);
+        let simple = compute_prdc_analytic(&t, 150.0, 0.11, &d, &f).unwrap();
+        let three = compute_prdc_three_factor_sensitivity(&t, &flat).unwrap();
+        assert!((three.fx_delta / simple.fx_delta - 1.0).abs() < 1e-10 && (three.fx_vega / simple.fx_vega - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn the_paths_have_the_closed_form_derivatives() {
+        // central differences of the Monte Carlo with common random numbers against the closed form's
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let t = terms();
+        let a = compute_prdc_three_factor_sensitivity(&t, &model).unwrap();
+        let mc = |m: &PrdcThreeFactor| compute_prdc_three_factor_monte_carlo(&t, m, 20_000, 12, 23).unwrap().0;
+        let delta = (mc(&PrdcThreeFactor { spot: 151.0, ..model }) - mc(&PrdcThreeFactor { spot: 149.0, ..model })) / 2.0;
+        assert!((delta - a.fx_delta).abs() < 0.03 * a.fx_delta.abs(), "delta {delta} against {}", a.fx_delta);
+        let vega = (mc(&PrdcThreeFactor { fx_volatility: 0.12, ..model }) - mc(&PrdcThreeFactor { fx_volatility: 0.10, ..model })) / 0.02;
+        assert!((vega - a.fx_vega).abs() < 0.05 * a.fx_vega.abs(), "vega {vega} against {}", a.fx_vega);
+        let rate = |s: f64| HullWhiteFactor { mean_reversion: 0.05, volatility: s };
+        let foreign_vega = (mc(&PrdcThreeFactor { foreign_rate: rate(0.022), ..model }) - mc(&PrdcThreeFactor { foreign_rate: rate(0.002), ..model })) / 0.02;
+        assert!((foreign_vega - a.foreign_volatility).abs() < 0.1 * a.foreign_volatility.abs(), "foreign vega {foreign_vega} against {}", a.foreign_volatility);
     }
 
     fn settings(threads: usize) -> PrdcMonteCarlo {

@@ -84,3 +84,20 @@ test_that("a callable note in the three-factor model", {
   expect_equal(never$summary$value, never$summary$noncallable_value, tolerance = 1e-12)
   expect_error(call(5, 1), "before the last")
 })
+
+test_that("the three-factor closed form's derivatives", {
+  today <- "2026-11-02"
+  jpy <- create_flat_curve(today, 0.012, "actual_365_fixed", "continuous")
+  usd <- create_flat_curve(today, 0.035, "actual_365_fixed", "continuous")
+  value <- function(spot = 150, sx = 0.11, sd = 0.01, rho = c(0.3, -0.2, 0.4)) {
+    compute_prdc_three_factor_value(spot, sx, jpy, usd, c(0.03, sd), c(0.05, 0.012), rho, 1:5, rep(1, 5), 150, 0.8, 0.78, 0, 0.08)
+  }
+  r <- value()
+  d <- setNames(r$sensitivity$d_npv, r$sensitivity$parameter)
+  expect_equal(d[["spot"]], (value(spot = 150.001)$summary$value - value(spot = 149.999)$summary$value) / 0.002, tolerance = 1e-5)
+  expect_equal(d[["domestic_volatility"]], (value(sd = 0.010001)$summary$value - value(sd = 0.009999)$summary$value) / 2e-6, tolerance = 1e-5)
+  expect_equal(d[["rho_foreign_fx"]], (value(rho = c(0.3, -0.2, 0.400001))$summary$value - value(rho = c(0.3, -0.2, 0.399999))$summary$value) / 2e-6,
+               tolerance = 1e-5)
+  # flat curves have no nodes; the nodes of other curves are checked against rebuilt curves in Rust
+  expect_named(r$curve_sensitivity, c("curve", "date", "time", "d_npv", "npv_per_bp"))
+})

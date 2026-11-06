@@ -56,7 +56,8 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' `fx_volatility dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d`, so the closed form is the call spread of
 #' [compute_prdc_value()] with each coupon's `effective_volatility`. With `paths > 0` the value is a Monte Carlo of
 #' the three factors (exact Ornstein-Uhlenbeck steps of at most `1 / steps_per_year` years, trapezoid integrals of the
-#' rates), next to the closed form. No target redemption or knock-out; no sensitivities.
+#' rates), next to the closed form. The closed form's first derivatives with respect to every input come from
+#' automatic differentiation in one pass. No target redemption or knock-out.
 #'
 #' With `call_dates`, the issuer may redeem the note at `call_price` on those coupon dates, right after paying their
 #' coupons, and calls when the rest of the note is worth more than the call price. The rule comes from Longstaff and
@@ -77,7 +78,11 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' @param training_seed Seed of the paths of the call rule's regressions.
 #' @return A list with `summary`, a one-row tibble with `value`, `standard_error` (0 for the closed form) and
 #'   `analytic` (the closed form without the call), and `coupons`, a tibble with each coupon's `time` and
-#'   `effective_volatility`. With call dates, `summary` adds `noncallable_value` and `hindsight_value`, and `calls` is a
+#'   `effective_volatility`, `sensitivity`, a tibble of the closed form's derivatives (`parameter`, `d_npv`) with respect
+#'   to the spot, the FX volatility, each rate's mean reversion and volatility and the three correlations, and
+#'   `curve_sensitivity`, as in [compute_prdc_value()] (`d_npv` per unit of log discount factor, `npv_per_bp` for +1bp
+#'   on the node's continuous zero rate). The derivatives are of the note without the call.
+#'   With call dates, `summary` adds `noncallable_value` and `hindsight_value`, and `calls` is a
 #'   tibble of the call dates' `call_probability`.
 #' @examples
 #' tenors <- c("1Y", "3Y", "5Y", "7Y")
@@ -101,7 +106,10 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
                      as.integer(steps_per_year), as.numeric(seed), as.integer(call_dates) - 1L, as.numeric(call_price),
                      as.numeric(training_seed)))
   out <- list(summary = tibble(value = x$value, standard_error = x$standard_error, analytic = x$analytic),
-              coupons = tibble(time = i$coupon_times, effective_volatility = x$effective_volatility))
+              coupons = tibble(time = i$coupon_times, effective_volatility = x$effective_volatility),
+              sensitivity = tibble(parameter = x$parameter, d_npv = x$d_parameter),
+              curve_sensitivity = tibble(curve = x$curve, date = as_date(x$curve_date), time = x$curve_time, d_npv = x$d_curve,
+                                         npv_per_bp = -x$d_curve * x$curve_time * 1e-4))
   if (length(call_dates) > 0L) {
     out$summary <- tibble::add_column(out$summary, noncallable_value = x$noncallable_value, hindsight_value = x$hindsight_value)
     out$calls <- tibble(call_date = as.integer(call_dates), time = i$coupon_times[call_dates], call_probability = x$call_probability)

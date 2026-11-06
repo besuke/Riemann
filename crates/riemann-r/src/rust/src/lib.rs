@@ -2068,7 +2068,19 @@ fn compute_prdc_three_factor_value(
             foreign_rate: prdc::HullWhiteFactor { mean_reversion: foreign_rate[0], volatility: foreign_rate[1] },
             correlation: [correlation[0], correlation[1], correlation[2]],
         };
-        let analytic = prdc::compute_prdc_three_factor_analytic(&terms, &model)?;
+        let sens = prdc::compute_prdc_three_factor_sensitivity(&terms, &model)?;
+        let analytic = sens.npv;
+        let parameter: Vec<String> = ["spot", "fx_volatility", "domestic_mean_reversion", "domestic_volatility", "foreign_mean_reversion", "foreign_volatility", "rho_domestic_foreign", "rho_domestic_fx", "rho_foreign_fx"].iter().map(|s| s.to_string()).collect();
+        let d_parameter = vec![sens.fx_delta, sens.fx_vega, sens.domestic_mean_reversion, sens.domestic_volatility, sens.foreign_mean_reversion, sens.foreign_volatility, sens.correlation[0], sens.correlation[1], sens.correlation[2]];
+        let (mut curve, mut curve_date, mut curve_time, mut d_curve) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for c in &sens.curves {
+            if let riemann::curves::CurveInput::LogDiscount { date, time } = c.input {
+                curve.push(if c.domestic { "domestic" } else { "foreign" }.to_string());
+                curve_date.push(date.serial() as f64);
+                curve_time.push(time);
+                d_curve.push(c.d_npv);
+            }
+        }
         if !call_dates.is_empty() {
             if paths <= 0 {
                 return Err(riemann::Error::InvalidInput { reason: "a callable note needs paths".into() });
@@ -2083,7 +2095,13 @@ fn compute_prdc_three_factor_value(
                 effective_volatility = effective,
                 noncallable_value = r.noncallable_value,
                 hindsight_value = r.hindsight_value,
-                call_probability = r.call_probability
+                call_probability = r.call_probability,
+                parameter = parameter,
+                d_parameter = d_parameter,
+                curve = curve,
+                curve_date = curve_date,
+                curve_time = curve_time,
+                d_curve = d_curve
             ));
         }
         let (value, standard_error) = if paths > 0 {
@@ -2092,7 +2110,7 @@ fn compute_prdc_three_factor_value(
             (analytic, 0.0)
         };
         let effective: Vec<f64> = terms.coupon_times.iter().map(|&t| (model.fx_forward_variance(t) / t).sqrt()).collect();
-        Ok(list!(value = value, standard_error = standard_error, analytic = analytic, effective_volatility = effective))
+        Ok(list!(value = value, standard_error = standard_error, analytic = analytic, effective_volatility = effective, parameter = parameter, d_parameter = d_parameter, curve = curve, curve_date = curve_date, curve_time = curve_time, d_curve = d_curve))
     };
     outcome(run())
 }
