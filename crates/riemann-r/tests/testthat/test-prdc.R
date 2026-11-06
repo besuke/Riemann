@@ -68,3 +68,19 @@ test_that("the three-factor model against an Euler simulation written here", {
   expect_error(compute_prdc_three_factor_value(150, sx, jpy, usd, c(0.03, 0.01), c(0.05, 0.01), c(0.9, 0.9, -0.9), 1:5, rep(1, 5),
                                                150, 0.8, 0.78), "correlation")
 })
+
+test_that("a callable note in the three-factor model", {
+  today <- "2026-11-02"
+  jpy <- create_flat_curve(today, 0.012, "actual_365_fixed", "continuous")
+  usd <- create_flat_curve(today, 0.035, "actual_365_fixed", "continuous")
+  call <- function(dates, price) compute_prdc_three_factor_value(158, 0.11, jpy, usd, c(0.03, 0.01), c(0.05, 0.012), c(0.3, -0.2, 0.4), 1:5,
+                                                                 rep(1, 5), 150, 0.8, 0.78, 0, 0.08, paths = 5000L, seed = 3,
+                                                                 call_dates = dates, call_price = price)
+  r <- call(1:4, 1)
+  expect_true(r$summary$hindsight_value <= r$summary$value && r$summary$value < r$summary$noncallable_value)
+  expect_equal(nrow(r$calls), 4L)
+  expect_lte(sum(r$calls$call_probability), 1)
+  never <- call(1:4, 1e9)
+  expect_equal(never$summary$value, never$summary$noncallable_value, tolerance = 1e-12)
+  expect_error(call(5, 1), "before the last")
+})

@@ -56,7 +56,14 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' `fx_volatility dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d`, so the closed form is the call spread of
 #' [compute_prdc_value()] with each coupon's `effective_volatility`. With `paths > 0` the value is a Monte Carlo of
 #' the three factors (exact Ornstein-Uhlenbeck steps of at most `1 / steps_per_year` years, trapezoid integrals of the
-#' rates), next to the closed form. No call, target redemption or knock-out; no sensitivities.
+#' rates), next to the closed form. No target redemption or knock-out; no sensitivities.
+#'
+#' With `call_dates`, the issuer may redeem the note at `call_price` on those coupon dates, right after paying their
+#' coupons, and calls when the rest of the note is worth more than the call price. The rule comes from Longstaff and
+#' Schwartz on paths from `training_seed` (the rest's value at the date regressed on 1, `S / fx_base`, its square and
+#' the two rate factors), and the value from paths from `seed`. A suboptimal rule overstates the note, so the
+#' estimate leans upward. The result adds the non-callable note and the hindsight value (each path called where it
+#' is cheapest) on the same paths, and each call date's probability.
 #'
 #' @inheritParams compute_prdc_value
 #' @param fx_volatility Lognormal FX volatility.
@@ -64,8 +71,14 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' @param correlation `c(domestic-foreign, domestic-FX, foreign-FX)` correlations of the Brownian motions.
 #' @param paths Monte Carlo paths, or 0 for the closed form only.
 #' @param steps_per_year Steps a year of the Monte Carlo.
+#' @param call_dates Positions in `coupon_times` of the issuer's call dates, increasing, before the last; empty for
+#'   no call. A call needs `paths > 0`.
+#' @param call_price The amount paid on a call, like `redemption`.
+#' @param training_seed Seed of the paths of the call rule's regressions.
 #' @return A list with `summary`, a one-row tibble with `value`, `standard_error` (0 for the closed form) and
-#'   `analytic`, and `coupons`, a tibble with each coupon's `time` and `effective_volatility`.
+#'   `analytic` (the closed form without the call), and `coupons`, a tibble with each coupon's `time` and
+#'   `effective_volatility`. With call dates, `summary` adds `noncallable_value` and `hindsight_value`, and `calls` is a
+#'   tibble of the call dates' `call_probability`.
 #' @examples
 #' tenors <- c("1Y", "3Y", "5Y", "7Y")
 #' jpy_quotes <- create_ois_instruments(tenors, c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L)
@@ -78,13 +91,20 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve, foreign_curve, domestic_rate, foreign_rate,
                                             correlation = c(0, 0, 0), coupon_times, accrual_fractions, fx_base, leverage, subtraction,
                                             floor = 0, cap = Inf, notional = 1, redemption = notional, fixed_rate = NA_real_,
-                                            paths = 0L, steps_per_year = 12L, seed = 1) {
+                                            paths = 0L, steps_per_year = 12L, seed = 1, call_dates = integer(), call_price = redemption,
+                                            training_seed = seed + 1) {
   i <- tibble(coupon_times = as.numeric(coupon_times), accrual_fractions = as.numeric(accrual_fractions), fixed_rate = as.numeric(fixed_rate))
   x <- checked(.Call(wrap__compute_prdc_three_factor_value, as.numeric(spot), as.numeric(fx_volatility), domestic_curve$pointer,
                      foreign_curve$pointer, as.numeric(domestic_rate), as.numeric(foreign_rate), as.numeric(correlation),
                      i$coupon_times, i$accrual_fractions, i$fixed_rate, as.numeric(fx_base), as.numeric(leverage), as.numeric(subtraction),
                      as.numeric(floor), as.numeric(cap), as.numeric(notional), as.numeric(redemption), as.integer(paths),
-                     as.integer(steps_per_year), as.numeric(seed)))
-  list(summary = tibble(value = x$value, standard_error = x$standard_error, analytic = x$analytic),
-       coupons = tibble(time = i$coupon_times, effective_volatility = x$effective_volatility))
+                     as.integer(steps_per_year), as.numeric(seed), as.integer(call_dates) - 1L, as.numeric(call_price),
+                     as.numeric(training_seed)))
+  out <- list(summary = tibble(value = x$value, standard_error = x$standard_error, analytic = x$analytic),
+              coupons = tibble(time = i$coupon_times, effective_volatility = x$effective_volatility))
+  if (length(call_dates) > 0L) {
+    out$summary <- tibble::add_column(out$summary, noncallable_value = x$noncallable_value, hindsight_value = x$hindsight_value)
+    out$calls <- tibble(call_date = as.integer(call_dates), time = i$coupon_times[call_dates], call_probability = x$call_probability)
+  }
+  out
 }

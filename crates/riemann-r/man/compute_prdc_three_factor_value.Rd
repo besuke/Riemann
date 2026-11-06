@@ -24,7 +24,10 @@ compute_prdc_three_factor_value(
   fixed_rate = NA_real_,
   paths = 0L,
   steps_per_year = 12L,
-  seed = 1
+  seed = 1,
+  call_dates = integer(),
+  call_price = redemption,
+  training_seed = seed + 1
 )
 }
 \arguments{
@@ -53,10 +56,19 @@ compute_prdc_three_factor_value(
 \item{steps_per_year}{Steps a year of the Monte Carlo.}
 
 \item{seed}{A whole number for the random numbers.}
+
+\item{call_dates}{Positions in \code{coupon_times} of the issuer's call dates, increasing, before the last; empty for
+no call. A call needs \code{paths > 0}.}
+
+\item{call_price}{The amount paid on a call, like \code{redemption}.}
+
+\item{training_seed}{Seed of the paths of the call rule's regressions.}
 }
 \value{
 A list with \code{summary}, a one-row tibble with \code{value}, \code{standard_error} (0 for the closed form) and
-\code{analytic}, and \code{coupons}, a tibble with each coupon's \code{time} and \code{effective_volatility}.
+\code{analytic} (the closed form without the call), and \code{coupons}, a tibble with each coupon's \code{time} and
+\code{effective_volatility}. With call dates, \code{summary} adds \code{noncallable_value} and \code{hindsight_value}, and \code{calls} is a
+tibble of the call dates' \code{call_probability}.
 }
 \description{
 The note of \code{\link[=compute_prdc_value]{compute_prdc_value()}} in a three-factor model under the domestic risk-neutral measure: Hull-White
@@ -67,7 +79,15 @@ forward measure of that date the FX forward is lognormal with the variance of
 \verb{fx_volatility dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d}, so the closed form is the call spread of
 \code{\link[=compute_prdc_value]{compute_prdc_value()}} with each coupon's \code{effective_volatility}. With \code{paths > 0} the value is a Monte Carlo of
 the three factors (exact Ornstein-Uhlenbeck steps of at most \code{1 / steps_per_year} years, trapezoid integrals of the
-rates), next to the closed form. No call, target redemption or knock-out; no sensitivities.
+rates), next to the closed form. No target redemption or knock-out; no sensitivities.
+}
+\details{
+With \code{call_dates}, the issuer may redeem the note at \code{call_price} on those coupon dates, right after paying their
+coupons, and calls when the rest of the note is worth more than the call price. The rule comes from Longstaff and
+Schwartz on paths from \code{training_seed} (the rest's value at the date regressed on 1, \code{S / fx_base}, its square and
+the two rate factors), and the value from paths from \code{seed}. A suboptimal rule overstates the note, so the
+estimate leans upward. The result adds the non-callable note and the hindsight value (each path called where it
+is cheapest) on the same paths, and each call date's probability.
 }
 \examples{
 tenors <- c("1Y", "3Y", "5Y", "7Y")

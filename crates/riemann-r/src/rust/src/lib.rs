@@ -2037,6 +2037,9 @@ fn compute_prdc_three_factor_value(
     paths: i32,
     steps_per_year: i32,
     seed: f64,
+    call_dates: Vec<i32>,
+    call_price: f64,
+    training_seed: f64,
 ) -> List {
     let run = || -> Core<List> {
         if domestic_rate.len() != 2 || foreign_rate.len() != 2 || correlation.len() != 3 {
@@ -2066,6 +2069,23 @@ fn compute_prdc_three_factor_value(
             correlation: [correlation[0], correlation[1], correlation[2]],
         };
         let analytic = prdc::compute_prdc_three_factor_analytic(&terms, &model)?;
+        if !call_dates.is_empty() {
+            if paths <= 0 {
+                return Err(riemann::Error::InvalidInput { reason: "a callable note needs paths".into() });
+            }
+            let dates: Vec<usize> = call_dates.iter().map(|&k| k.max(0) as usize).collect();
+            let r = prdc::compute_callable_prdc_three_factor(&terms, &model, &dates, call_price, paths as usize, steps_per_year.max(0) as usize, seed as u64, training_seed as u64)?;
+            let effective: Vec<f64> = terms.coupon_times.iter().map(|&t| (model.fx_forward_variance(t) / t).sqrt()).collect();
+            return Ok(list!(
+                value = r.value,
+                standard_error = r.standard_error,
+                analytic = analytic,
+                effective_volatility = effective,
+                noncallable_value = r.noncallable_value,
+                hindsight_value = r.hindsight_value,
+                call_probability = r.call_probability
+            ));
+        }
         let (value, standard_error) = if paths > 0 {
             prdc::compute_prdc_three_factor_monte_carlo(&terms, &model, paths as usize, steps_per_year.max(0) as usize, seed as u64)?
         } else {
