@@ -2040,6 +2040,8 @@ fn compute_prdc_three_factor_value(
     call_dates: Vec<i32>,
     call_price: f64,
     training_seed: f64,
+    training_paths: i32,
+    bump: f64,
 ) -> List {
     let run = || -> Core<List> {
         if domestic_rate.len() != 2 || foreign_rate.len() != 2 || correlation.len() != 3 {
@@ -2086,7 +2088,30 @@ fn compute_prdc_three_factor_value(
                 return Err(riemann::Error::InvalidInput { reason: "a callable note needs paths".into() });
             }
             let dates: Vec<usize> = call_dates.iter().map(|&k| k.max(0) as usize).collect();
-            let r = prdc::compute_callable_prdc_three_factor(&terms, &model, &dates, call_price, paths as usize, steps_per_year.max(0) as usize, seed as u64, training_seed as u64)?;
+            let r = prdc::compute_callable_prdc_three_factor(&terms, &model, &dates, call_price, paths as usize, training_paths.max(0) as usize, steps_per_year.max(0) as usize, seed as u64, training_seed as u64)?;
+            let cs = prdc::compute_callable_prdc_three_factor_sensitivity(
+                &terms,
+                &model,
+                &dates,
+                call_price,
+                paths as usize,
+                training_paths.max(0) as usize,
+                steps_per_year.max(0) as usize,
+                seed as u64,
+                training_seed as u64,
+                bump,
+            )?;
+            let scalars = [cs.fx_delta, cs.fx_vega, cs.domestic_mean_reversion, cs.domestic_volatility, cs.foreign_mean_reversion, cs.foreign_volatility, cs.correlation[0], cs.correlation[1], cs.correlation[2]];
+            let (mut call_curve, mut call_date, mut call_time, mut call_d, mut call_se) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            for c in &cs.curves {
+                if let riemann::curves::CurveInput::LogDiscount { date, time } = c.input {
+                    call_curve.push(if c.domestic { "domestic" } else { "foreign" }.to_string());
+                    call_date.push(date.serial() as f64);
+                    call_time.push(time);
+                    call_d.push(c.d_npv.value);
+                    call_se.push(c.d_npv.standard_error);
+                }
+            }
             let effective: Vec<f64> = terms.coupon_times.iter().map(|&t| (model.fx_forward_variance(t) / t).sqrt()).collect();
             return Ok(list!(
                 value = r.value,
@@ -2101,7 +2126,14 @@ fn compute_prdc_three_factor_value(
                 curve = curve,
                 curve_date = curve_date,
                 curve_time = curve_time,
-                d_curve = d_curve
+                d_curve = d_curve,
+                call_d_parameter = scalars.iter().map(|e| e.value).collect::<Vec<f64>>(),
+                call_parameter_error = scalars.iter().map(|e| e.standard_error).collect::<Vec<f64>>(),
+                call_curve = call_curve,
+                call_curve_date = call_date,
+                call_curve_time = call_time,
+                call_d_curve = call_d,
+                call_curve_error = call_se
             ));
         }
         let (value, standard_error) = if paths > 0 {

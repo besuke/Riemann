@@ -686,27 +686,31 @@ fn call_basis(fx: f64, fx_base: f64, domestic: f64, foreign: f64) -> [f64; 5] {
     [1.0, s, s * s, domestic, foreign]
 }
 
-/// A PRDC note that the issuer may redeem at `call_price` (an amount, like `redemption`) on the coupon
-/// dates `call_dates` (positions in `coupon_times`, increasing, before the last), right after paying
-/// that date's coupon. The issuer calls when the value of the rest of the note exceeds the call price.
-/// Longstaff and Schwartz: rolling back on paths from `training_seed`, the value of the rest, in money
-/// at the date, is regressed on 1, `S / fx_base`, its square, `x_d` and `x_f` over all paths; the
-/// value is then the mean over paths from `seed` of the cash flows that follow the rule, discounted by
-/// `exp(-int r_d)`. A suboptimal rule overstates the note, so the estimate leans upward (the issuer's
-/// option is undervalued), apart from the noise.
-#[allow(clippy::too_many_arguments)]
-// the paths are indexed alongside the vectors of their values
-#[allow(clippy::needless_range_loop)]
-pub fn compute_callable_prdc_three_factor(
-    terms: &PrdcTerms,
-    model: &PrdcThreeFactor,
-    call_dates: &[usize],
-    call_price: f64,
-    paths: usize,
-    steps_per_year: usize,
-    seed: u64,
-    training_seed: u64,
-) -> Result<CallablePrdcResult, Error> {
+/// The issuer's call rule: the regression coefficients at each coupon date that allows a call.
+struct CallRule {
+    /// For each coupon date, its position in the call dates, if it allows a call.
+    callable: Vec<Option<usize>>,
+    coefficients: Vec<Option<[f64; 5]>>,
+}
+
+fn coupon_amount(terms: &PrdcTerms, i: usize, fx: f64) -> f64 {
+    let scale = terms.leverage / terms.fx_base;
+    let rate = terms.fixed_rates[i].unwrap_or_else(|| (fx * scale - terms.subtraction).max(terms.floor).min(terms.cap));
+    rate * terms.notional * terms.accrual_fractions[i]
+}
+
+/// `d coupon / d S` (0 at a fixed rate, below the floor or above the cap).
+fn coupon_slope(terms: &PrdcTerms, i: usize, fx: f64) -> f64 {
+    let scale = terms.leverage / terms.fx_base;
+    let raw = fx * scale - terms.subtraction;
+    if terms.fixed_rates[i].is_some() || raw <= terms.floor || raw >= terms.cap {
+        0.0
+    } else {
+        scale * terms.notional * terms.accrual_fractions[i]
+    }
+}
+
+fn check_call_terms(terms: &PrdcTerms, call_dates: &[usize], call_price: f64) -> Result<Vec<Option<usize>>, Error> {
     terms.check()?;
     let n = terms.coupon_times.len();
     if call_dates.windows(2).any(|w| w[1] <= w[0]) || call_dates.last().is_some_and(|&c| c + 1 >= n) {
@@ -715,20 +719,26 @@ pub fn compute_callable_prdc_three_factor(
     if !call_price.is_finite() || call_price < 0.0 {
         return invalid(format!("the call price must be finite and non-negative, not {call_price}"));
     }
-    let scale = terms.leverage / terms.fx_base;
-    let coupon = |i: usize, fx: f64| -> f64 {
-        let rate = terms.fixed_rates[i].unwrap_or_else(|| (fx * scale - terms.subtraction).max(terms.floor).min(terms.cap));
-        rate * terms.notional * terms.accrual_fractions[i]
-    };
     let mut callable = vec![None; n];
     for (k, &c) in call_dates.iter().enumerate() {
         callable[c] = Some(k);
     }
+    Ok(callable)
+}
 
-    // the rule, rolling back on the training paths
-    let train = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, training_seed)?;
+/// The rule by rolling back on the training paths (see [`compute_callable_prdc_three_factor`]).
+// the paths are indexed alongside the vectors of their values
+#[allow(clippy::needless_range_loop)]
+fn estimate_call_rule(
+    terms: &PrdcTerms,
+    callable: Vec<Option<usize>>,
+    call_price: f64,
+    train: &PrdcThreeFactorPaths,
+) -> Result<CallRule, Error> {
+    let n = terms.coupon_times.len();
+    let paths = train.discount.len();
     let mut after: Vec<f64> = (0..paths).map(|p| train.discount[p][n - 1] * terms.redemption).collect();
-    let mut rules: Vec<Option<[f64; 5]>> = vec![None; n];
+    let mut coefficients: Vec<Option<[f64; 5]>> = vec![None; n];
     for i in (0..n).rev() {
         if callable[i].is_some() {
             let mut design = Vec::with_capacity(paths * 5);
@@ -746,53 +756,258 @@ pub fn compute_callable_prdc_three_factor(
                     after[p] = call_price * train.discount[p][i];
                 }
             }
-            rules[i] = Some(rule);
+            coefficients[i] = Some(rule);
         }
         for p in 0..paths {
-            after[p] += coupon(i, train.fx[p][i]) * train.discount[p][i];
+            after[p] += coupon_amount(terms, i, train.fx[p][i]) * train.discount[p][i];
         }
     }
+    Ok(CallRule { callable, coefficients })
+}
 
-    // the evaluation paths follow the rule
-    let eval = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
-    let mut values = Vec::with_capacity(paths);
-    let (mut noncallable, mut hindsight) = (0.0, 0.0);
-    let mut called = vec![0usize; call_dates.len()];
-    for p in 0..paths {
-        let (d, s) = (&eval.discount[p], &eval.fx[p]);
-        let mut paid = 0.0;
-        let mut value = None;
-        // the value if called at each call date, for hindsight
-        let mut lowest = f64::INFINITY;
-        for i in 0..n {
-            paid += coupon(i, s[i]) * d[i];
-            if let (Some(k), Some(rule)) = (callable[i], rules[i]) {
-                let if_called = paid + call_price * d[i];
-                lowest = lowest.min(if_called);
-                if value.is_none() {
-                    let basis = call_basis(s[i], terms.fx_base, eval.domestic_factor[p][i], eval.foreign_factor[p][i]);
-                    let continuation: f64 = rule.iter().zip(&basis).map(|(a, b)| a * b).sum();
-                    if continuation > call_price {
-                        value = Some(if_called);
-                        called[k] += 1;
-                    }
+/// One evaluation path under the rule.
+struct FollowedPath {
+    value: f64,
+    /// The last coupon date with a cash flow: the call date, or the last date.
+    stop: usize,
+    /// Whether the note was called at `stop`.
+    called: bool,
+    noncallable: f64,
+    hindsight: f64,
+}
+
+fn follow_call_rule(terms: &PrdcTerms, rule: &CallRule, call_price: f64, eval: &PrdcThreeFactorPaths, p: usize) -> FollowedPath {
+    let n = terms.coupon_times.len();
+    let (d, s) = (&eval.discount[p], &eval.fx[p]);
+    let mut paid = 0.0;
+    let mut stop = None;
+    let mut lowest = f64::INFINITY;
+    let mut value = 0.0;
+    for i in 0..n {
+        paid += coupon_amount(terms, i, s[i]) * d[i];
+        if let (Some(_), Some(c)) = (rule.callable[i], rule.coefficients[i]) {
+            let if_called = paid + call_price * d[i];
+            lowest = lowest.min(if_called);
+            if stop.is_none() {
+                let basis = call_basis(s[i], terms.fx_base, eval.domestic_factor[p][i], eval.foreign_factor[p][i]);
+                let continuation: f64 = c.iter().zip(&basis).map(|(a, b)| a * b).sum();
+                if continuation > call_price {
+                    stop = Some(i);
+                    value = if_called;
                 }
             }
         }
-        let full = paid + terms.redemption * d[n - 1];
-        noncallable += full;
-        hindsight += lowest.min(full);
-        values.push(value.unwrap_or(full));
     }
-    let count = paths as f64;
+    let full = paid + terms.redemption * d[n - 1];
+    FollowedPath {
+        value: if stop.is_some() { value } else { full },
+        stop: stop.unwrap_or(n - 1),
+        called: stop.is_some(),
+        noncallable: full,
+        hindsight: lowest.min(full),
+    }
+}
+
+fn mean_and_error(values: &[f64]) -> PrdcEstimate {
+    let count = values.len() as f64;
     let mean = values.iter().sum::<f64>() / count;
     let variance = values.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (count - 1.0);
+    PrdcEstimate { value: mean, standard_error: (variance / count).sqrt() }
+}
+
+/// A Monte Carlo estimate and its standard error.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrdcEstimate {
+    pub value: f64,
+    pub standard_error: f64,
+}
+
+/// A PRDC note that the issuer may redeem at `call_price` (an amount, like `redemption`) on the coupon
+/// dates `call_dates` (positions in `coupon_times`, increasing, before the last), right after paying
+/// that date's coupon. The issuer calls when the value of the rest of the note exceeds the call price.
+/// Longstaff and Schwartz: rolling back on `training_paths` paths from `training_seed`, the value of the rest, in money
+/// at the date, is regressed on 1, `S / fx_base`, its square, `x_d` and `x_f` over all paths; the
+/// value is then the mean over paths from `seed` of the cash flows that follow the rule, discounted by
+/// `exp(-int r_d)`. A suboptimal rule overstates the note, so the estimate leans upward (the issuer's
+/// option is undervalued), apart from the noise.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_callable_prdc_three_factor(
+    terms: &PrdcTerms,
+    model: &PrdcThreeFactor,
+    call_dates: &[usize],
+    call_price: f64,
+    paths: usize,
+    training_paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+    training_seed: u64,
+) -> Result<CallablePrdcResult, Error> {
+    let callable = check_call_terms(terms, call_dates, call_price)?;
+    let train = generate_prdc_three_factor_paths(&terms.coupon_times, model, training_paths, steps_per_year, training_seed)?;
+    let rule = estimate_call_rule(terms, callable, call_price, &train)?;
+    let eval = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
+    let followed: Vec<FollowedPath> = (0..paths).map(|p| follow_call_rule(terms, &rule, call_price, &eval, p)).collect();
+    let mut called = vec![0usize; call_dates.len()];
+    for f in followed.iter().filter(|f| f.called) {
+        called[rule.callable[f.stop].expect("a call date")] += 1;
+    }
+    let count = paths as f64;
+    let e = mean_and_error(&followed.iter().map(|f| f.value).collect::<Vec<_>>());
     Ok(CallablePrdcResult {
-        value: mean,
-        standard_error: (variance / count).sqrt(),
-        noncallable_value: noncallable / count,
-        hindsight_value: hindsight / count,
+        value: e.value,
+        standard_error: e.standard_error,
+        noncallable_value: followed.iter().map(|f| f.noncallable).sum::<f64>() / count,
+        hindsight_value: followed.iter().map(|f| f.hindsight).sum::<f64>() / count,
         call_probability: called.iter().map(|&c| c as f64 / count).collect(),
+    })
+}
+
+/// A curve input's derivative of a callable note.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CallableCurveSensitivity {
+    pub domestic: bool,
+    pub input: CurveInput,
+    pub d_npv: PrdcEstimate,
+}
+
+/// The first derivatives of a callable note, each with its standard error.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallablePrdcSensitivity {
+    pub value: PrdcEstimate,
+    pub fx_delta: PrdcEstimate,
+    pub fx_vega: PrdcEstimate,
+    pub domestic_mean_reversion: PrdcEstimate,
+    pub domestic_volatility: PrdcEstimate,
+    pub foreign_mean_reversion: PrdcEstimate,
+    pub foreign_volatility: PrdcEstimate,
+    pub correlation: [PrdcEstimate; 3],
+    pub curves: Vec<CallableCurveSensitivity>,
+}
+
+/// The derivatives of the callable note of [`compute_callable_prdc_three_factor`], with the issuer's
+/// rule from the training paths held fixed: the call is optimal, so a change of the rule changes the
+/// value only to second order (the envelope theorem), up to the rule's error.
+///
+/// - The spot and the curves' inputs: pathwise. On the paths the discount factor to `T_j` is
+///   proportional to `P_d(0, T_j)` and the FX rate to `S P_f(0, T_j) / P_d(0, T_j)`, so each path's cash
+///   flows up to its stop are differentiated with respect to `ln S`, `ln P_d(0, T_j)` and
+///   `ln P_f(0, T_j)` (the coupon's slope is 0 outside its floor and cap), and chained to the curves'
+///   inputs by automatic differentiation of `ln P(0, T_j)`.
+/// - The FX volatility, the rates' mean reversions and volatilities and the correlations: central
+///   differences of `bump` (absolute; `10 * bump` for the correlations) on the same evaluation paths
+///   (common random numbers) with the same rule, one-sided where a step would leave the range.
+///
+/// Each standard error is over the paths' contributions.
+#[allow(clippy::too_many_arguments)]
+// the paths are indexed alongside the vectors of their values
+#[allow(clippy::needless_range_loop)]
+pub fn compute_callable_prdc_three_factor_sensitivity<'c>(
+    terms: &PrdcTerms,
+    model: &PrdcThreeFactor<'c>,
+    call_dates: &[usize],
+    call_price: f64,
+    paths: usize,
+    training_paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+    training_seed: u64,
+    bump: f64,
+) -> Result<CallablePrdcSensitivity, Error> {
+    if !(bump > 0.0 && bump < 0.01) {
+        return invalid(format!("the bump must be in (0, 0.01), not {bump}"));
+    }
+    let callable = check_call_terms(terms, call_dates, call_price)?;
+    let train = generate_prdc_three_factor_paths(&terms.coupon_times, model, training_paths, steps_per_year, training_seed)?;
+    let rule = estimate_call_rule(terms, callable, call_price, &train)?;
+    let eval = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
+    let n = terms.coupon_times.len();
+    let followed: Vec<FollowedPath> = (0..paths).map(|p| follow_call_rule(terms, &rule, call_price, &eval, p)).collect();
+    let value = mean_and_error(&followed.iter().map(|f| f.value).collect::<Vec<_>>());
+
+    // pathwise: d value / d ln S, d ln P_d(T_j), d ln P_f(T_j)
+    let mut by_spot = Vec::with_capacity(paths);
+    let mut by_domestic = vec![Vec::with_capacity(paths); n];
+    let mut by_foreign = vec![Vec::with_capacity(paths); n];
+    for (p, f) in followed.iter().enumerate() {
+        let (d, s) = (&eval.discount[p], &eval.fx[p]);
+        let mut spot = 0.0;
+        for j in 0..n {
+            let (dd, ff) = if j <= f.stop {
+                let level = coupon_slope(terms, j, s[j]) * s[j] * d[j];
+                spot += level;
+                let paid_at_stop = if f.called { call_price } else { terms.redemption };
+                let end = if j == f.stop { paid_at_stop * d[j] } else { 0.0 };
+                (coupon_amount(terms, j, s[j]) * d[j] - level + end, level)
+            } else {
+                (0.0, 0.0)
+            };
+            by_domestic[j].push(dd);
+            by_foreign[j].push(ff);
+        }
+        by_spot.push(spot / model.spot);
+    }
+    let fx_delta = mean_and_error(&by_spot);
+    // the Jacobian of ln P(0, T_j) with respect to each curve's inputs
+    let mut curves = Vec::new();
+    for (domestic, curve, by_date) in [(true, model.domestic, &by_domestic), (false, model.foreign, &by_foreign)] {
+        let recorder = Recorder::new();
+        let lifted = curve.lift(&recorder)?;
+        let wrt: Vec<_> = lifted.inputs.iter().map(|(_, x)| *x).collect();
+        let mut jacobian = Vec::with_capacity(n);
+        for &t in &terms.coupon_times {
+            let log_discount = lifted.curve.discount_at(t, true)?.ln();
+            jacobian.push(recorder.gradient(log_discount, &wrt)?.iter().map(|g| g.mean()).collect::<Vec<f64>>());
+        }
+        for (q, (input, _)) in lifted.inputs.iter().enumerate() {
+            let per_path: Vec<f64> = (0..paths).map(|p| (0..n).map(|j| by_date[j][p] * jacobian[j][q]).sum()).collect();
+            curves.push(CallableCurveSensitivity { domestic, input: *input, d_npv: mean_and_error(&per_path) });
+        }
+    }
+
+    // central differences on the same paths, with the same rule; one-sided where a step would leave the
+    // parameter's range (a volatility below 0, a correlation beyond 1)
+    let m = *model;
+    let differences = |set: &dyn Fn(f64) -> PrdcThreeFactor<'c>, x: f64, h: f64, low: f64, high: f64| -> Result<PrdcEstimate, Error> {
+        let (up, down) = ((x + h).min(high), (x - h).max(low));
+        let (a, b) = (
+            generate_prdc_three_factor_paths(&terms.coupon_times, &set(up), paths, steps_per_year, seed)?,
+            generate_prdc_three_factor_paths(&terms.coupon_times, &set(down), paths, steps_per_year, seed)?,
+        );
+        let per_path: Vec<f64> = (0..paths)
+            .map(|p| (follow_call_rule(terms, &rule, call_price, &a, p).value - follow_call_rule(terms, &rule, call_price, &b, p).value) / (up - down))
+            .collect();
+        Ok(mean_and_error(&per_path))
+    };
+    let h = bump;
+    let fx_vega = differences(&|v| PrdcThreeFactor { fx_volatility: v, ..m }, m.fx_volatility, h, m.fx_volatility.min(h) * 0.5, f64::INFINITY)?;
+    let rate = |f: HullWhiteFactor, a: Option<f64>, s: Option<f64>| HullWhiteFactor {
+        mean_reversion: a.unwrap_or(f.mean_reversion),
+        volatility: s.unwrap_or(f.volatility),
+    };
+    let (dr, fr) = (m.domestic_rate, m.foreign_rate);
+    let domestic_mean_reversion = differences(&|a| PrdcThreeFactor { domestic_rate: rate(dr, Some(a), None), ..m }, dr.mean_reversion, h, 0.0, f64::INFINITY)?;
+    let domestic_volatility = differences(&|s| PrdcThreeFactor { domestic_rate: rate(dr, None, Some(s)), ..m }, dr.volatility, h, 0.0, f64::INFINITY)?;
+    let foreign_mean_reversion = differences(&|a| PrdcThreeFactor { foreign_rate: rate(fr, Some(a), None), ..m }, fr.mean_reversion, h, 0.0, f64::INFINITY)?;
+    let foreign_volatility = differences(&|s| PrdcThreeFactor { foreign_rate: rate(fr, None, Some(s)), ..m }, fr.volatility, h, 0.0, f64::INFINITY)?;
+    let mut correlation = [PrdcEstimate { value: 0.0, standard_error: 0.0 }; 3];
+    for (k, c) in correlation.iter_mut().enumerate() {
+        let set = |r: f64| {
+            let mut rho = m.correlation;
+            rho[k] = r;
+            PrdcThreeFactor { correlation: rho, ..m }
+        };
+        *c = differences(&set, m.correlation[k], 10.0 * h, -1.0, 1.0)?;
+    }
+    Ok(CallablePrdcSensitivity {
+        value,
+        fx_delta,
+        fx_vega,
+        domestic_mean_reversion,
+        domestic_volatility,
+        foreign_mean_reversion,
+        foreign_volatility,
+        correlation,
+        curves,
     })
 }
 
@@ -918,13 +1133,13 @@ mod tests {
         let (plain, _) = compute_prdc_three_factor_monte_carlo(&terms(), &model, 4000, 12, 11).unwrap();
         // no call dates, or a call price nobody pays: the note on the same paths
         for (dates, price) in [(vec![], 1e8), (vec![0usize, 1, 2, 3], 1e12)] {
-            let r = compute_callable_prdc_three_factor(&terms(), &model, &dates, price, 4000, 12, 11, 13).unwrap();
+            let r = compute_callable_prdc_three_factor(&terms(), &model, &dates, price, 4000, 4000, 12, 11, 13).unwrap();
             assert!((r.value / plain - 1.0).abs() < 1e-12, "{} against {plain}", r.value);
             assert!((r.noncallable_value / plain - 1.0).abs() < 1e-12);
             assert!(r.call_probability.iter().all(|&q| q == 0.0));
         }
         // a call price of 0 on the first date: the issuer always calls, and only the first coupon is paid
-        let r = compute_callable_prdc_three_factor(&terms(), &model, &[0], 0.0, 4000, 12, 11, 13).unwrap();
+        let r = compute_callable_prdc_three_factor(&terms(), &model, &[0], 0.0, 4000, 4000, 12, 11, 13).unwrap();
         assert_eq!(r.call_probability, vec![1.0]);
         let first = PrdcTerms { coupon_times: vec![1.0], accrual_fractions: vec![1.0], fixed_rates: vec![None], redemption: 0.0, ..terms() };
         let exact = compute_prdc_three_factor_analytic(&first, &model).unwrap();
@@ -938,7 +1153,7 @@ mod tests {
             let model = PrdcThreeFactor { spot, fx_volatility: 1e-9, ..three_factor(&d, &f, [0.0, 0.0], [0.0; 3]) };
             let t = terms();
             let dates = [0usize, 1, 2, 3];
-            let r = compute_callable_prdc_three_factor(&t, &model, &dates, t.redemption, 200, 4, 3, 5).unwrap();
+            let r = compute_callable_prdc_three_factor(&t, &model, &dates, t.redemption, 200, 200, 4, 3, 5).unwrap();
             // the deterministic coupons on the forwards, and the value if called after coupon k (or never)
             let scale = t.leverage / t.fx_base;
             let mut paid = 0.0;
@@ -962,18 +1177,18 @@ mod tests {
         // a spot above the base makes the coupons rich, so that the issuer has reasons to call
         let model = PrdcThreeFactor { spot: 158.0, ..three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]) };
         let t = terms();
-        let r = compute_callable_prdc_three_factor(&t, &model, &[0, 1, 2, 3], t.redemption, 20_000, 12, 17, 19).unwrap();
+        let r = compute_callable_prdc_three_factor(&t, &model, &[0, 1, 2, 3], t.redemption, 20_000, 20_000, 12, 17, 19).unwrap();
         assert!(r.hindsight_value <= r.value && r.value < r.noncallable_value, "{} {} {}", r.hindsight_value, r.value, r.noncallable_value);
         assert!(r.noncallable_value - r.value > 4.0 * r.standard_error, "the call should be worth something");
         let total: f64 = r.call_probability.iter().sum();
         assert!(total > 0.0 && total <= 1.0);
         // the same rule from the evaluation paths themselves differs only by the regression's noise
-        let same = compute_callable_prdc_three_factor(&t, &model, &[0, 1, 2, 3], t.redemption, 20_000, 12, 17, 17).unwrap();
+        let same = compute_callable_prdc_three_factor(&t, &model, &[0, 1, 2, 3], t.redemption, 20_000, 20_000, 12, 17, 17).unwrap();
         assert!((same.value - r.value).abs() < 4.0 * r.standard_error);
         // invalid call dates and prices
-        assert!(compute_callable_prdc_three_factor(&t, &model, &[4], t.redemption, 10, 4, 1, 2).is_err());
-        assert!(compute_callable_prdc_three_factor(&t, &model, &[2, 1], t.redemption, 10, 4, 1, 2).is_err());
-        assert!(compute_callable_prdc_three_factor(&t, &model, &[1], -1.0, 10, 4, 1, 2).is_err());
+        assert!(compute_callable_prdc_three_factor(&t, &model, &[4], t.redemption, 10, 10, 4, 1, 2).is_err());
+        assert!(compute_callable_prdc_three_factor(&t, &model, &[2, 1], t.redemption, 10, 10, 4, 1, 2).is_err());
+        assert!(compute_callable_prdc_three_factor(&t, &model, &[1], -1.0, 10, 10, 4, 1, 2).is_err());
     }
 
     /// The curve of `curve` with the log discount factor of node `node` (0 for the first year) moved by `h`.
@@ -1053,6 +1268,118 @@ mod tests {
         let rate = |s: f64| HullWhiteFactor { mean_reversion: 0.05, volatility: s };
         let foreign_vega = (mc(&PrdcThreeFactor { foreign_rate: rate(0.022), ..model }) - mc(&PrdcThreeFactor { foreign_rate: rate(0.002), ..model })) / 0.02;
         assert!((foreign_vega - a.foreign_volatility).abs() < 0.1 * a.foreign_volatility.abs(), "foreign vega {foreign_vega} against {}", a.foreign_volatility);
+    }
+
+    #[test]
+    fn callable_derivatives_without_a_call_are_the_closed_forms() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let t = terms();
+        let a = compute_prdc_three_factor_sensitivity(&t, &model).unwrap();
+        let s = compute_callable_prdc_three_factor_sensitivity(&t, &model, &[], t.redemption, 20_000, 20_000, 12, 3, 5, 1e-4).unwrap();
+        let near = |name: &str, e: PrdcEstimate, exact: f64| {
+            assert!((e.value - exact).abs() < 4.0 * e.standard_error + 1e-9 * exact.abs(), "{name}: {} ± {} against {exact}", e.value, e.standard_error);
+        };
+        near("delta", s.fx_delta, a.fx_delta);
+        near("vega", s.fx_vega, a.fx_vega);
+        near("a_d", s.domestic_mean_reversion, a.domestic_mean_reversion);
+        near("sigma_d", s.domestic_volatility, a.domestic_volatility);
+        near("a_f", s.foreign_mean_reversion, a.foreign_mean_reversion);
+        near("sigma_f", s.foreign_volatility, a.foreign_volatility);
+        for k in 0..3 {
+            near("rho", s.correlation[k], a.correlation[k]);
+        }
+        assert_eq!(s.curves.len(), a.curves.len());
+        for (c, e) in s.curves.iter().zip(&a.curves) {
+            assert_eq!((c.domestic, c.input), (e.domestic, e.input));
+            near("curve", c.d_npv, e.d_npv);
+        }
+    }
+
+    #[test]
+    fn the_pathwise_callable_derivatives_are_those_of_the_paths_with_their_stops() {
+        // each evaluation path keeps the stop of the base model; then the value is smooth in the inputs,
+        // and central differences of it must give the pathwise derivatives
+        let (d, f) = (jpy(), foreign());
+        let model = PrdcThreeFactor { spot: 158.0, ..three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]) };
+        let t = terms();
+        let dates = [0usize, 1, 2, 3];
+        let paths = 4000;
+        let s = compute_callable_prdc_three_factor_sensitivity(&t, &model, &dates, t.redemption, paths, paths, 12, 3, 5, 1e-4).unwrap();
+        let train = generate_prdc_three_factor_paths(&t.coupon_times, &model, paths, 12, 5).unwrap();
+        let rule = estimate_call_rule(&t, check_call_terms(&t, &dates, t.redemption).unwrap(), t.redemption, &train).unwrap();
+        let base = generate_prdc_three_factor_paths(&t.coupon_times, &model, paths, 12, 3).unwrap();
+        let stops: Vec<(usize, bool)> = (0..paths).map(|p| { let r = follow_call_rule(&t, &rule, t.redemption, &base, p); (r.stop, r.called) }).collect();
+        let with_stops = |m: &PrdcThreeFactor| -> f64 {
+            let e = generate_prdc_three_factor_paths(&t.coupon_times, m, paths, 12, 3).unwrap();
+            (0..paths)
+                .map(|p| {
+                    // the call price is the redemption here, so a call and the maturity pay the same amount
+                    let (stop, _) = stops[p];
+                    let paid: f64 = (0..=stop).map(|i| coupon_amount(&t, i, e.fx[p][i]) * e.discount[p][i]).sum();
+                    paid + t.redemption * e.discount[p][stop]
+                })
+                .sum::<f64>()
+                / paths as f64
+        };
+        let delta = (with_stops(&PrdcThreeFactor { spot: 158.0 + 1e-4, ..model }) - with_stops(&PrdcThreeFactor { spot: 158.0 - 1e-4, ..model })) / 2e-4;
+        assert!((s.fx_delta.value - delta).abs() < 1e-6 * delta.abs(), "delta {} against {delta}", s.fx_delta.value);
+        let (jpy_rates, foreign_rates) = ([0.01, 0.012, 0.014, 0.016, 0.018], [0.04, 0.038, 0.036, 0.034, 0.032]);
+        for (domestic, node) in [(true, 0usize), (true, 2), (true, 4), (false, 1), (false, 3)] {
+            let at = |h: f64| {
+                let (dd, ff) = if domestic { (bumped_curve(&jpy_rates, node, h), f.clone()) } else { (d.clone(), bumped_curve(&foreign_rates, node, h)) };
+                with_stops(&PrdcThreeFactor { domestic: &dd, foreign: &ff, ..model })
+            };
+            let numeric = (at(1e-6) - at(-1e-6)) / 2e-6;
+            let got = s.curves.iter().filter(|c| c.domestic == domestic).nth(node).unwrap().d_npv.value;
+            assert!((got - numeric).abs() < 1e-4 * numeric.abs().max(1e3), "{domestic} node {node}: {got} against {numeric}");
+        }
+        // the call lowers the delta: the issuer takes away the coupons of a high FX rate
+        let a = compute_prdc_three_factor_sensitivity(&t, &model).unwrap();
+        assert!(s.fx_delta.value < 0.7 * a.fx_delta);
+    }
+
+    #[test]
+    fn a_nearly_deterministic_callable_delta_is_that_of_its_cheapest_branch() {
+        let (d, f) = (jpy(), foreign());
+        let t = terms();
+        for spot in [140.0, 165.0] {
+            let model = PrdcThreeFactor { spot, fx_volatility: 1e-9, ..three_factor(&d, &f, [0.0, 0.0], [0.0; 3]) };
+            let s = compute_callable_prdc_three_factor_sensitivity(&t, &model, &[0, 1, 2, 3], t.redemption, 200, 200, 4, 3, 5, 1e-4).unwrap();
+            // the branch: the cheapest of calling after coupon k or redeeming at maturity
+            let scale = t.leverage / t.fx_base;
+            let (mut paid, mut slope) = (0.0, 0.0);
+            let (mut best, mut best_slope) = (f64::INFINITY, 0.0);
+            for i in 0..5 {
+                let time = t.coupon_times[i];
+                let (pd, pf) = (d.discount_at(time, true).unwrap(), f.discount_at(time, true).unwrap());
+                let forward = spot * pf / pd;
+                let raw = forward * scale - t.subtraction;
+                paid += raw.max(t.floor).min(t.cap) * t.notional * pd;
+                if raw > t.floor && raw < t.cap {
+                    slope += scale * t.notional * pd * forward / spot;
+                }
+                if paid + t.redemption * pd < best {
+                    best = paid + t.redemption * pd;
+                    best_slope = slope;
+                }
+            }
+            assert!((s.fx_delta.value - best_slope).abs() < 1e-6 * best_slope.abs().max(1.0), "{spot}: {} against {best_slope}", s.fx_delta.value);
+        }
+    }
+
+    #[test]
+    fn with_an_accurate_rule_the_callable_delta_is_the_rule_re_estimating_one() {
+        // the envelope theorem: with many training paths, holding the rule changes the delta little
+        let (d, f) = (jpy(), foreign());
+        let model = PrdcThreeFactor { spot: 158.0, ..three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]) };
+        let t = terms();
+        let dates = [0usize, 1, 2, 3];
+        let s = compute_callable_prdc_three_factor_sensitivity(&t, &model, &dates, t.redemption, 20_000, 200_000, 12, 3, 5, 1e-4).unwrap();
+        let value = |m: &PrdcThreeFactor| compute_callable_prdc_three_factor(&t, m, &dates, t.redemption, 20_000, 200_000, 12, 3, 5).unwrap().value;
+        let re_estimated = (value(&PrdcThreeFactor { spot: 158.5, ..model }) - value(&PrdcThreeFactor { spot: 157.5, ..model })) / 1.0;
+        assert!((s.fx_delta.value - re_estimated).abs() < 0.02 * re_estimated.abs(), "{} against {re_estimated}", s.fx_delta.value);
+        assert!(compute_callable_prdc_three_factor_sensitivity(&t, &model, &dates, t.redemption, 10, 10, 4, 3, 5, 0.0).is_err());
     }
 
     fn settings(threads: usize) -> PrdcMonteCarlo {

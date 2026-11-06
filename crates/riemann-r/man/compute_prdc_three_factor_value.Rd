@@ -27,7 +27,9 @@ compute_prdc_three_factor_value(
   seed = 1,
   call_dates = integer(),
   call_price = redemption,
-  training_seed = seed + 1
+  training_seed = seed + 1,
+  training_paths = paths,
+  bump = 0.001
 )
 }
 \arguments{
@@ -63,6 +65,11 @@ no call. A call needs \code{paths > 0}.}
 \item{call_price}{The amount paid on a call, like \code{redemption}.}
 
 \item{training_seed}{Seed of the paths of the call rule's regressions.}
+
+\item{training_paths}{Number of those paths; more make the rule, and the derivatives, more accurate.}
+
+\item{bump}{Step of the callable note's central differences. Paths that cross the fixed rule's boundary add a jump
+divided by the step, so a small step makes the estimate noisy.}
 }
 \value{
 A list with \code{summary}, a one-row tibble with \code{value}, \code{standard_error} (0 for the closed form) and
@@ -72,7 +79,9 @@ to the spot, the FX volatility, each rate's mean reversion and volatility and th
 \code{curve_sensitivity}, as in \code{\link[=compute_prdc_value]{compute_prdc_value()}} (\code{d_npv} per unit of log discount factor, \code{npv_per_bp} for +1bp
 on the node's continuous zero rate). The derivatives are of the note without the call.
 With call dates, \code{summary} adds \code{noncallable_value} and \code{hindsight_value}, and \code{calls} is a
-tibble of the call dates' \code{call_probability}.
+tibble of the call dates' \code{call_probability}, \code{call_sensitivity} a tibble (\code{parameter}, \code{d_npv},
+\code{standard_error}) of the callable note's derivatives, and \code{call_curve_sensitivity} its curve nodes, with
+\code{standard_error}.
 }
 \description{
 The note of \code{\link[=compute_prdc_value]{compute_prdc_value()}} in a three-factor model under the domestic risk-neutral measure: Hull-White
@@ -93,6 +102,11 @@ Schwartz on paths from \code{training_seed} (the rest's value at the date regres
 the two rate factors), and the value from paths from \code{seed}. A suboptimal rule overstates the note, so the
 estimate leans upward. The result adds the non-callable note and the hindsight value (each path called where it
 is cheapest) on the same paths, and each call date's probability.
+
+The callable note's derivatives hold the issuer's rule fixed (the call is optimal, so a change of the rule moves
+the value only to second order, up to the rule's error, which more \code{training_paths} reduce): pathwise for the spot
+and the curves' nodes, and central differences of \code{bump} on the same paths for the other inputs (\code{10 * bump} for
+the correlations, one-sided at the edge of a range). Each comes with its standard error.
 }
 \examples{
 tenors <- c("1Y", "3Y", "5Y", "7Y")

@@ -101,3 +101,15 @@ test_that("the three-factor closed form's derivatives", {
   # flat curves have no nodes; the nodes of other curves are checked against rebuilt curves in Rust
   expect_named(r$curve_sensitivity, c("curve", "date", "time", "d_npv", "npv_per_bp"))
 })
+
+test_that("a callable note's derivatives", {
+  today <- "2026-11-02"
+  jpy <- create_flat_curve(today, 0.012, "actual_365_fixed", "continuous")
+  usd <- create_flat_curve(today, 0.035, "actual_365_fixed", "continuous")
+  r <- compute_prdc_three_factor_value(158, 0.11, jpy, usd, c(0.03, 0.01), c(0.05, 0.012), c(0.3, -0.2, 0.4), 1:5, rep(1, 5), 150,
+                                       0.8, 0.78, 0, 0.08, paths = 5000L, seed = 3, call_dates = 1:4, call_price = 1)
+  expect_equal(r$call_sensitivity$parameter, r$sensitivity$parameter)
+  expect_true(all(r$call_sensitivity$standard_error >= 0))
+  # the call takes away the upside: the callable delta is below the note's
+  expect_lt(r$call_sensitivity$d_npv[1], 0.7 * r$sensitivity$d_npv[1])
+})

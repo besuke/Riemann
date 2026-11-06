@@ -66,6 +66,11 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' estimate leans upward. The result adds the non-callable note and the hindsight value (each path called where it
 #' is cheapest) on the same paths, and each call date's probability.
 #'
+#' The callable note's derivatives hold the issuer's rule fixed (the call is optimal, so a change of the rule moves
+#' the value only to second order, up to the rule's error, which more `training_paths` reduce): pathwise for the spot
+#' and the curves' nodes, and central differences of `bump` on the same paths for the other inputs (`10 * bump` for
+#' the correlations, one-sided at the edge of a range). Each comes with its standard error.
+#'
 #' @inheritParams compute_prdc_value
 #' @param fx_volatility Lognormal FX volatility.
 #' @param domestic_rate,foreign_rate Hull-White `c(mean_reversion, volatility)` of each short rate.
@@ -76,6 +81,9 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #'   no call. A call needs `paths > 0`.
 #' @param call_price The amount paid on a call, like `redemption`.
 #' @param training_seed Seed of the paths of the call rule's regressions.
+#' @param training_paths Number of those paths; more make the rule, and the derivatives, more accurate.
+#' @param bump Step of the callable note's central differences. Paths that cross the fixed rule's boundary add a jump
+#'   divided by the step, so a small step makes the estimate noisy.
 #' @return A list with `summary`, a one-row tibble with `value`, `standard_error` (0 for the closed form) and
 #'   `analytic` (the closed form without the call), and `coupons`, a tibble with each coupon's `time` and
 #'   `effective_volatility`, `sensitivity`, a tibble of the closed form's derivatives (`parameter`, `d_npv`) with respect
@@ -83,7 +91,9 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #'   `curve_sensitivity`, as in [compute_prdc_value()] (`d_npv` per unit of log discount factor, `npv_per_bp` for +1bp
 #'   on the node's continuous zero rate). The derivatives are of the note without the call.
 #'   With call dates, `summary` adds `noncallable_value` and `hindsight_value`, and `calls` is a
-#'   tibble of the call dates' `call_probability`.
+#'   tibble of the call dates' `call_probability`, `call_sensitivity` a tibble (`parameter`, `d_npv`,
+#'   `standard_error`) of the callable note's derivatives, and `call_curve_sensitivity` its curve nodes, with
+#'   `standard_error`.
 #' @examples
 #' tenors <- c("1Y", "3Y", "5Y", "7Y")
 #' jpy_quotes <- create_ois_instruments(tenors, c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L)
@@ -97,14 +107,14 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
                                             correlation = c(0, 0, 0), coupon_times, accrual_fractions, fx_base, leverage, subtraction,
                                             floor = 0, cap = Inf, notional = 1, redemption = notional, fixed_rate = NA_real_,
                                             paths = 0L, steps_per_year = 12L, seed = 1, call_dates = integer(), call_price = redemption,
-                                            training_seed = seed + 1) {
+                                            training_seed = seed + 1, training_paths = paths, bump = 1e-3) {
   i <- tibble(coupon_times = as.numeric(coupon_times), accrual_fractions = as.numeric(accrual_fractions), fixed_rate = as.numeric(fixed_rate))
   x <- checked(.Call(wrap__compute_prdc_three_factor_value, as.numeric(spot), as.numeric(fx_volatility), domestic_curve$pointer,
                      foreign_curve$pointer, as.numeric(domestic_rate), as.numeric(foreign_rate), as.numeric(correlation),
                      i$coupon_times, i$accrual_fractions, i$fixed_rate, as.numeric(fx_base), as.numeric(leverage), as.numeric(subtraction),
                      as.numeric(floor), as.numeric(cap), as.numeric(notional), as.numeric(redemption), as.integer(paths),
                      as.integer(steps_per_year), as.numeric(seed), as.integer(call_dates) - 1L, as.numeric(call_price),
-                     as.numeric(training_seed)))
+                     as.numeric(training_seed), as.integer(training_paths), as.numeric(bump)))
   out <- list(summary = tibble(value = x$value, standard_error = x$standard_error, analytic = x$analytic),
               coupons = tibble(time = i$coupon_times, effective_volatility = x$effective_volatility),
               sensitivity = tibble(parameter = x$parameter, d_npv = x$d_parameter),
@@ -113,6 +123,10 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
   if (length(call_dates) > 0L) {
     out$summary <- tibble::add_column(out$summary, noncallable_value = x$noncallable_value, hindsight_value = x$hindsight_value)
     out$calls <- tibble(call_date = as.integer(call_dates), time = i$coupon_times[call_dates], call_probability = x$call_probability)
+    out$call_sensitivity <- tibble(parameter = x$parameter, d_npv = x$call_d_parameter, standard_error = x$call_parameter_error)
+    out$call_curve_sensitivity <- tibble(curve = x$call_curve, date = as_date(x$call_curve_date), time = x$call_curve_time,
+                                         d_npv = x$call_d_curve, standard_error = x$call_curve_error,
+                                         npv_per_bp = -x$call_d_curve * x$call_curve_time * 1e-4)
   }
   out
 }
