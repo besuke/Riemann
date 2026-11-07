@@ -34,13 +34,14 @@ compute_prdc_three_factor_value(
   target_coupon = "capped",
   make_whole = FALSE,
   knock_out_level = Inf,
-  knock_out_dates = NULL
+  knock_out_dates = NULL,
+  fx_volatility_times = NULL
 )
 }
 \arguments{
 \item{spot}{Domestic per foreign.}
 
-\item{fx_volatility}{Lognormal FX volatility.}
+\item{fx_volatility}{Lognormal FX volatility, or the volatility of each piece with \code{fx_volatility_times}.}
 
 \item{domestic_curve, foreign_curve}{Curves from \code{\link[=bootstrap_ois_curve]{bootstrap_ois_curve()}}, on the same date.}
 
@@ -73,7 +74,7 @@ no call. A call needs \code{paths > 0}.}
 
 \item{training_paths}{Number of those paths; more make the rule, and the derivatives, more accurate.}
 
-\item{bump}{Step of the callable note's central differences. Paths that cross the fixed rule's boundary add a jump
+\item{bump}{Step of the callable, target and knock-out notes' central differences. Paths that cross a boundary add a jump
 divided by the step, so a small step makes the estimate noisy.}
 
 \item{target}{The target, in units of the notional; \code{Inf} for none.}
@@ -86,6 +87,8 @@ divided by the step, so a small step makes the estimate noisy.}
 
 \item{knock_out_dates}{Positions in \code{coupon_times} where the knock-out is observed, before the last; \code{NULL} for all
 of them.}
+
+\item{fx_volatility_times}{\code{NULL} for a constant FX volatility, or the end of each piece in years (increasing).}
 }
 \value{
 A list with \code{summary}, a one-row tibble with \code{value}, \code{standard_error} (0 for the closed form) and
@@ -98,21 +101,30 @@ With call dates, \code{summary} adds \code{noncallable_value} and \code{hindsigh
 tibble of the call dates' \code{call_probability}, \code{call_sensitivity} a tibble (\code{parameter}, \code{d_npv},
 \code{standard_error}) of the callable note's derivatives, and \code{call_curve_sensitivity} its curve nodes, with
 \code{standard_error}. With a target or knock-out, \code{summary} adds \code{plain_value} (neither, same paths) and \code{expected_life}, and
-\code{endings} is a tibble of each coupon date's \code{target_probability} and \code{knock_out_probability}.
+\code{endings} is a tibble of each coupon date's \code{target_probability} and \code{knock_out_probability}, \code{path_sensitivity} a
+tibble (\code{parameter}, \code{d_npv}, \code{standard_error}, \code{changed_paths}) of the note's derivatives, and
+\code{path_curve_sensitivity} its curve nodes. With \code{fx_volatility_times}, \code{fx_vega_term} is a tibble of the closed
+form's derivative with respect to each piece (\code{end}, \code{d_npv}); the \code{fx_volatility} rows are for a parallel shift.
 }
 \description{
 The note of \code{\link[=compute_prdc_value]{compute_prdc_value()}} in a three-factor model under the domestic risk-neutral measure: Hull-White
 domestic and foreign short rates fitting their curves, and a lognormal FX rate,
-\verb{dS / S = (r_d - r_f) dt + fx_volatility dW_X}, the foreign rate carrying the quanto drift
-\verb{-rho_fX sigma_f fx_volatility}. Each coupon depends only on the FX rate on its date, and under the domestic
+\verb{dS / S = (r_d - r_f) dt + sigma_X(t) dW_X}, the foreign rate carrying the quanto drift
+\verb{-rho_fX sigma_f sigma_X(t)}. Each coupon depends only on the FX rate on its date, and under the domestic
 forward measure of that date the FX forward is lognormal with the variance of
-\verb{fx_volatility dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d}, so the closed form is the call spread of
+\verb{sigma_X dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d}, so the closed form is the call spread of
 \code{\link[=compute_prdc_value]{compute_prdc_value()}} with each coupon's \code{effective_volatility}. With \code{paths > 0} the value is a Monte Carlo of
 the three factors (exact Ornstein-Uhlenbeck steps of at most \code{1 / steps_per_year} years, trapezoid integrals of the
 rates), next to the closed form. The closed form's first derivatives with respect to every input come from
 automatic differentiation in one pass.
 }
 \details{
+The FX volatility \code{sigma_X} is constant (one \code{fx_volatility}) or piecewise constant: \code{fx_volatility[k]} up to
+\code{fx_volatility_times[k]} years and the last one after (from ATM volatilities by maturity,
+\code{\link[=calibrate_prdc_three_factor]{calibrate_prdc_three_factor()}} with \code{fx_term_structure = TRUE} gives the pieces). The paths take each step's
+increment of the total variance \verb{int sigma_X^2} and of its covariances with the rates, on the time grid and with the
+random numbers of a constant volatility, so pieces of one volatility give the paths of that constant volatility.
+
 With a finite \code{target}, the note is a target redemption note: once the sum of the coupon rates times their accrual
 fractions (fixed coupons included) reaches \code{target}, it pays that date's coupon (\code{target_coupon = "capped"} only up
 to the target, \code{"full"} the whole coupon) and the redemption, and ends. With \code{make_whole}, a note that has not
@@ -121,8 +133,14 @@ paths (no regression), next to the note without the target on the same paths.
 
 With a finite \code{knock_out_level}, the note also ends on the coupon dates \code{knock_out_dates} (all but the last by
 default) where the FX rate is at or above the level, paying that date's coupon and the redemption. A date that
-reaches the target and the level counts as the target's. No call with a target or knock-out, and no
-derivatives of these notes (their cash flows jump where they end).
+reaches the target and the level counts as the target's. No call with a target or knock-out.
+
+The derivatives of a target or knock-out note are central differences on the same random numbers: each input
+moves up and down by \code{bump} (relative for the spot, absolute for the volatilities, a parallel shift of a piecewise
+FX volatility, and the mean reversions, \code{10 * bump} for the correlations, and \code{bump} in each node's log discount
+factor for the curves), the paths are generated again from \code{seed}, and each path's difference is divided by the
+step. A path whose ending (date or reason) changes between the two sides adds a jump divided by the step, so a
+small \code{bump} makes the estimate noisy and a large one biased; \code{changed_paths} is the share of those paths.
 
 With \code{call_dates}, the issuer may redeem the note at \code{call_price} on those coupon dates, right after paying their
 coupons, and calls when the rest of the note is worth more than the call price. The rule comes from Longstaff and

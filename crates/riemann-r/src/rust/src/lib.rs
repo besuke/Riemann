@@ -2018,7 +2018,8 @@ fn prdc_list(s: PrdcSensitivity) -> List {
 #[allow(clippy::too_many_arguments)]
 fn compute_prdc_three_factor_value(
     spot: f64,
-    fx_volatility: f64,
+    fx_volatility: Vec<f64>,
+    fx_volatility_times: Vec<f64>,
     domestic_curve: ExternalPtr<OisCurve>,
     foreign_curve: ExternalPtr<OisCurve>,
     domestic_rate: Vec<f64>,
@@ -2066,9 +2067,13 @@ fn compute_prdc_three_factor_value(
             floor,
             cap,
         };
+        if fx_volatility.is_empty() || (!fx_volatility_times.is_empty() && fx_volatility_times.len() != fx_volatility.len()) {
+            return Err(riemann::Error::InvalidInput { reason: "give one FX volatility, or one per piece's end time".into() });
+        }
         let model = prdc::PrdcThreeFactor {
             spot,
-            fx_volatility,
+            fx_volatility: fx_volatility[0],
+            fx_volatility_term: (!fx_volatility_times.is_empty()).then_some(prdc::FxVolatilityTerm { times: &fx_volatility_times, volatilities: &fx_volatility }),
             domestic: &domestic_curve.curve,
             foreign: &foreign_curve.curve,
             domestic_rate: prdc::HullWhiteFactor { mean_reversion: domestic_rate[0], volatility: domestic_rate[1] },
@@ -2100,15 +2105,21 @@ fn compute_prdc_three_factor_value(
             };
             let rule = prdc::TargetRedemption { target, coupon, make_whole };
             let knock = prdc::KnockOut { level: knock_out_level, dates: knock_out_dates.iter().map(|&k| k.max(0) as usize).collect() };
-            let r = prdc::compute_path_dependent_prdc(
-                &terms,
-                &model,
-                (target.is_finite() || make_whole).then_some(&rule),
-                knock_out_level.is_finite().then_some(&knock),
-                paths as usize,
-                steps_per_year.max(0) as usize,
-                seed as u64,
-            )?;
+            let (rule, knock) = ((target.is_finite() || make_whole).then_some(&rule), knock_out_level.is_finite().then_some(&knock));
+            let r = prdc::compute_path_dependent_prdc(&terms, &model, rule, knock, paths as usize, steps_per_year.max(0) as usize, seed as u64)?;
+            let ps = prdc::compute_path_dependent_prdc_sensitivity(&terms, &model, rule, knock, paths as usize, steps_per_year.max(0) as usize, seed as u64, bump)?;
+            let scalars = [ps.fx_delta, ps.fx_vega, ps.domestic_mean_reversion, ps.domestic_volatility, ps.foreign_mean_reversion, ps.foreign_volatility, ps.correlation[0], ps.correlation[1], ps.correlation[2]];
+            let (mut path_curve, mut path_date, mut path_time, mut path_d, mut path_se, mut path_changed) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            for c in &ps.curves {
+                if let riemann::curves::CurveInput::LogDiscount { date, time } = c.input {
+                    path_curve.push(if c.domestic { "domestic" } else { "foreign" }.to_string());
+                    path_date.push(date.serial() as f64);
+                    path_time.push(time);
+                    path_d.push(c.d_npv.value);
+                    path_se.push(c.d_npv.standard_error);
+                    path_changed.push(c.d_npv.changed_paths);
+                }
+            }
             return Ok(list!(
                 value = r.value,
                 standard_error = r.standard_error,
@@ -2123,7 +2134,17 @@ fn compute_prdc_three_factor_value(
                 plain_value = r.plain_value,
                 expected_life = r.expected_life,
                 target_probability = r.target_probability,
-                knock_out_probability = r.knock_out_probability
+                knock_out_probability = r.knock_out_probability,
+                fx_vega_term = sens.fx_vega_term.clone(),
+                path_d_parameter = scalars.iter().map(|e| e.value).collect::<Vec<f64>>(),
+                path_parameter_error = scalars.iter().map(|e| e.standard_error).collect::<Vec<f64>>(),
+                path_parameter_changed = scalars.iter().map(|e| e.changed_paths).collect::<Vec<f64>>(),
+                path_curve = path_curve,
+                path_curve_date = path_date,
+                path_curve_time = path_time,
+                path_d_curve = path_d,
+                path_curve_error = path_se,
+                path_curve_changed = path_changed
             ));
         }
         if !call_dates.is_empty() {
@@ -2176,7 +2197,8 @@ fn compute_prdc_three_factor_value(
                 call_curve_date = call_date,
                 call_curve_time = call_time,
                 call_d_curve = call_d,
-                call_curve_error = call_se
+                call_curve_error = call_se,
+                fx_vega_term = sens.fx_vega_term.clone()
             ));
         }
         let (value, standard_error) = if paths > 0 {
@@ -2185,7 +2207,7 @@ fn compute_prdc_three_factor_value(
             (analytic, 0.0)
         };
         let effective: Vec<f64> = terms.coupon_times.iter().map(|&t| (model.fx_forward_variance(t) / t).sqrt()).collect();
-        Ok(list!(value = value, standard_error = standard_error, analytic = analytic, effective_volatility = effective, parameter = parameter, d_parameter = d_parameter, curve = curve, curve_date = curve_date, curve_time = curve_time, d_curve = d_curve))
+        Ok(list!(value = value, standard_error = standard_error, analytic = analytic, effective_volatility = effective, parameter = parameter, d_parameter = d_parameter, curve = curve, curve_date = curve_date, curve_time = curve_time, d_curve = d_curve, fx_vega_term = sens.fx_vega_term.clone()))
     };
     outcome(run())
 }
@@ -2200,6 +2222,7 @@ fn calibrate_prdc_fx_volatility(
     correlation: Vec<f64>,
     maturities: Vec<f64>,
     volatilities: Vec<f64>,
+    term_structure: bool,
 ) -> List {
     let run = || -> Core<List> {
         if domestic_rate.len() != 2 || foreign_rate.len() != 2 || correlation.len() != 3 {
@@ -2210,14 +2233,20 @@ fn calibrate_prdc_fx_volatility(
         let model = prdc::PrdcThreeFactor {
             spot,
             fx_volatility: 1.0,
+            fx_volatility_term: None,
             domestic: &domestic_curve.curve,
             foreign: &foreign_curve.curve,
             domestic_rate: prdc::HullWhiteFactor { mean_reversion: domestic_rate[0], volatility: domestic_rate[1] },
             foreign_rate: prdc::HullWhiteFactor { mean_reversion: foreign_rate[0], volatility: foreign_rate[1] },
             correlation: [correlation[0], correlation[1], correlation[2]],
         };
+        if term_structure {
+            let fit = prdc::calibrate_prdc_fx_volatility_term(&model, &maturities, &volatilities)?;
+            let rmse = (fit.model_volatilities.iter().zip(&volatilities).map(|(m, v)| (m - v).powi(2)).sum::<f64>() / volatilities.len() as f64).sqrt();
+            return Ok(list!(fx_volatility = fit.volatilities, fx_volatility_times = fit.times, model_volatilities = fit.model_volatilities, root_mean_square_error = rmse));
+        }
         let fit = prdc::calibrate_prdc_fx_volatility(&model, &maturities, &volatilities)?;
-        Ok(list!(fx_volatility = fit.fx_volatility, model_volatilities = fit.model_volatilities, root_mean_square_error = fit.root_mean_square_error))
+        Ok(list!(fx_volatility = fit.fx_volatility, fx_volatility_times = Vec::<f64>::new(), model_volatilities = fit.model_volatilities, root_mean_square_error = fit.root_mean_square_error))
     };
     outcome(run())
 }

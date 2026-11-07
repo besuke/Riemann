@@ -12,6 +12,7 @@ calibrate_prdc_three_factor(
   foreign_swaptions,
   correlation = c(0, 0, 0),
   fx_options,
+  fx_term_structure = FALSE,
   ...
 )
 }
@@ -26,11 +27,13 @@ calibrate_prdc_three_factor(
 
 \item{fx_options}{A data frame with \code{maturity} (years) and \code{volatility} (Black) of FX options.}
 
+\item{fx_term_structure}{\code{TRUE} for a piecewise-constant FX volatility matching every quote (increasing maturities).}
+
 \item{...}{Passed to \code{\link[=calibrate_hull_white]{calibrate_hull_white()}} (starting point, \code{fix_mean_reversion}, ...).}
 }
 \value{
 A list with \code{domestic_rate} and \code{foreign_rate} (\code{c(mean_reversion, volatility)}, for
-\code{\link[=compute_prdc_three_factor_value]{compute_prdc_three_factor_value()}}), \code{fx_volatility}, the rate calibrations \code{domestic_fit} and \code{foreign_fit}, and
+\code{\link[=compute_prdc_three_factor_value]{compute_prdc_three_factor_value()}}), \code{fx_volatility} and \code{fx_volatility_times} (\code{NULL} for a constant one), the rate calibrations \code{domestic_fit} and \code{foreign_fit}, and
 \code{fx_fit}, a tibble of the FX quotes with the model's volatilities.
 }
 \description{
@@ -39,5 +42,8 @@ volatility to its own currency's swaptions (or bond options) on its own curve, b
 the FX volatility to FX option volatilities with those rates and the given correlations. Under each maturity's
 domestic forward measure the FX forward is lognormal with the three-factor variance \code{V(T)}, so a European FX
 option is Black's formula with \code{sqrt(V(T) / T)}; \code{V} is a quadratic in the FX volatility, so one quote is matched
-exactly and several are fitted by least squares on the volatilities. The correlations are inputs, not fitted.
+exactly and several are fitted by least squares on the volatilities. With \code{fx_term_structure = TRUE} the FX volatility
+is piecewise constant, one piece per quote ending at its maturity, bootstrapped so that each quote's total variance
+\code{volatility^2 * maturity} is matched exactly (without rate volatilities each piece is the square root of the
+increment of the total variance over its interval). The correlations are inputs, not fitted.
 }

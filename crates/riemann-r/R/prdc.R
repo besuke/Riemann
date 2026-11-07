@@ -50,14 +50,20 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #'
 #' The note of [compute_prdc_value()] in a three-factor model under the domestic risk-neutral measure: Hull-White
 #' domestic and foreign short rates fitting their curves, and a lognormal FX rate,
-#' `dS / S = (r_d - r_f) dt + fx_volatility dW_X`, the foreign rate carrying the quanto drift
-#' `-rho_fX sigma_f fx_volatility`. Each coupon depends only on the FX rate on its date, and under the domestic
+#' `dS / S = (r_d - r_f) dt + sigma_X(t) dW_X`, the foreign rate carrying the quanto drift
+#' `-rho_fX sigma_f sigma_X(t)`. Each coupon depends only on the FX rate on its date, and under the domestic
 #' forward measure of that date the FX forward is lognormal with the variance of
-#' `fx_volatility dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d`, so the closed form is the call spread of
+#' `sigma_X dW_X - sigma_f B_f dW_f + sigma_d B_d dW_d`, so the closed form is the call spread of
 #' [compute_prdc_value()] with each coupon's `effective_volatility`. With `paths > 0` the value is a Monte Carlo of
 #' the three factors (exact Ornstein-Uhlenbeck steps of at most `1 / steps_per_year` years, trapezoid integrals of the
 #' rates), next to the closed form. The closed form's first derivatives with respect to every input come from
 #' automatic differentiation in one pass.
+#'
+#' The FX volatility `sigma_X` is constant (one `fx_volatility`) or piecewise constant: `fx_volatility[k]` up to
+#' `fx_volatility_times[k]` years and the last one after (from ATM volatilities by maturity,
+#' [calibrate_prdc_three_factor()] with `fx_term_structure = TRUE` gives the pieces). The paths take each step's
+#' increment of the total variance `int sigma_X^2` and of its covariances with the rates, on the time grid and with the
+#' random numbers of a constant volatility, so pieces of one volatility give the paths of that constant volatility.
 #'
 #' With a finite `target`, the note is a target redemption note: once the sum of the coupon rates times their accrual
 #' fractions (fixed coupons included) reaches `target`, it pays that date's coupon (`target_coupon = "capped"` only up
@@ -67,8 +73,14 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #'
 #' With a finite `knock_out_level`, the note also ends on the coupon dates `knock_out_dates` (all but the last by
 #' default) where the FX rate is at or above the level, paying that date's coupon and the redemption. A date that
-#' reaches the target and the level counts as the target's. No call with a target or knock-out, and no
-#' derivatives of these notes (their cash flows jump where they end).
+#' reaches the target and the level counts as the target's. No call with a target or knock-out.
+#'
+#' The derivatives of a target or knock-out note are central differences on the same random numbers: each input
+#' moves up and down by `bump` (relative for the spot, absolute for the volatilities, a parallel shift of a piecewise
+#' FX volatility, and the mean reversions, `10 * bump` for the correlations, and `bump` in each node's log discount
+#' factor for the curves), the paths are generated again from `seed`, and each path's difference is divided by the
+#' step. A path whose ending (date or reason) changes between the two sides adds a jump divided by the step, so a
+#' small `bump` makes the estimate noisy and a large one biased; `changed_paths` is the share of those paths.
 #'
 #' With `call_dates`, the issuer may redeem the note at `call_price` on those coupon dates, right after paying their
 #' coupons, and calls when the rest of the note is worth more than the call price. The rule comes from Longstaff and
@@ -83,7 +95,8 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' the correlations, one-sided at the edge of a range). Each comes with its standard error.
 #'
 #' @inheritParams compute_prdc_value
-#' @param fx_volatility Lognormal FX volatility.
+#' @param fx_volatility Lognormal FX volatility, or the volatility of each piece with `fx_volatility_times`.
+#' @param fx_volatility_times `NULL` for a constant FX volatility, or the end of each piece in years (increasing).
 #' @param domestic_rate,foreign_rate Hull-White `c(mean_reversion, volatility)` of each short rate.
 #' @param correlation `c(domestic-foreign, domestic-FX, foreign-FX)` correlations of the Brownian motions.
 #' @param paths Monte Carlo paths, or 0 for the closed form only.
@@ -99,7 +112,7 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #' @param knock_out_level FX level (domestic per foreign) of the knock-out; `Inf` for none.
 #' @param knock_out_dates Positions in `coupon_times` where the knock-out is observed, before the last; `NULL` for all
 #'   of them.
-#' @param bump Step of the callable note's central differences. Paths that cross the fixed rule's boundary add a jump
+#' @param bump Step of the callable, target and knock-out notes' central differences. Paths that cross a boundary add a jump
 #'   divided by the step, so a small step makes the estimate noisy.
 #' @return A list with `summary`, a one-row tibble with `value`, `standard_error` (0 for the closed form) and
 #'   `analytic` (the closed form without the call), and `coupons`, a tibble with each coupon's `time` and
@@ -111,7 +124,10 @@ compute_prdc_value <- function(spot, volatility, domestic_curve, foreign_curve, 
 #'   tibble of the call dates' `call_probability`, `call_sensitivity` a tibble (`parameter`, `d_npv`,
 #'   `standard_error`) of the callable note's derivatives, and `call_curve_sensitivity` its curve nodes, with
 #'   `standard_error`. With a target or knock-out, `summary` adds `plain_value` (neither, same paths) and `expected_life`, and
-#'   `endings` is a tibble of each coupon date's `target_probability` and `knock_out_probability`.
+#'   `endings` is a tibble of each coupon date's `target_probability` and `knock_out_probability`, `path_sensitivity` a
+#'   tibble (`parameter`, `d_npv`, `standard_error`, `changed_paths`) of the note's derivatives, and
+#'   `path_curve_sensitivity` its curve nodes. With `fx_volatility_times`, `fx_vega_term` is a tibble of the closed
+#'   form's derivative with respect to each piece (`end`, `d_npv`); the `fx_volatility` rows are for a parallel shift.
 #' @examples
 #' tenors <- c("1Y", "3Y", "5Y", "7Y")
 #' jpy_quotes <- create_ois_instruments(tenors, c(0.01, 0.012, 0.014, 0.016), 2L, 1L, 0L)
@@ -127,9 +143,10 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
                                             paths = 0L, steps_per_year = 12L, seed = 1, call_dates = integer(), call_price = redemption,
                                             training_seed = seed + 1, training_paths = paths, bump = 1e-3,
                                             target = Inf, target_coupon = "capped", make_whole = FALSE, knock_out_level = Inf,
-                                            knock_out_dates = NULL) {
+                                            knock_out_dates = NULL, fx_volatility_times = NULL) {
   i <- tibble(coupon_times = as.numeric(coupon_times), accrual_fractions = as.numeric(accrual_fractions), fixed_rate = as.numeric(fixed_rate))
-  x <- checked(.Call(wrap__compute_prdc_three_factor_value, as.numeric(spot), as.numeric(fx_volatility), domestic_curve$pointer,
+  ends <- if (is.null(fx_volatility_times)) numeric() else as.numeric(fx_volatility_times)
+  x <- checked(.Call(wrap__compute_prdc_three_factor_value, as.numeric(spot), as.numeric(fx_volatility), ends, domestic_curve$pointer,
                      foreign_curve$pointer, as.numeric(domestic_rate), as.numeric(foreign_rate), as.numeric(correlation),
                      i$coupon_times, i$accrual_fractions, i$fixed_rate, as.numeric(fx_base), as.numeric(leverage), as.numeric(subtraction),
                      as.numeric(floor), as.numeric(cap), as.numeric(notional), as.numeric(redemption), as.integer(paths),
@@ -142,6 +159,7 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
               sensitivity = tibble(parameter = x$parameter, d_npv = x$d_parameter),
               curve_sensitivity = tibble(curve = x$curve, date = as_date(x$curve_date), time = x$curve_time, d_npv = x$d_curve,
                                          npv_per_bp = -x$d_curve * x$curve_time * 1e-4))
+  if (length(ends) > 0L) out$fx_vega_term <- tibble(end = ends, d_npv = x$fx_vega_term)
   if (length(call_dates) > 0L) {
     out$summary <- tibble::add_column(out$summary, noncallable_value = x$noncallable_value, hindsight_value = x$hindsight_value)
     out$calls <- tibble(call_date = as.integer(call_dates), time = i$coupon_times[call_dates], call_probability = x$call_probability)
@@ -153,6 +171,11 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
   if (is.finite(target) || isTRUE(make_whole) || is.finite(knock_out_level)) {
     out$summary <- tibble::add_column(out$summary, plain_value = x$plain_value, expected_life = x$expected_life)
     out$endings <- tibble(time = i$coupon_times, target_probability = x$target_probability, knock_out_probability = x$knock_out_probability)
+    out$path_sensitivity <- tibble(parameter = x$parameter, d_npv = x$path_d_parameter, standard_error = x$path_parameter_error,
+                                   changed_paths = x$path_parameter_changed)
+    out$path_curve_sensitivity <- tibble(curve = x$path_curve, date = as_date(x$path_curve_date), time = x$path_curve_time,
+                                         d_npv = x$path_d_curve, standard_error = x$path_curve_error, changed_paths = x$path_curve_changed,
+                                         npv_per_bp = -x$path_d_curve * x$path_curve_time * 1e-4)
   }
   out
 }
@@ -164,24 +187,29 @@ compute_prdc_three_factor_value <- function(spot, fx_volatility, domestic_curve,
 #' the FX volatility to FX option volatilities with those rates and the given correlations. Under each maturity's
 #' domestic forward measure the FX forward is lognormal with the three-factor variance `V(T)`, so a European FX
 #' option is Black's formula with `sqrt(V(T) / T)`; `V` is a quadratic in the FX volatility, so one quote is matched
-#' exactly and several are fitted by least squares on the volatilities. The correlations are inputs, not fitted.
+#' exactly and several are fitted by least squares on the volatilities. With `fx_term_structure = TRUE` the FX volatility
+#' is piecewise constant, one piece per quote ending at its maturity, bootstrapped so that each quote's total variance
+#' `volatility^2 * maturity` is matched exactly (without rate volatilities each piece is the square root of the
+#' increment of the total variance over its interval). The correlations are inputs, not fitted.
 #'
 #' @inheritParams compute_prdc_three_factor_value
 #' @param domestic_swaptions,foreign_swaptions Swaptions of each currency, as `swaptions` of [calibrate_hull_white()].
 #' @param fx_options A data frame with `maturity` (years) and `volatility` (Black) of FX options.
+#' @param fx_term_structure `TRUE` for a piecewise-constant FX volatility matching every quote (increasing maturities).
 #' @param ... Passed to [calibrate_hull_white()] (starting point, `fix_mean_reversion`, ...).
 #' @return A list with `domestic_rate` and `foreign_rate` (`c(mean_reversion, volatility)`, for
-#'   [compute_prdc_three_factor_value()]), `fx_volatility`, the rate calibrations `domestic_fit` and `foreign_fit`, and
+#'   [compute_prdc_three_factor_value()]), `fx_volatility` and `fx_volatility_times` (`NULL` for a constant one), the rate calibrations `domestic_fit` and `foreign_fit`, and
 #'   `fx_fit`, a tibble of the FX quotes with the model's volatilities.
 #' @export
 calibrate_prdc_three_factor <- function(spot, domestic_curve, foreign_curve, domestic_swaptions, foreign_swaptions, correlation = c(0, 0, 0),
-                                       fx_options, ...) {
+                                       fx_options, fx_term_structure = FALSE, ...) {
   domestic <- calibrate_hull_white(domestic_curve, swaptions = domestic_swaptions, ...)
   foreign <- calibrate_hull_white(foreign_curve, swaptions = foreign_swaptions, ...)
   rates <- list(c(domestic$mean_reversion, domestic$volatility), c(foreign$mean_reversion, foreign$volatility))
   fx <- checked(.Call(wrap__calibrate_prdc_fx_volatility, as.numeric(spot), domestic_curve$pointer, foreign_curve$pointer, rates[[1]], rates[[2]],
-                      as.numeric(correlation), as.numeric(fx_options$maturity), as.numeric(fx_options$volatility)))
-  list(domestic_rate = rates[[1]], foreign_rate = rates[[2]], fx_volatility = fx$fx_volatility, domestic_fit = domestic, foreign_fit = foreign,
+                      as.numeric(correlation), as.numeric(fx_options$maturity), as.numeric(fx_options$volatility), as_flag(fx_term_structure)))
+  list(domestic_rate = rates[[1]], foreign_rate = rates[[2]], fx_volatility = fx$fx_volatility,
+       fx_volatility_times = if (length(fx$fx_volatility_times) > 0L) fx$fx_volatility_times else NULL, domestic_fit = domestic, foreign_fit = foreign,
        fx_fit = tibble(maturity = as.numeric(fx_options$maturity), volatility = as.numeric(fx_options$volatility),
                        model_volatility = fx$model_volatilities))
 }

@@ -10,13 +10,10 @@
 //! tests the Monte Carlo. Both are generic over [`Operand`].
 //!
 //! A second model has stochastic rates ([`PrdcThreeFactor`]): Hull-White domestic and foreign rates and
-//! a lognormal FX rate under the domestic measure, with a closed form per coupon (the FX forward is
-//! lognormal under each coupon's forward measure) and a Monte Carlo of the three factors, in `f64`
-//! without sensitivities (`docs/spec_prdc.md` 5 章).
-//!
-//! A second model has stochastic rates: Hull-White domestic and foreign short rates and a lognormal FX
-//! rate ([`PrdcThreeFactor`], `docs/spec_prdc.md` 5 章), in f64 only, with a closed form on each coupon's
-//! forward measure and a Monte Carlo of the three factors.
+//! a lognormal FX rate under the domestic measure, with a constant or piecewise-constant FX volatility
+//! ([`FxVolatilityTerm`]), a closed form per coupon (the FX forward is lognormal under each coupon's
+//! forward measure) and a Monte Carlo of the three factors, with calls, target redemptions and
+//! knock-outs (`docs/spec_prdc.md` 5〜13 章).
 
 // `!(x > 0.0)` is intended: it also rejects NaN
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
@@ -300,12 +297,16 @@ pub struct HullWhiteFactor {
 /// The three-factor market of a note, under the domestic risk-neutral measure:
 /// `dr_d = (theta_d - a_d r_d) dt + sigma_d dW_d`,
 /// `dr_f = (theta_f - a_f r_f - rho_fX sigma_f sigma_X) dt + sigma_f dW_f` (the quanto drift),
-/// `dS / S = (r_d - r_f) dt + sigma_X dW_X`.
+/// `dS / S = (r_d - r_f) dt + sigma_X(t) dW_X`, with `sigma_X` constant (`fx_volatility`) or
+/// piecewise constant (`fx_volatility_term`).
 #[derive(Debug, Clone, Copy)]
 pub struct PrdcThreeFactor<'c> {
     /// Domestic per foreign.
     pub spot: f64,
+    /// The constant FX volatility; not used with `fx_volatility_term`.
     pub fx_volatility: f64,
+    /// A piecewise-constant FX volatility in place of `fx_volatility`.
+    pub fx_volatility_term: Option<FxVolatilityTerm<'c>>,
     pub domestic: &'c YieldCurve,
     pub foreign: &'c YieldCurve,
     pub domestic_rate: HullWhiteFactor,
@@ -332,10 +333,79 @@ fn integrated_variance(f: &HullWhiteFactor, t: f64) -> f64 {
     f.volatility * f.volatility / (a * a) * (t - 2.0 * hull_white_b(a, t) + hull_white_b(2.0 * a, t))
 }
 
+/// A piecewise-constant FX volatility: `volatilities[k]` from `times[k - 1]` (0 for the first) to
+/// `times[k]`, and the last one after the last time. From ATM volatilities by maturity,
+/// [`calibrate_prdc_fx_volatility_term`] gives the pieces.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FxVolatilityTerm<'c> {
+    /// The ends of the pieces, in years, positive and increasing.
+    pub times: &'c [f64],
+    pub volatilities: &'c [f64],
+}
+
+impl FxVolatilityTerm<'_> {
+    fn check(&self) -> Result<(), Error> {
+        if self.times.is_empty() || self.times.len() != self.volatilities.len() {
+            return invalid("give one FX volatility per piece's end time".into());
+        }
+        if !(self.times[0] > 0.0) || self.times.windows(2).any(|w| !(w[1] > w[0])) || !self.times.iter().all(|t| t.is_finite()) {
+            return invalid("the FX volatility's times must be positive, finite and increasing".into());
+        }
+        if !self.volatilities.iter().all(|v| *v > 0.0 && v.is_finite()) {
+            return invalid("the FX volatilities must be positive and finite".into());
+        }
+        Ok(())
+    }
+
+    /// `int_0^t sigma_X(u)^2 du`.
+    pub fn total_variance(&self, t: f64) -> f64 {
+        split_pieces(self.times, 0.0, t).iter().map(|&(a, b, k)| self.volatilities[k] * self.volatilities[k] * (b - a)).sum()
+    }
+}
+
+/// The pieces of a piecewise-constant function (piece `k` ends at `ends[k]`, the last piece goes on, and
+/// no ends is one piece) that cover `[t0, t1]`: `(start, end, k)` in order.
+fn split_pieces(ends: &[f64], t0: f64, t1: f64) -> Vec<(f64, f64, usize)> {
+    let last = ends.len().saturating_sub(1);
+    let mut k = ends.iter().position(|&e| e > t0).unwrap_or(last);
+    let mut start = t0;
+    let mut out = Vec::new();
+    while k < last && ends[k] < t1 {
+        out.push((start, ends[k], k));
+        start = ends[k];
+        k += 1;
+    }
+    out.push((start, t1, k));
+    out
+}
+
 impl PrdcThreeFactor<'_> {
+    /// The FX volatility's pieces over `[t0, t1]`: `(start, end, sigma_X)`.
+    fn fx_pieces(&self, t0: f64, t1: f64) -> Vec<(f64, f64, f64)> {
+        match self.fx_volatility_term {
+            None => vec![(t0, t1, self.fx_volatility)],
+            Some(term) => split_pieces(term.times, t0, t1).into_iter().map(|(a, b, k)| (a, b, term.volatilities[k])).collect(),
+        }
+    }
+
+    /// `int_0^t sigma_X(u)^2 du`.
+    pub fn fx_total_variance(&self, t: f64) -> f64 {
+        match self.fx_volatility_term {
+            None => self.fx_volatility * self.fx_volatility * t,
+            Some(term) => term.total_variance(t),
+        }
+    }
+
     fn check(&self) -> Result<Vec<Vec<f64>>, Error> {
-        if !(self.spot > 0.0) || !(self.fx_volatility > 0.0) || !self.spot.is_finite() || !self.fx_volatility.is_finite() {
-            return invalid("the spot and FX volatility must be positive and finite".into());
+        if !(self.spot > 0.0) || !self.spot.is_finite() {
+            return invalid("the spot must be positive and finite".into());
+        }
+        match self.fx_volatility_term {
+            Some(term) => term.check()?,
+            None if !(self.fx_volatility > 0.0) || !self.fx_volatility.is_finite() => {
+                return invalid("the FX volatility must be positive and finite".into());
+            }
+            None => {}
         }
         for f in [self.domestic_rate, self.foreign_rate] {
             if !(f.mean_reversion >= 0.0) || !(f.volatility >= 0.0) || !f.mean_reversion.is_finite() || !f.volatility.is_finite() {
@@ -357,9 +427,11 @@ impl PrdcThreeFactor<'_> {
 
 /// The parameters of the three-factor model as operands, for one definition of the variance and the
 /// closed form in `f64` and under automatic differentiation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct ThreeFactorParameters<T> {
-    fx_volatility: T,
+    /// The FX volatility of each piece, ending at `fx_ends` (none for a constant volatility).
+    fx_volatility: Vec<T>,
+    fx_ends: Vec<f64>,
     domestic: (T, T),
     foreign: (T, T),
     correlation: [T; 3],
@@ -394,20 +466,24 @@ fn hull_white_b_of<T: Operand>(a: T, tau: f64) -> T {
     }
 }
 
-/// `V(T)` of [`PrdcThreeFactor::fx_forward_variance`]: the integrand is smooth, and 32-point
-/// Gauss-Legendre quadrature integrates it to rounding for the mean reversions of practice.
+/// `V(T)` of [`PrdcThreeFactor::fx_forward_variance`]: the integrand is smooth on each piece of the FX
+/// volatility, and 32-point Gauss-Legendre quadrature on each piece integrates it to rounding for the
+/// mean reversions of practice.
 fn fx_forward_variance_of<T: Operand>(p: &ThreeFactorParameters<T>, t: f64) -> T {
     let (nodes, weights) = gauss_legendre();
     let [df, dx, fx] = p.correlation;
-    let sx = p.fx_volatility;
-    let mut sum = sx.like(0.0);
-    for (node, weight) in nodes.iter().zip(weights) {
-        // tau = T - u over [0, T]
-        let tau = 0.5 * t * (node + 1.0);
-        let bd = p.domestic.1 * hull_white_b_of(p.domestic.0, tau);
-        let bf = p.foreign.1 * hull_white_b_of(p.foreign.0, tau);
-        let integrand = sx * sx + bf * bf + bd * bd - fx * sx * bf * 2.0 + dx * sx * bd * 2.0 - df * bd * bf * 2.0;
-        sum = sum + integrand * (0.5 * t * weight);
+    let mut sum = p.fx_volatility[0].like(0.0);
+    for (u0, u1, k) in split_pieces(&p.fx_ends, 0.0, t) {
+        let sx = p.fx_volatility[k];
+        // tau = T - u over the piece
+        let (lo, hi) = (t - u1, t - u0);
+        for (node, weight) in nodes.iter().zip(weights) {
+            let tau = lo + 0.5 * (hi - lo) * (node + 1.0);
+            let bd = p.domestic.1 * hull_white_b_of(p.domestic.0, tau);
+            let bf = p.foreign.1 * hull_white_b_of(p.foreign.0, tau);
+            let integrand = sx * sx + bf * bf + bd * bd - fx * sx * bf * 2.0 + dx * sx * bd * 2.0 - df * bd * bf * 2.0;
+            sum = sum + integrand * (0.5 * (hi - lo) * weight);
+        }
     }
     sum
 }
@@ -442,8 +518,13 @@ fn three_factor_analytic_of<T: Operand>(
 
 impl PrdcThreeFactor<'_> {
     fn parameters(&self) -> ThreeFactorParameters<f64> {
+        let (fx_volatility, fx_ends) = match self.fx_volatility_term {
+            None => (vec![self.fx_volatility], Vec::new()),
+            Some(term) => (term.volatilities.to_vec(), term.times.to_vec()),
+        };
         ThreeFactorParameters {
-            fx_volatility: self.fx_volatility,
+            fx_volatility,
+            fx_ends,
             domestic: (self.domestic_rate.mean_reversion, self.domestic_rate.volatility),
             foreign: (self.foreign_rate.mean_reversion, self.foreign_rate.volatility),
             correlation: self.correlation,
@@ -473,7 +554,10 @@ pub fn compute_prdc_three_factor_analytic(terms: &PrdcTerms, model: &PrdcThreeFa
 pub struct PrdcThreeFactorSensitivity {
     pub npv: f64,
     pub fx_delta: f64,
+    /// With respect to a parallel shift of the FX volatility (every piece by the same amount).
     pub fx_vega: f64,
+    /// With respect to each piece of the FX volatility (one entry for a constant one).
+    pub fx_vega_term: Vec<f64>,
     /// With respect to the domestic rate's mean reversion and volatility.
     pub domestic_mean_reversion: f64,
     pub domestic_volatility: f64,
@@ -492,15 +576,18 @@ pub fn compute_prdc_three_factor_sensitivity(terms: &PrdcTerms, model: &PrdcThre
     model.check()?;
     let recorder = Recorder::new();
     let spot = recorder.input(model.spot);
-    let fx_volatility = recorder.input(model.fx_volatility);
+    let plain = model.parameters();
+    let fx_volatility: Vec<Var> = plain.fx_volatility.iter().map(|&v| recorder.input(v)).collect();
+    let pieces = fx_volatility.len();
     let domestic = (recorder.input(model.domestic_rate.mean_reversion), recorder.input(model.domestic_rate.volatility));
     let foreign = (recorder.input(model.foreign_rate.mean_reversion), recorder.input(model.foreign_rate.volatility));
     let correlation = model.correlation.map(|r| recorder.input(r));
     let d = model.domestic.lift(&recorder)?;
     let f = model.foreign.lift(&recorder)?;
-    let p = ThreeFactorParameters { fx_volatility, domestic, foreign, correlation };
+    let p = ThreeFactorParameters { fx_volatility: fx_volatility.clone(), fx_ends: plain.fx_ends, domestic, foreign, correlation };
     let npv = three_factor_analytic_of(terms, spot, &d.curve, &f.curve, &p)?;
-    let mut wrt = vec![spot, fx_volatility, domestic.0, domestic.1, foreign.0, foreign.1, correlation[0], correlation[1], correlation[2]];
+    let mut wrt = vec![spot, domestic.0, domestic.1, foreign.0, foreign.1, correlation[0], correlation[1], correlation[2]];
+    wrt.extend(fx_volatility.iter().copied());
     let first_curve = wrt.len();
     wrt.extend(d.inputs.iter().map(|(_, x)| *x));
     wrt.extend(f.inputs.iter().map(|(_, x)| *x));
@@ -512,15 +599,17 @@ pub fn compute_prdc_three_factor_sensitivity(terms: &PrdcTerms, model: &PrdcThre
     for (k, (input, _)) in f.inputs.iter().enumerate() {
         curves.push(PrdcCurveSensitivity { domestic: false, input: *input, d_npv: g[first_curve + d.inputs.len() + k] });
     }
+    let fx_vega_term = g[8..8 + pieces].to_vec();
     Ok(PrdcThreeFactorSensitivity {
         npv: npv.primal(),
         fx_delta: g[0],
-        fx_vega: g[1],
-        domestic_mean_reversion: g[2],
-        domestic_volatility: g[3],
-        foreign_mean_reversion: g[4],
-        foreign_volatility: g[5],
-        correlation: [g[6], g[7], g[8]],
+        fx_vega: fx_vega_term.iter().sum(),
+        fx_vega_term,
+        domestic_mean_reversion: g[1],
+        domestic_volatility: g[2],
+        foreign_mean_reversion: g[3],
+        foreign_volatility: g[4],
+        correlation: [g[5], g[6], g[7]],
         curves,
     })
 }
@@ -541,8 +630,11 @@ pub struct PrdcThreeFactorPaths {
 /// between them. `x_d` and `x_f` move by their exact Ornstein-Uhlenbeck transitions (with the quanto
 /// drift on `x_f`) jointly with `W_X`; the integrals of `x` are by the trapezoid rule. With `phi` fitting
 /// each curve, `exp(-int r_d) = P_d(0, T) exp(-I_d - V_d / 2)` and
-/// `ln S(T) = ln S + ln(P_f(0, T) / P_d(0, T)) + I_d - I_f + (V_d - V_f) / 2 - sigma_X^2 T / 2 + sigma_X W_X(T)`,
-/// with `I = int_0^T x` and `V = Var(I)` (the foreign one under the foreign measure).
+/// `ln S(T) = ln S + ln(P_f(0, T) / P_d(0, T)) + I_d - I_f + (V_d - V_f) / 2 - w(T) / 2 + int_0^T sigma_X dW_X`,
+/// with `I = int_0^T x`, `V = Var(I)` (the foreign one under the foreign measure) and the FX total
+/// variance `w(T) = int_0^T sigma_X^2`. A piecewise-constant FX volatility enters each step through the
+/// increments of `w` and of its covariances with the rates over the step, so the time grid and the
+/// random numbers are those of a constant volatility.
 pub fn generate_prdc_three_factor_paths(
     coupon_times: &[f64],
     model: &PrdcThreeFactor,
@@ -567,26 +659,52 @@ pub fn generate_prdc_three_factor_paths(
         }
     }
     let (d, f) = (model.domestic_rate, model.foreign_rate);
-    let sx = model.fx_volatility;
     let [_, _, rho_fx] = model.correlation;
-    // the conditional covariance of (x_d, x_f, W_X) over a step of length h, as Ornstein-Uhlenbeck
-    // increments (W_X with no mean reversion), and its Cholesky factor (zero volatilities left out)
-    let sigma = [d.volatility, f.volatility, sx];
+    // the conditional covariance of (x_d, x_f, int sigma_X dW_X) over a step [t0, t1], as
+    // Ornstein-Uhlenbeck increments (the FX one with no mean reversion), and its Cholesky factor (zero
+    // rate volatilities left out); with the FX volatility constant over the step, the entries are
+    // rho_ab sigma_a sigma_b B(kappa_a + kappa_b, h), and across pieces of it the FX entries add up
+    // over the pieces: int sigma_X^2 du and rho sigma_r int exp(-kappa_r (t1 - u)) sigma_X(u) du
     let kappa = [d.mean_reversion, f.mean_reversion, 0.0];
-    let active: Vec<usize> = (0..3).filter(|&j| sigma[j] > 0.0).collect();
-    let step_factor = |h: f64| -> Result<Vec<Vec<f64>>, Error> {
-        let cov: Vec<Vec<f64>> = active
-            .iter()
-            .map(|&a| active.iter().map(|&b| correlation[a][b] * sigma[a] * sigma[b] * hull_white_b(kappa[a] + kappa[b], h)).collect())
-            .collect();
-        crate::math::linear::compute_cholesky(&cov)
+    let active: Vec<usize> = (0..3).filter(|&j| j == 2 || [d.volatility, f.volatility][j] > 0.0).collect();
+    let step_factor = |t0: f64, t1: f64| -> Result<(Vec<Vec<f64>>, f64), Error> {
+        let h = t1 - t0;
+        let pieces = model.fx_pieces(t0, t1);
+        let single = pieces.len() == 1;
+        let sigma = [d.volatility, f.volatility, pieces[0].2];
+        // int exp(-kappa (t1 - u)) sigma_X(u)^power du over the step
+        let fx_integral = |kappa: f64, power: i32| -> f64 {
+            pieces.iter().map(|&(a, b, s)| s.powi(power) * (-kappa * (t1 - b)).exp() * hull_white_b(kappa, b - a)).sum()
+        };
+        let entry = |a: usize, b: usize| -> f64 {
+            if single || (a != 2 && b != 2) {
+                correlation[a][b] * sigma[a] * sigma[b] * hull_white_b(kappa[a] + kappa[b], h)
+            } else if a == 2 && b == 2 {
+                fx_integral(0.0, 2)
+            } else {
+                let r = if a == 2 { b } else { a };
+                correlation[a][b] * sigma[r] * fx_integral(kappa[r], 1)
+            }
+        };
+        let cov: Vec<Vec<f64>> = active.iter().map(|&a| active.iter().map(|&b| entry(a, b)).collect()).collect();
+        // the quanto drift of x_f over the step
+        let quanto = if single {
+            rho_fx * f.volatility * sigma[2] * hull_white_b(f.mean_reversion, h)
+        } else {
+            rho_fx * f.volatility * fx_integral(f.mean_reversion, 1)
+        };
+        Ok((crate::math::linear::compute_cholesky(&cov)?, quanto))
     };
-    let factors: Vec<Vec<Vec<f64>>> = grid.windows(2).map(|w| step_factor(w[1] - w[0])).collect::<Result<_, _>>()?;
+    let steps: Vec<(Vec<Vec<f64>>, f64)> = grid.windows(2).map(|w| step_factor(w[0], w[1])).collect::<Result<_, _>>()?;
     let mut fixed = Vec::with_capacity(coupon_times.len());
     for &t in coupon_times {
         let (pd, pf) = (model.domestic.discount_at(t, true)?, model.foreign.discount_at(t, true)?);
         let (vd, vf) = (integrated_variance(&d, t), integrated_variance(&f, t));
-        fixed.push((pd, (model.spot * pf / pd).ln() + 0.5 * (vd - vf) - 0.5 * sx * sx * t, vd));
+        let half_fx_variance = match model.fx_volatility_term {
+            None => 0.5 * model.fx_volatility * model.fx_volatility * t,
+            Some(_) => 0.5 * model.fx_total_variance(t),
+        };
+        fixed.push((pd, (model.spot * pf / pd).ln() + 0.5 * (vd - vf) - half_fx_variance, vd));
     }
     let results: Vec<[Vec<f64>; 4]> = (0..paths)
         .into_par_iter()
@@ -602,10 +720,10 @@ pub fn generate_prdc_three_factor_paths(
                 let z: Vec<f64> = (0..active.len()).map(|j| generate_standard_normal(seed, p as u64, (3 * k + j) as u64)).collect();
                 let mut shock = [0.0; 3];
                 for (row, &a) in active.iter().enumerate() {
-                    shock[a] = factors[k][row].iter().zip(&z).map(|(l, x)| l * x).sum();
+                    shock[a] = steps[k].0[row].iter().zip(&z).map(|(l, x)| l * x).sum();
                 }
                 let new_xd = xd * (-d.mean_reversion * h).exp() + shock[0];
-                let new_xf = xf * (-f.mean_reversion * h).exp() - rho_fx * f.volatility * sx * hull_white_b(f.mean_reversion, h) + shock[1];
+                let new_xf = xf * (-f.mean_reversion * h).exp() - steps[k].1 + shock[1];
                 id += 0.5 * h * (xd + new_xd);
                 i_f += 0.5 * h * (xf + new_xf);
                 xd = new_xd;
@@ -862,6 +980,19 @@ pub fn compute_callable_prdc_three_factor(
     })
 }
 
+/// The pieces of `term` shifted up by `h` and down by `h` or less (to no lower than half the lowest
+/// piece, as for a constant volatility), and the distance between the two.
+fn shift_fx_volatility_term(term: FxVolatilityTerm, h: f64) -> (Vec<f64>, Vec<f64>, f64) {
+    let lowest = term.volatilities.iter().copied().fold(f64::INFINITY, f64::min);
+    let down = lowest - (lowest - h).max(lowest.min(h) * 0.5);
+    (term.volatilities.iter().map(|v| v + h).collect(), term.volatilities.iter().map(|v| v - down).collect(), h + down)
+}
+
+/// The model with the pieces of `term` set to `volatilities`.
+fn with_fx_volatilities<'a>(model: &PrdcThreeFactor<'a>, term: FxVolatilityTerm<'a>, volatilities: &'a [f64]) -> PrdcThreeFactor<'a> {
+    PrdcThreeFactor { fx_volatility_term: Some(FxVolatilityTerm { times: term.times, volatilities }), ..*model }
+}
+
 /// A curve input's derivative of a callable note.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CallableCurveSensitivity {
@@ -893,7 +1024,8 @@ pub struct CallablePrdcSensitivity {
 ///   flows up to its stop are differentiated with respect to `ln S`, `ln P_d(0, T_j)` and
 ///   `ln P_f(0, T_j)` (the coupon's slope is 0 outside its floor and cap), and chained to the curves'
 ///   inputs by automatic differentiation of `ln P(0, T_j)`.
-/// - The FX volatility, the rates' mean reversions and volatilities and the correlations: central
+/// - The FX volatility (a parallel shift of a piecewise one), the rates' mean reversions and
+///   volatilities and the correlations: central
 ///   differences of `bump` (absolute; `10 * bump` for the correlations) on the same evaluation paths
 ///   (common random numbers) with the same rule, one-sided where a step would leave the range.
 ///
@@ -979,16 +1111,31 @@ pub fn compute_callable_prdc_three_factor_sensitivity<'c>(
         Ok(mean_and_error(&per_path))
     };
     let h = bump;
-    let fx_vega = differences(&|v| PrdcThreeFactor { fx_volatility: v, ..m }, m.fx_volatility, h, m.fx_volatility.min(h) * 0.5, f64::INFINITY)?;
+    let fx_vega = match m.fx_volatility_term {
+        None => differences(&|v| PrdcThreeFactor { fx_volatility: v, ..m }, m.fx_volatility, h, m.fx_volatility.min(h) * 0.5, f64::INFINITY)?,
+        Some(term) => {
+            // a parallel shift of the pieces
+            let (up, down, step) = shift_fx_volatility_term(term, h);
+            let (a, b) = (with_fx_volatilities(&m, term, &up), with_fx_volatilities(&m, term, &down));
+            let (a, b) = (
+                generate_prdc_three_factor_paths(&terms.coupon_times, &a, paths, steps_per_year, seed)?,
+                generate_prdc_three_factor_paths(&terms.coupon_times, &b, paths, steps_per_year, seed)?,
+            );
+            let per_path: Vec<f64> = (0..paths)
+                .map(|p| (follow_call_rule(terms, &rule, call_price, &a, p).value - follow_call_rule(terms, &rule, call_price, &b, p).value) / step)
+                .collect();
+            mean_and_error(&per_path)
+        }
+    };
     let rate = |f: HullWhiteFactor, a: Option<f64>, s: Option<f64>| HullWhiteFactor {
         mean_reversion: a.unwrap_or(f.mean_reversion),
         volatility: s.unwrap_or(f.volatility),
     };
     let (dr, fr) = (m.domestic_rate, m.foreign_rate);
     let domestic_mean_reversion = differences(&|a| PrdcThreeFactor { domestic_rate: rate(dr, Some(a), None), ..m }, dr.mean_reversion, h, 0.0, f64::INFINITY)?;
-    let domestic_volatility = differences(&|s| PrdcThreeFactor { domestic_rate: rate(dr, None, Some(s)), ..m }, dr.volatility, h, 0.0, f64::INFINITY)?;
+    let domestic_volatility = differences(&|s| PrdcThreeFactor { domestic_rate: rate(dr, None, Some(s)), ..m }, dr.volatility, h, dr.volatility.min(h) * 0.5, f64::INFINITY)?;
     let foreign_mean_reversion = differences(&|a| PrdcThreeFactor { foreign_rate: rate(fr, Some(a), None), ..m }, fr.mean_reversion, h, 0.0, f64::INFINITY)?;
-    let foreign_volatility = differences(&|s| PrdcThreeFactor { foreign_rate: rate(fr, None, Some(s)), ..m }, fr.volatility, h, 0.0, f64::INFINITY)?;
+    let foreign_volatility = differences(&|s| PrdcThreeFactor { foreign_rate: rate(fr, None, Some(s)), ..m }, fr.volatility, h, fr.volatility.min(h) * 0.5, f64::INFINITY)?;
     let mut correlation = [PrdcEstimate { value: 0.0, standard_error: 0.0 }; 3];
     for (k, c) in correlation.iter_mut().enumerate() {
         let set = |r: f64| {
@@ -1136,28 +1283,8 @@ pub fn compute_path_dependent_prdc(
     steps_per_year: usize,
     seed: u64,
 ) -> Result<PathDependentPrdcResult, Error> {
-    terms.check()?;
+    let observed = check_path_dependent(terms, target, knock_out)?;
     let n = terms.coupon_times.len();
-    if let Some(t) = target {
-        if !(t.target > 0.0) {
-            return invalid(format!("the target must be positive (infinity for none), not {}", t.target));
-        }
-        if t.make_whole && !t.target.is_finite() {
-            return invalid("a make-whole needs a finite target".into());
-        }
-    }
-    let mut observed = vec![false; n];
-    if let Some(k) = knock_out {
-        if !(k.level > 0.0) {
-            return invalid(format!("the knock-out level must be positive (infinity for none), not {}", k.level));
-        }
-        if k.dates.windows(2).any(|w| w[1] <= w[0]) || k.dates.last().is_some_and(|&c| c + 1 >= n) {
-            return invalid(format!("knock-out dates must be increasing positions before the last coupon (of {n})"));
-        }
-        for &c in &k.dates {
-            observed[c] = true;
-        }
-    }
     let states = generate_prdc_three_factor_paths(&terms.coupon_times, model, paths, steps_per_year, seed)?;
     let knock = knock_out.map(|k| (observed.as_slice(), k.level));
     let mut values = Vec::with_capacity(paths);
@@ -1184,6 +1311,215 @@ pub fn compute_path_dependent_prdc(
         target_probability: targets.iter().map(|&c| c as f64 / count).collect(),
         knock_out_probability: knocks.iter().map(|&c| c as f64 / count).collect(),
         expected_life: life / count,
+    })
+}
+
+/// The terms of a target and a knock-out checked, and the coupon dates where the knock-out is observed.
+fn check_path_dependent(terms: &PrdcTerms, target: Option<&TargetRedemption>, knock_out: Option<&KnockOut>) -> Result<Vec<bool>, Error> {
+    terms.check()?;
+    let n = terms.coupon_times.len();
+    if let Some(t) = target {
+        if !(t.target > 0.0) {
+            return invalid(format!("the target must be positive (infinity for none), not {}", t.target));
+        }
+        if t.make_whole && !t.target.is_finite() {
+            return invalid("a make-whole needs a finite target".into());
+        }
+    }
+    let mut observed = vec![false; n];
+    if let Some(k) = knock_out {
+        if !(k.level > 0.0) {
+            return invalid(format!("the knock-out level must be positive (infinity for none), not {}", k.level));
+        }
+        if k.dates.windows(2).any(|w| w[1] <= w[0]) || k.dates.last().is_some_and(|&c| c + 1 >= n) {
+            return invalid(format!("knock-out dates must be increasing positions before the last coupon (of {n})"));
+        }
+        for &c in &k.dates {
+            observed[c] = true;
+        }
+    }
+    Ok(observed)
+}
+
+/// A derivative by central differences on common random numbers, with the share of paths whose
+/// ending (its date or its reason) differs between the two sides: each such path adds a jump of its
+/// cash flows divided by the step.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PathDependentDifference {
+    pub value: f64,
+    pub standard_error: f64,
+    pub changed_paths: f64,
+}
+
+/// A curve input's derivative of a path-dependent note.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PathDependentCurveSensitivity {
+    pub domestic: bool,
+    pub input: CurveInput,
+    pub d_npv: PathDependentDifference,
+}
+
+/// The first derivatives of a note with a target redemption or a knock-out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathDependentPrdcSensitivity {
+    pub value: PrdcEstimate,
+    pub fx_delta: PathDependentDifference,
+    /// With respect to a parallel shift of the FX volatility.
+    pub fx_vega: PathDependentDifference,
+    pub domestic_mean_reversion: PathDependentDifference,
+    pub domestic_volatility: PathDependentDifference,
+    pub foreign_mean_reversion: PathDependentDifference,
+    pub foreign_volatility: PathDependentDifference,
+    pub correlation: [PathDependentDifference; 3],
+    pub curves: Vec<PathDependentCurveSensitivity>,
+}
+
+/// One path's value and ending.
+type PathEnding = (f64, usize, Ending);
+
+/// The derivatives of the note of [`compute_path_dependent_prdc`] by central differences on common
+/// random numbers: each input is moved up and down, the paths are generated again from the same `seed`
+/// (the same random numbers), and the difference of each path's value is divided by the step. A path whose
+/// ending changes between the two sides (a target reached or a knock-out on another date) contributes
+/// a jump divided by the step, so a small `bump` makes the estimate noisy and a large one biased; the
+/// result records the share of such paths.
+///
+/// - The spot: relative steps `S (1 +- bump)`.
+/// - The FX volatility (a parallel shift of a piecewise one), the rates' mean reversions and
+///   volatilities: absolute steps of `bump`; the correlations: `10 * bump`. One-sided where a step
+///   would leave the range. A volatility steps down to no less than half its value: at 0 a rate
+///   leaves the paths' Cholesky factor and the random numbers fall on other factors, so the two sides
+///   would no longer share them.
+/// - The curves: on the paths, the discount factor to `T_j` is proportional to `P_d(0, T_j)` and the
+///   FX rate to `S P_f(0, T_j) / P_d(0, T_j)`, so steps of `bump` in each `ln P_d(0, T_j)` and
+///   `ln P_f(0, T_j)` move the same paths exactly; the differences are chained to the curves' inputs by
+///   automatic differentiation of `ln P(0, T_j)`.
+#[allow(clippy::too_many_arguments)]
+// the paths are indexed alongside the vectors of their values
+#[allow(clippy::needless_range_loop)]
+pub fn compute_path_dependent_prdc_sensitivity<'c>(
+    terms: &PrdcTerms,
+    model: &PrdcThreeFactor<'c>,
+    target: Option<&TargetRedemption>,
+    knock_out: Option<&KnockOut>,
+    paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+    bump: f64,
+) -> Result<PathDependentPrdcSensitivity, Error> {
+    if !(bump > 0.0 && bump < 0.1) {
+        return invalid(format!("the bump must be in (0, 0.1), not {bump}"));
+    }
+    let observed = check_path_dependent(terms, target, knock_out)?;
+    let knock = knock_out.map(|k| (observed.as_slice(), k.level));
+    let n = terms.coupon_times.len();
+    let follow = |discount: &[f64], fx: &[f64]| follow_path_dependent(terms, target, knock, discount, fx);
+    let follow_all = |states: &PrdcThreeFactorPaths| -> Vec<PathEnding> {
+        states.discount.iter().zip(&states.fx).map(|(discount, fx)| follow(discount, fx)).collect()
+    };
+    let compare = |up: &[PathEnding], down: &[PathEnding], step: f64| -> PathDependentDifference {
+        let per_path: Vec<f64> = up.iter().zip(down).map(|(a, b)| (a.0 - b.0) / step).collect();
+        let changed = up.iter().zip(down).filter(|(a, b)| (a.1, a.2) != (b.1, b.2)).count();
+        let e = mean_and_error(&per_path);
+        PathDependentDifference { value: e.value, standard_error: e.standard_error, changed_paths: changed as f64 / paths as f64 }
+    };
+    let generate = |m: &PrdcThreeFactor| generate_prdc_three_factor_paths(&terms.coupon_times, m, paths, steps_per_year, seed);
+    let base = generate(model)?;
+    let value = mean_and_error(&follow_all(&base).iter().map(|e| e.0).collect::<Vec<_>>());
+
+    // the spot and the curves move the paths exactly
+    let moved = |scale_discount: &dyn Fn(usize) -> f64, scale_fx: &dyn Fn(usize) -> f64| -> Vec<PathEnding> {
+        let discount_scale: Vec<f64> = (0..n).map(scale_discount).collect();
+        let fx_scale: Vec<f64> = (0..n).map(scale_fx).collect();
+        base.discount
+            .iter()
+            .zip(&base.fx)
+            .map(|(discount, fx)| {
+                let d: Vec<f64> = discount.iter().zip(&discount_scale).map(|(x, s)| x * s).collect();
+                let s: Vec<f64> = fx.iter().zip(&fx_scale).map(|(x, s)| x * s).collect();
+                follow(&d, &s)
+            })
+            .collect()
+    };
+    let h = bump;
+    let fx_delta = compare(&moved(&|_| 1.0, &|_| 1.0 + h), &moved(&|_| 1.0, &|_| 1.0 - h), 2.0 * h * model.spot);
+    // per date: (domestic, foreign) of each path's difference and whether its ending changed
+    let mut by_date: Vec<[(Vec<f64>, Vec<bool>); 2]> = Vec::with_capacity(n);
+    for j in 0..n {
+        let at = |x: f64| move |i: usize| if i == j { x } else { 1.0 };
+        let (up, down) = ((h).exp(), (-h).exp());
+        let domestic = (moved(&at(up), &at(down)), moved(&at(down), &at(up)));
+        let foreign = (moved(&|_| 1.0, &at(up)), moved(&|_| 1.0, &at(down)));
+        let split = |(a, b): (Vec<PathEnding>, Vec<PathEnding>)| -> (Vec<f64>, Vec<bool>) {
+            a.iter().zip(&b).map(|(x, y)| ((x.0 - y.0) / (2.0 * h), (x.1, x.2) != (y.1, y.2))).unzip()
+        };
+        by_date.push([split(domestic), split(foreign)]);
+    }
+    let mut curves = Vec::new();
+    for (side, (domestic, curve)) in [(true, model.domestic), (false, model.foreign)].into_iter().enumerate() {
+        let recorder = Recorder::new();
+        let lifted = curve.lift(&recorder)?;
+        let wrt: Vec<_> = lifted.inputs.iter().map(|(_, x)| *x).collect();
+        let mut jacobian = Vec::with_capacity(n);
+        for &t in &terms.coupon_times {
+            let log_discount = lifted.curve.discount_at(t, true)?.ln();
+            jacobian.push(recorder.gradient(log_discount, &wrt)?.iter().map(|g| g.mean()).collect::<Vec<f64>>());
+        }
+        for (q, (input, _)) in lifted.inputs.iter().enumerate() {
+            let per_path: Vec<f64> = (0..paths).map(|p| (0..n).map(|j| by_date[j][side].0[p] * jacobian[j][q]).sum()).collect();
+            let changed = (0..paths).filter(|&p| (0..n).any(|j| jacobian[j][q] != 0.0 && by_date[j][side].1[p])).count();
+            let e = mean_and_error(&per_path);
+            curves.push(PathDependentCurveSensitivity {
+                domestic,
+                input: *input,
+                d_npv: PathDependentDifference { value: e.value, standard_error: e.standard_error, changed_paths: changed as f64 / paths as f64 },
+            });
+        }
+    }
+
+    // the other inputs: the paths again from the same seed
+    let m = *model;
+    let differences = |set: &dyn Fn(f64) -> PrdcThreeFactor<'c>, x: f64, h: f64, low: f64, high: f64| -> Result<PathDependentDifference, Error> {
+        let (up, down) = ((x + h).min(high), (x - h).max(low));
+        Ok(compare(&follow_all(&generate(&set(up))?), &follow_all(&generate(&set(down))?), up - down))
+    };
+    let fx_vega = match m.fx_volatility_term {
+        None => differences(&|v| PrdcThreeFactor { fx_volatility: v, ..m }, m.fx_volatility, h, m.fx_volatility.min(h) * 0.5, f64::INFINITY)?,
+        Some(term) => {
+            let (up, down, step) = shift_fx_volatility_term(term, h);
+            let (a, b) = (with_fx_volatilities(&m, term, &up), with_fx_volatilities(&m, term, &down));
+            compare(&follow_all(&generate(&a)?), &follow_all(&generate(&b)?), step)
+        }
+    };
+    let rate = |f: HullWhiteFactor, a: Option<f64>, s: Option<f64>| HullWhiteFactor {
+        mean_reversion: a.unwrap_or(f.mean_reversion),
+        volatility: s.unwrap_or(f.volatility),
+    };
+    let (dr, fr) = (m.domestic_rate, m.foreign_rate);
+    let domestic_mean_reversion = differences(&|a| PrdcThreeFactor { domestic_rate: rate(dr, Some(a), None), ..m }, dr.mean_reversion, h, 0.0, f64::INFINITY)?;
+    let domestic_volatility = differences(&|s| PrdcThreeFactor { domestic_rate: rate(dr, None, Some(s)), ..m }, dr.volatility, h, dr.volatility.min(h) * 0.5, f64::INFINITY)?;
+    let foreign_mean_reversion = differences(&|a| PrdcThreeFactor { foreign_rate: rate(fr, Some(a), None), ..m }, fr.mean_reversion, h, 0.0, f64::INFINITY)?;
+    let foreign_volatility = differences(&|s| PrdcThreeFactor { foreign_rate: rate(fr, None, Some(s)), ..m }, fr.volatility, h, fr.volatility.min(h) * 0.5, f64::INFINITY)?;
+    let zero = PathDependentDifference { value: 0.0, standard_error: 0.0, changed_paths: 0.0 };
+    let mut correlation = [zero; 3];
+    for (k, c) in correlation.iter_mut().enumerate() {
+        let set = |r: f64| {
+            let mut rho = m.correlation;
+            rho[k] = r;
+            PrdcThreeFactor { correlation: rho, ..m }
+        };
+        *c = differences(&set, m.correlation[k], (10.0 * h).min(0.5), -1.0, 1.0)?;
+    }
+    Ok(PathDependentPrdcSensitivity {
+        value,
+        fx_delta,
+        fx_vega,
+        domestic_mean_reversion,
+        domestic_volatility,
+        foreign_mean_reversion,
+        foreign_volatility,
+        correlation,
+        curves,
     })
 }
 
@@ -1233,7 +1569,7 @@ pub fn calibrate_prdc_fx_volatility(model: &PrdcThreeFactor, maturities: &[f64],
     if maturities.iter().any(|t| !(*t > 0.0) || !t.is_finite()) || volatilities.iter().any(|v| !(*v > 0.0) || !v.is_finite()) {
         return invalid("the maturities and volatilities must be positive and finite".into());
     }
-    let at = |sx: f64| PrdcThreeFactor { fx_volatility: sx, ..*model };
+    let at = |sx: f64| PrdcThreeFactor { fx_volatility: sx, fx_volatility_term: None, ..*model };
     at(1.0).check()?;
     // the quadratic's coefficients at each maturity, exactly: V(0) = C and V(1) = T + 2L + C
     let terms: Vec<(f64, f64, f64)> = maturities
@@ -1287,6 +1623,72 @@ pub fn calibrate_prdc_fx_volatility(model: &PrdcThreeFactor, maturities: &[f64],
     Ok(FxVolatilityFit { fx_volatility, model_volatilities, root_mean_square_error })
 }
 
+/// The fit of a piecewise-constant FX volatility to FX option volatilities by maturity.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FxVolatilityTermFit {
+    /// The ends of the pieces: the quotes' maturities.
+    pub times: Vec<f64>,
+    pub volatilities: Vec<f64>,
+    /// `sqrt(V(T) / T)` of the fitted model at each maturity: the quotes, up to rounding.
+    pub model_volatilities: Vec<f64>,
+}
+
+impl FxVolatilityTermFit {
+    /// The fitted volatility for [`PrdcThreeFactor::fx_volatility_term`].
+    pub fn term(&self) -> FxVolatilityTerm<'_> {
+        FxVolatilityTerm { times: &self.times, volatilities: &self.volatilities }
+    }
+}
+
+/// Fits a piecewise-constant FX volatility, one piece per quote ending at its maturity, so that the
+/// three-factor model gives each ATM (Black) volatility `volatilities[i]` at `maturities[i]` (in years,
+/// increasing) exactly, with the rates and correlations of `model` fixed. A quote gives the total
+/// variance `V(T_i) = vol_i^2 T_i` of the FX forward, and the pieces are bootstrapped from the first:
+/// with the earlier pieces fixed, `V(T_i)` is a quadratic in the piece on `(T_{i-1}, T_i]`, solved
+/// exactly. With zero rate volatilities the piece is `sqrt((V(T_i) - V(T_{i-1})) / (T_i - T_{i-1}))`,
+/// the increment of the total variance; with stochastic rates the rates' share of `V` and their
+/// covariance with the FX rate are taken out. A total variance that the earlier pieces and the rates
+/// already exceed (no positive piece) is an error. `model.fx_volatility` and `model.fx_volatility_term`
+/// are not used.
+pub fn calibrate_prdc_fx_volatility_term(model: &PrdcThreeFactor, maturities: &[f64], volatilities: &[f64]) -> Result<FxVolatilityTermFit, Error> {
+    if maturities.is_empty() || maturities.len() != volatilities.len() {
+        return invalid("give one volatility per maturity".into());
+    }
+    if maturities.iter().any(|t| !(*t > 0.0) || !t.is_finite()) || volatilities.iter().any(|v| !(*v > 0.0) || !v.is_finite()) {
+        return invalid("the maturities and volatilities must be positive and finite".into());
+    }
+    if maturities.windows(2).any(|w| !(w[1] > w[0])) {
+        return invalid("the maturities must be increasing".into());
+    }
+    let flat = PrdcThreeFactor { fx_volatility: 1.0, fx_volatility_term: None, ..*model };
+    flat.check()?;
+    let base = flat.parameters();
+    let mut pieces: Vec<f64> = Vec::with_capacity(maturities.len());
+    for (i, (&t, &quote)) in maturities.iter().zip(volatilities).enumerate() {
+        // V(T_i) with the last piece at x: a x^2 + b x + c
+        let variance_with = |x: f64| {
+            let mut fx_volatility = pieces.clone();
+            fx_volatility.push(x);
+            let p = ThreeFactorParameters { fx_volatility, fx_ends: maturities[..=i].to_vec(), ..base.clone() };
+            fx_forward_variance_of(&p, t)
+        };
+        let (c, up, down) = (variance_with(0.0), variance_with(1.0), variance_with(-1.0));
+        let (a, b) = ((up + down) / 2.0 - c, (up - down) / 2.0);
+        let discriminant = b * b - 4.0 * a * (c - quote * quote * t);
+        let root = (-b + discriminant.max(0.0).sqrt()) / (2.0 * a);
+        if discriminant < 0.0 || !(root > 0.0) || !root.is_finite() {
+            return invalid(format!(
+                "the FX volatility {quote} at {t} years gives a total variance that the earlier maturities and the rates already exceed"
+            ));
+        }
+        pieces.push(root);
+    }
+    let fit = FxVolatilityTermFit { times: maturities.to_vec(), volatilities: pieces, model_volatilities: Vec::new() };
+    let fitted = PrdcThreeFactor { fx_volatility_term: Some(fit.term()), ..flat };
+    let model_volatilities = maturities.iter().map(|&t| (fitted.fx_forward_variance(t) / t).sqrt()).collect();
+    Ok(FxVolatilityTermFit { model_volatilities, ..fit })
+}
+
 /// The calibration of the three-factor model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrdcCalibration {
@@ -1317,6 +1719,7 @@ pub fn calibrate_prdc_three_factor(
     let model = PrdcThreeFactor {
         spot,
         fx_volatility: 1.0,
+        fx_volatility_term: None,
         domestic,
         foreign,
         domestic_rate: HullWhiteFactor { mean_reversion: d.mean_reversion, volatility: d.volatility },
@@ -1379,6 +1782,7 @@ mod tests {
         PrdcThreeFactor {
             spot: 150.0,
             fx_volatility: 0.11,
+            fx_volatility_term: None,
             domestic: d,
             foreign: f,
             domestic_rate: HullWhiteFactor { mean_reversion: 0.03, volatility: rates[0] },
@@ -1829,6 +2233,245 @@ mod tests {
     }
 
     /// ATM payer swaptions into two-year annual swaps, priced by Hull-White with `(a, sigma)` on `curve`.
+    // ---- the FX volatility's term structure ----
+
+    #[test]
+    fn a_flat_term_structure_gives_back_the_constant_volatility() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let times = terms().coupon_times;
+        let base = generate_prdc_three_factor_paths(&times, &model, 2000, 12, 5).unwrap();
+        // one piece: the same computation
+        let one = FxVolatilityTerm { times: &[10.0], volatilities: &[0.11] };
+        let single = PrdcThreeFactor { fx_volatility: 0.5, fx_volatility_term: Some(one), ..model };
+        assert_eq!(generate_prdc_three_factor_paths(&times, &single, 2000, 12, 5).unwrap(), base);
+        assert_eq!(single.fx_forward_variance(3.0), model.fx_forward_variance(3.0));
+        // pieces of the same volatility ending on and off the time grid (0.7 and 2.45 split steps): the
+        // same random numbers, so the same paths up to rounding
+        let ends = [0.7, 1.0, 2.45, 4.0, 6.0];
+        let flat = FxVolatilityTerm { times: &ends, volatilities: &[0.11; 5] };
+        let split = PrdcThreeFactor { fx_volatility_term: Some(flat), ..model };
+        let other = generate_prdc_three_factor_paths(&times, &split, 2000, 12, 5).unwrap();
+        let worst = |a: &Vec<Vec<f64>>, b: &Vec<Vec<f64>>| -> f64 {
+            a.iter().flatten().zip(b.iter().flatten()).map(|(x, y)| ((x - y) / x.abs().max(1e-3)).abs()).fold(0.0, f64::max)
+        };
+        assert!(worst(&base.fx, &other.fx) < 1e-12 && worst(&base.discount, &other.discount) < 1e-12, "{}", worst(&base.fx, &other.fx));
+        assert!(worst(&base.foreign_factor, &other.foreign_factor) < 1e-12);
+        for t in [0.5, 1.0, 3.0, 7.0] {
+            assert!((split.fx_forward_variance(t) / model.fx_forward_variance(t) - 1.0).abs() < 1e-13);
+            assert!((split.fx_total_variance(t) / (0.11 * 0.11 * t) - 1.0).abs() < 1e-14);
+        }
+        let (a, b) = (compute_prdc_three_factor_analytic(&terms(), &model).unwrap(), compute_prdc_three_factor_analytic(&terms(), &split).unwrap());
+        assert!((a / b - 1.0).abs() < 1e-13);
+        let target = TargetRedemption { target: 0.12, coupon: TargetCoupon::Capped, make_whole: false };
+        let (a, b) = (
+            compute_path_dependent_prdc(&terms(), &model, Some(&target), None, 2000, 12, 5).unwrap(),
+            compute_path_dependent_prdc(&terms(), &split, Some(&target), None, 2000, 12, 5).unwrap(),
+        );
+        assert!((a.value / b.value - 1.0).abs() < 1e-12 && a.target_probability == b.target_probability);
+        // the closed form's derivatives: the parallel vega is the constant one, split over the pieces
+        let (sa, sb) = (compute_prdc_three_factor_sensitivity(&terms(), &model).unwrap(), compute_prdc_three_factor_sensitivity(&terms(), &split).unwrap());
+        assert!((sa.fx_vega / sb.fx_vega - 1.0).abs() < 1e-12 && sb.fx_vega_term.len() == 5 && sa.fx_vega_term == vec![sa.fx_vega]);
+        assert!((sa.fx_delta / sb.fx_delta - 1.0).abs() < 1e-12);
+        // the callable note's vega: the parallel shift of the pieces is the constant one's step
+        let callable = |m: &PrdcThreeFactor| compute_callable_prdc_three_factor_sensitivity(&terms(), m, &[1, 2], 1e8, 2000, 2000, 12, 5, 6, 1e-3).unwrap();
+        let (ca, cb) = (callable(&model), callable(&split));
+        assert!((ca.fx_vega.value / cb.fx_vega.value - 1.0).abs() < 1e-9, "{:?} against {:?}", ca.fx_vega, cb.fx_vega);
+        // invalid terms
+        for (t, v) in [(&[1.0, 1.0][..], &[0.1, 0.1][..]), (&[0.0][..], &[0.1][..]), (&[1.0][..], &[0.0][..]), (&[1.0, 2.0][..], &[0.1][..])] {
+            let bad = PrdcThreeFactor { fx_volatility_term: Some(FxVolatilityTerm { times: t, volatilities: v }), ..model };
+            assert!(compute_prdc_three_factor_analytic(&terms(), &bad).is_err());
+        }
+    }
+
+    /// `P_d(0, T) Black(F, K, V)` for a call.
+    fn black_call(pd: f64, forward: f64, strike: f64, variance: f64) -> f64 {
+        let s = variance.sqrt();
+        let d1 = ((forward / strike).ln() + 0.5 * variance) / s;
+        let n = crate::math::normal::compute_normal_cdf;
+        pd * (forward * n(d1) - strike * n(d1 - s))
+    }
+
+    #[test]
+    fn term_structure_paths_price_fx_options_by_their_total_variance() {
+        let (d, f) = (jpy(), foreign());
+        let ends = [1.0, 2.0, 3.0, 5.0];
+        let vols = [0.08, 0.13, 0.16, 0.10];
+        let term = FxVolatilityTerm { times: &ends, volatilities: &vols };
+        let model = PrdcThreeFactor { fx_volatility_term: Some(term), ..three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]) };
+        // without rates, V is the total variance
+        let still = PrdcThreeFactor { domestic_rate: HullWhiteFactor { mean_reversion: 0.03, volatility: 0.0 }, foreign_rate: HullWhiteFactor { mean_reversion: 0.05, volatility: 0.0 }, ..model };
+        for (t, w) in [(0.5, 0.08 * 0.08 * 0.5), (2.5, 0.0064 + 0.0169 + 0.0256 * 0.5), (6.0, 0.0064 + 0.0169 + 0.0256 + 0.01 * 3.0)] {
+            assert!((still.fx_forward_variance(t) / w - 1.0).abs() < 1e-13 && (term.total_variance(t) / w - 1.0).abs() < 1e-14);
+        }
+        // the paths: FX calls on each date against Black's formula with V(T), and the note against its closed form
+        let times = terms().coupon_times;
+        let paths = generate_prdc_three_factor_paths(&times, &model, 40_000, 12, 11).unwrap();
+        for (i, &t) in times.iter().enumerate() {
+            let pd = d.discount_at(t, true).unwrap();
+            let forward = 150.0 * f.discount_at(t, true).unwrap() / pd;
+            let v = model.fx_forward_variance(t);
+            for strike in [130.0, 150.0, 170.0] {
+                let calls: Vec<f64> = paths.discount.iter().zip(&paths.fx).map(|(x, s)| x[i] * (s[i] - strike).max(0.0)).collect();
+                let e = mean_and_error(&calls);
+                let exact = black_call(pd, forward, strike, v);
+                assert!((e.value - exact).abs() < 4.0 * e.standard_error, "{t} {strike}: {} against {exact} ± {}", e.value, e.standard_error);
+            }
+        }
+        let (mc, se) = compute_prdc_three_factor_monte_carlo(&terms(), &model, 40_000, 12, 13).unwrap();
+        let exact = compute_prdc_three_factor_analytic(&terms(), &model).unwrap();
+        assert!((mc - exact).abs() < 4.0 * se, "{mc} against {exact} ± {se}");
+        let flat = compute_prdc_three_factor_analytic(&terms(), &three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4])).unwrap();
+        assert!((exact - flat).abs() > 2e-4 * flat, "the term structure should matter: {exact} against {flat}");
+        // the closed form's derivative with respect to each piece
+        let s = compute_prdc_three_factor_sensitivity(&terms(), &model).unwrap();
+        for k in 0..4 {
+            let at = |h: f64| {
+                let mut v = vols;
+                v[k] += h;
+                compute_prdc_three_factor_analytic(&terms(), &PrdcThreeFactor { fx_volatility_term: Some(FxVolatilityTerm { times: &ends, volatilities: &v }), ..model }).unwrap()
+            };
+            let numeric = (at(1e-6) - at(-1e-6)) / 2e-6;
+            assert!((s.fx_vega_term[k] - numeric).abs() < 1e-6 * s.fx_vega_term.iter().map(|x| x.abs()).fold(0.0, f64::max), "piece {k}: {} against {numeric}", s.fx_vega_term[k]);
+        }
+    }
+
+    #[test]
+    fn the_term_structure_calibration_matches_each_quote() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.008, 0.011], [0.3, -0.2, 0.4]);
+        let maturities = [0.5, 1.0, 2.0, 3.0, 5.0];
+        let quotes = [0.10, 0.105, 0.115, 0.12, 0.118];
+        let fit = calibrate_prdc_fx_volatility_term(&model, &maturities, &quotes).unwrap();
+        let fitted = PrdcThreeFactor { fx_volatility_term: Some(fit.term()), ..model };
+        for (i, &t) in maturities.iter().enumerate() {
+            let v = (fitted.fx_forward_variance(t) / t).sqrt();
+            assert!((v - quotes[i]).abs() < 1e-13 && (fit.model_volatilities[i] - quotes[i]).abs() < 1e-13, "{t}: {v}");
+        }
+        // without rates the pieces are the increments of the total variance
+        let still = three_factor(&d, &f, [0.0, 0.0], [0.3, -0.2, 0.4]);
+        let plain = calibrate_prdc_fx_volatility_term(&still, &maturities, &quotes).unwrap();
+        let mut before = (0.0, 0.0);
+        for (i, &t) in maturities.iter().enumerate() {
+            let w = quotes[i] * quotes[i] * t;
+            let expected = ((w - before.1) / (t - before.0)).sqrt();
+            assert!((plain.volatilities[i] - expected).abs() < 1e-14, "{t}: {} against {expected}", plain.volatilities[i]);
+            before = (t, w);
+        }
+        // the rates' share differs from that of no rates
+        assert!((fit.volatilities[4] - plain.volatilities[4]).abs() > 1e-3);
+        // one quote: the constant fit
+        let one = calibrate_prdc_fx_volatility_term(&model, &[3.0], &[0.12]).unwrap();
+        let constant = calibrate_prdc_fx_volatility(&model, &[3.0], &[0.12]).unwrap();
+        assert!((one.volatilities[0] - constant.fx_volatility).abs() < 1e-13);
+        // a total variance that falls, unordered maturities, and mismatched lengths are errors
+        assert!(calibrate_prdc_fx_volatility_term(&still, &[1.0, 2.0], &[0.2, 0.1]).is_err());
+        assert!(calibrate_prdc_fx_volatility_term(&model, &[2.0, 1.0], &[0.1, 0.1]).is_err());
+        assert!(calibrate_prdc_fx_volatility_term(&model, &[1.0], &[0.1, 0.1]).is_err());
+    }
+
+    // ---- derivatives of target redemption and knock-out notes ----
+
+    #[test]
+    fn path_dependent_derivatives_without_an_ending_are_the_closed_forms() {
+        let (d, f) = (jpy(), foreign());
+        let model = three_factor(&d, &f, [0.01, 0.012], [0.3, -0.2, 0.4]);
+        let never = KnockOut { level: f64::INFINITY, dates: vec![0, 1, 2, 3] };
+        let s = compute_path_dependent_prdc_sensitivity(&terms(), &model, None, Some(&never), 20_000, 12, 3, 1e-3).unwrap();
+        let exact = compute_prdc_three_factor_sensitivity(&terms(), &model).unwrap();
+        let check = |name: &str, e: PathDependentDifference, x: f64| {
+            assert!(e.changed_paths == 0.0, "{name}: {}", e.changed_paths);
+            assert!((e.value - x).abs() < 4.0 * e.standard_error + 2e-3 * x.abs(), "{name}: {} ± {} against {x}", e.value, e.standard_error);
+        };
+        check("delta", s.fx_delta, exact.fx_delta);
+        check("vega", s.fx_vega, exact.fx_vega);
+        check("domestic volatility", s.domestic_volatility, exact.domestic_volatility);
+        check("foreign mean reversion", s.foreign_mean_reversion, exact.foreign_mean_reversion);
+        check("rho fX", s.correlation[2], exact.correlation[2]);
+        assert_eq!(s.curves.len(), exact.curves.len());
+        for (a, b) in s.curves.iter().zip(&exact.curves) {
+            assert_eq!((a.domestic, a.input), (b.domestic, b.input));
+            check("curve", a.d_npv, b.d_npv);
+        }
+    }
+
+    /// Deterministic rates and a piecewise FX volatility: `Pr(S(T) >= L)`, its derivatives with respect to
+    /// the spot and a parallel shift of the volatility, and `P_d(0, T)` for each coupon date.
+    fn digital(model: &PrdcThreeFactor, d: &YieldCurve, f: &YieldCurve, time: f64, level: f64) -> (f64, f64, f64) {
+        let pd = d.discount_at(time, true).unwrap();
+        let forward = model.spot * f.discount_at(time, true).unwrap() / pd;
+        let w = model.fx_total_variance(time);
+        let d2 = ((forward / level).ln() - 0.5 * w) / w.sqrt();
+        let density = crate::math::normal::compute_normal_pdf(d2);
+        // dw / d(shift) = 2 int_0^T sigma_X
+        let term = model.fx_volatility_term.unwrap();
+        let slope: f64 = split_pieces(term.times, 0.0, time).iter().map(|&(a, b, k)| 2.0 * term.volatilities[k] * (b - a)).sum();
+        (crate::math::normal::compute_normal_cdf(d2), density / (model.spot * w.sqrt()), density * (-(d2 + w.sqrt()) / (2.0 * w)) * slope)
+    }
+
+    #[test]
+    fn knock_out_derivatives_against_the_digital_formula() {
+        let (d, f) = (jpy(), foreign());
+        let ends = [1.0, 2.0, 5.0];
+        let vols = [0.09, 0.14, 0.11];
+        let model = PrdcThreeFactor { fx_volatility_term: Some(FxVolatilityTerm { times: &ends, volatilities: &vols }), ..three_factor(&d, &f, [0.0, 0.0], [0.3, -0.2, 0.4]) };
+        // fixed coupons and one observation on the second date: the value is linear in the digital
+        let t = PrdcTerms { fixed_rates: vec![Some(0.02); 5], ..terms() };
+        let (j, level) = (1usize, 152.0);
+        let knock = KnockOut { level, dates: vec![j] };
+        let p: Vec<f64> = t.coupon_times.iter().map(|&x| d.discount_at(x, true).unwrap()).collect();
+        let coupon = 0.02 * t.notional;
+        let after: f64 = p[j + 1..].iter().map(|x| coupon * x).sum::<f64>() + t.redemption * p[4];
+        let jump = t.redemption * p[j] - after;
+        let (pr, dpr_ds, dpr_dv) = digital(&model, &d, &f, t.coupon_times[j], level);
+        let value = p[..=j].iter().map(|x| coupon * x).sum::<f64>() + after + pr * jump;
+        let mut errors = Vec::new();
+        for bump in [1e-2, 1e-3] {
+            let s = compute_path_dependent_prdc_sensitivity(&t, &model, None, Some(&knock), 40_000, 12, 21, bump).unwrap();
+            assert!((s.value.value - value).abs() < 4.0 * s.value.standard_error);
+            for (name, e, x) in [("delta", s.fx_delta, jump * dpr_ds), ("vega", s.fx_vega, jump * dpr_dv)] {
+                assert!(e.changed_paths > 0.0, "{name} {bump}");
+                assert!((e.value - x).abs() < 4.0 * e.standard_error + 5e-3 * x.abs(), "{name} {bump}: {} ± {} against {x}", e.value, e.standard_error);
+            }
+            // the rates do not move the paths' endings here, and the correlations with no rate volatility do nothing
+            assert!(s.correlation.iter().all(|c| c.value.abs() < 1e-6 * value));
+            errors.push(s.fx_delta.standard_error);
+        }
+        // a smaller step: more noise, from the paths that cross the level
+        assert!(errors[1] > 2.0 * errors[0], "{errors:?}");
+    }
+
+    #[test]
+    fn target_redemption_derivatives_against_the_digital_formula() {
+        let (d, f) = (jpy(), foreign());
+        let ends = [0.5, 1.0, 5.0];
+        let vols = [0.12, 0.08, 0.11];
+        let model = PrdcThreeFactor { fx_volatility_term: Some(FxVolatilityTerm { times: &ends, volatilities: &vols }), ..three_factor(&d, &f, [0.0, 0.0], [0.3, -0.2, 0.4]) };
+        // the first coupon floats, the others are 0: the target of 5% is reached on the first date or
+        // never, when S(T_1) >= (0.05 + 0.78) * 150 / 0.8
+        let mut fixed = vec![Some(0.0); 5];
+        fixed[0] = None;
+        let t = PrdcTerms { fixed_rates: fixed, ..terms() };
+        let target = TargetRedemption { target: 0.05, coupon: TargetCoupon::Full, make_whole: false };
+        let level = (0.05 + 0.78) * 150.0 / 0.8;
+        let p: Vec<f64> = t.coupon_times.iter().map(|&x| d.discount_at(x, true).unwrap()).collect();
+        let jump = t.redemption * (p[0] - p[4]);
+        let (pr, dpr_ds, dpr_dv) = digital(&model, &d, &f, 1.0, level);
+        // the first coupon, always paid in full, by the closed form
+        let first = PrdcTerms { coupon_times: vec![1.0], accrual_fractions: vec![1.0], fixed_rates: vec![None], redemption: 0.0, ..t.clone() };
+        let c = compute_prdc_three_factor_sensitivity(&first, &model).unwrap();
+        let value = c.npv + t.redemption * p[4] + pr * jump;
+        for bump in [1e-2, 1e-3] {
+            let s = compute_path_dependent_prdc_sensitivity(&t, &model, Some(&target), None, 40_000, 12, 23, bump).unwrap();
+            assert!((s.value.value - value).abs() < 4.0 * s.value.standard_error, "{} against {value}", s.value.value);
+            for (name, e, x) in [("delta", s.fx_delta, c.fx_delta + jump * dpr_ds), ("vega", s.fx_vega, c.fx_vega + jump * dpr_dv)] {
+                assert!(e.changed_paths > 0.0, "{name} {bump}");
+                assert!((e.value - x).abs() < 4.0 * e.standard_error + 5e-3 * x.abs(), "{name} {bump}: {} ± {} against {x}", e.value, e.standard_error);
+            }
+        }
+        assert!(compute_path_dependent_prdc_sensitivity(&t, &model, Some(&target), None, 100, 12, 23, 0.0).is_err());
+    }
+
     fn swaption_quotes(curve: &YieldCurve, a: f64, sigma: f64) -> Vec<crate::hull_white::CalibrationQuote> {
         use crate::hull_white::{compute_jamshidian_swaption, CalibrationInstrument, CalibrationQuote, HullWhite, SwaptionFlows};
         let model = HullWhite { mean_reversion: a, volatility: sigma, curve };
@@ -1862,6 +2505,7 @@ mod tests {
         let model = PrdcThreeFactor {
             spot: 150.0,
             fx_volatility: fit.fx.fx_volatility,
+            fx_volatility_term: None,
             domestic: &d,
             foreign: &f,
             domestic_rate: HullWhiteFactor { mean_reversion: fit.domestic.mean_reversion, volatility: fit.domestic.volatility },
