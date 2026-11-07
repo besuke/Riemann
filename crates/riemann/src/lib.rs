@@ -17,6 +17,7 @@ pub mod ctd;
 pub mod curves;
 pub mod error;
 pub mod fmm;
+pub mod fx_smile;
 pub mod hull_white;
 pub mod instruments;
 pub mod lmm;

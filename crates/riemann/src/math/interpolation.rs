@@ -170,6 +170,16 @@ fn hyman_filter<T: Operand>(d: &mut [T], dx: &[f64], s: &[T]) {
 impl<T: Operand> MonotonicCubicSpline<T> {
     /// At least two points with strictly increasing `x`.
     pub fn new(x: Vec<f64>, y: Vec<T>) -> Result<MonotonicCubicSpline<T>, Error> {
+        Self::build(x, y, true)
+    }
+
+    /// The natural cubic spline, without the Hyman filter (QuantLib `CubicInterpolation` with
+    /// `Spline`, `monotonic = false` and `SecondDerivative` 0 conditions, the default of `Cubic`).
+    pub fn natural(x: Vec<f64>, y: Vec<T>) -> Result<MonotonicCubicSpline<T>, Error> {
+        Self::build(x, y, false)
+    }
+
+    fn build(x: Vec<f64>, y: Vec<T>, monotonic: bool) -> Result<MonotonicCubicSpline<T>, Error> {
         let n = x.len();
         if n < 2 || n != y.len() {
             return Err(Error::InvalidInput {
@@ -205,7 +215,9 @@ impl<T: Operand> MonotonicCubicSpline<T> {
         diagonal[n - 1] = 2.0;
         rhs[n - 1] = s[n - 2] * 3.0;
         let mut d = solve_tridiagonal(&lower, &diagonal, &upper, &rhs)?;
-        hyman_filter(&mut d, &dx, &s);
+        if monotonic {
+            hyman_filter(&mut d, &dx, &s);
+        }
 
         let a = d[..n - 1].to_vec();
         let b = (0..n - 1)

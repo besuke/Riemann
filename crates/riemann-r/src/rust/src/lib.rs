@@ -28,6 +28,7 @@ use riemann::lmm::{self, CapletTerms};
 use riemann::mbs::{self, Amortization, PassThroughTerms, RatePaths};
 use riemann::interest_rate::{Compounding, InterestRate};
 use riemann::curves::{CurveInput, LogDiscountInterpolation, YieldCurve};
+use riemann::fx_smile;
 use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
 use riemann::ois_swap::{self, Fixings, OisSwap, OisSwapSpec};
@@ -2211,6 +2212,220 @@ fn compute_prdc_three_factor_value(
     };
     outcome(run())
 }
+fn fx_delta_type(s: &str) -> Core<fx_smile::FxDeltaType> {
+    Ok(match s {
+        "spot" => fx_smile::FxDeltaType::Spot,
+        "forward" => fx_smile::FxDeltaType::Forward,
+        "premium_adjusted_spot" => fx_smile::FxDeltaType::PremiumAdjustedSpot,
+        "premium_adjusted_forward" => fx_smile::FxDeltaType::PremiumAdjustedForward,
+        other => {
+            return Err(riemann::Error::InvalidInput {
+                reason: format!("unknown delta type {other:?}: use \"spot\", \"forward\", \"premium_adjusted_spot\" or \"premium_adjusted_forward\""),
+            })
+        }
+    })
+}
+fn fx_atm_type(s: &str) -> Core<fx_smile::FxAtmType> {
+    Ok(match s {
+        "spot" => fx_smile::FxAtmType::Spot,
+        "forward" => fx_smile::FxAtmType::Forward,
+        "delta_neutral" => fx_smile::FxAtmType::DeltaNeutral,
+        "put_call_50" => fx_smile::FxAtmType::PutCall50,
+        other => {
+            return Err(riemann::Error::InvalidInput {
+                reason: format!("unknown ATM type {other:?}: use \"spot\", \"forward\", \"delta_neutral\" or \"put_call_50\""),
+            })
+        }
+    })
+}
+fn fx_option_type(s: &str) -> Core<riemann::options::OptionType> {
+    match s {
+        "call" => Ok(riemann::options::OptionType::Call),
+        "put" => Ok(riemann::options::OptionType::Put),
+        other => Err(riemann::Error::InvalidInput { reason: format!("unknown option type {other:?}: use \"call\" or \"put\"") }),
+    }
+}
+/// The smile of the R list made by `create_fx_smile()`: `conventions` holds the delta, ATM and ATM
+/// delta types, then (for a switch) the long-term ones; `volatilities` is by expiry (rows).
+#[allow(clippy::too_many_arguments)]
+fn fx_smile_of<'c>(
+    spot: f64,
+    domestic: &'c riemann::curves::YieldCurve,
+    foreign: &'c riemann::curves::YieldCurve,
+    expiries: &[f64],
+    put_deltas: &[f64],
+    call_deltas: &[f64],
+    has_atm: bool,
+    volatilities: &[f64],
+    conventions: &[String],
+    switch_time: f64,
+    interpolation: &str,
+    flat_strike_extrapolation: bool,
+) -> Core<fx_smile::FxSmileSurface<'c>> {
+    let pillars = put_deltas.len() + call_deltas.len() + usize::from(has_atm);
+    if conventions.len() != 6 || pillars == 0 || volatilities.len() != expiries.len() * pillars {
+        return Err(riemann::Error::InvalidInput { reason: format!("give {pillars} volatilities for each of the {} expiries", expiries.len()) });
+    }
+    let convention = |k: usize| -> Core<fx_smile::FxSmileConventions> {
+        Ok(fx_smile::FxSmileConventions {
+            delta_type: fx_delta_type(&conventions[k])?,
+            atm_type: fx_atm_type(&conventions[k + 1])?,
+            atm_delta_type: fx_delta_type(&conventions[k + 2])?,
+        })
+    };
+    Ok(fx_smile::FxSmileSurface {
+        spot,
+        domestic,
+        foreign,
+        expiries: expiries.to_vec(),
+        put_deltas: put_deltas.to_vec(),
+        call_deltas: call_deltas.to_vec(),
+        has_atm,
+        // by rows: expiry i's pillars are volatilities[i * pillars..(i + 1) * pillars]
+        volatilities: volatilities.chunks(pillars).map(|c| c.to_vec()).collect(),
+        conventions: convention(0)?,
+        long_term: if switch_time.is_finite() { Some((switch_time, convention(3)?)) } else { None },
+        interpolation: match interpolation {
+            "linear" => fx_smile::SmileInterpolation::Linear,
+            "cubic_spline" => fx_smile::SmileInterpolation::CubicSpline,
+            other => return Err(riemann::Error::InvalidInput { reason: format!("unknown smile interpolation {other:?}: use \"linear\" or \"cubic_spline\"") }),
+        },
+        flat_strike_extrapolation,
+    })
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_fx_delta_conversion(
+    kind: &str,
+    option: &str,
+    delta_type: &str,
+    spot: f64,
+    domestic_discount: f64,
+    foreign_discount: f64,
+    std_dev: f64,
+    input: f64,
+    atm_type: &str,
+) -> List {
+    let run = || -> Core<List> {
+        let calculator = fx_smile::FxDeltaCalculator {
+            option: fx_option_type(option)?,
+            delta_type: fx_delta_type(delta_type)?,
+            spot,
+            domestic_discount,
+            foreign_discount,
+            std_dev,
+        };
+        let value = match kind {
+            "strike_from_delta" => calculator.strike_from_delta(input)?,
+            "delta_from_strike" => calculator.delta_from_strike(input)?,
+            _ => calculator.atm_strike(fx_atm_type(atm_type)?)?,
+        };
+        Ok(list!(value = value))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_fx_smile_values(
+    spot: f64,
+    domestic_curve: ExternalPtr<OisCurve>,
+    foreign_curve: ExternalPtr<OisCurve>,
+    expiries: Vec<f64>,
+    put_deltas: Vec<f64>,
+    call_deltas: Vec<f64>,
+    has_atm: bool,
+    volatilities: Vec<f64>,
+    conventions: Vec<String>,
+    switch_time: f64,
+    interpolation: &str,
+    flat_strike_extrapolation: bool,
+    times: Vec<f64>,
+    strikes: Vec<f64>,
+    smile_time: f64,
+) -> List {
+    let run = || -> Core<List> {
+        let surface = fx_smile_of(
+            spot, &domestic_curve.curve, &foreign_curve.curve, &expiries, &put_deltas, &call_deltas, has_atm, &volatilities, &conventions,
+            switch_time, interpolation, flat_strike_extrapolation,
+        )?;
+        surface.check()?;
+        if times.len() != strikes.len() {
+            return Err(riemann::Error::InvalidInput { reason: "give one strike per time".into() });
+        }
+        let vols = times.iter().zip(&strikes).map(|(&t, &k)| surface.volatility(t, k)).collect::<Core<Vec<f64>>>()?;
+        let (pillar_strikes, pillar_vols) = if smile_time.is_finite() {
+            let s = surface.smile_at(smile_time)?;
+            (s.strikes, s.volatilities)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        Ok(list!(volatility = vols, smile_strike = pillar_strikes, smile_volatility = pillar_vols))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_prdc_smile_value(
+    spot: f64,
+    domestic_curve: ExternalPtr<OisCurve>,
+    foreign_curve: ExternalPtr<OisCurve>,
+    expiries: Vec<f64>,
+    put_deltas: Vec<f64>,
+    call_deltas: Vec<f64>,
+    has_atm: bool,
+    volatilities: Vec<f64>,
+    conventions: Vec<String>,
+    switch_time: f64,
+    interpolation: &str,
+    flat_strike_extrapolation: bool,
+    coupon_times: Vec<f64>,
+    accrual_fractions: Vec<f64>,
+    fixed_rates: Vec<f64>,
+    fx_base: f64,
+    leverage: f64,
+    subtraction: f64,
+    floor: f64,
+    cap: f64,
+    notional: f64,
+    redemption: f64,
+) -> List {
+    let run = || -> Core<List> {
+        let surface = fx_smile_of(
+            spot, &domestic_curve.curve, &foreign_curve.curve, &expiries, &put_deltas, &call_deltas, has_atm, &volatilities, &conventions,
+            switch_time, interpolation, flat_strike_extrapolation,
+        )?;
+        let terms = PrdcTerms {
+            notional,
+            redemption,
+            coupon_times,
+            accrual_fractions,
+            fixed_rates: fixed_rates.iter().map(|&r| if r.is_nan() { None } else { Some(r) }).collect(),
+            fx_base,
+            leverage,
+            subtraction,
+            floor,
+            cap,
+        };
+        let s = prdc::compute_prdc_smile_value(&terms, &surface)?;
+        let na = |x: Option<f64>| x.unwrap_or(f64::NAN);
+        Ok(list!(
+            value = s.npv,
+            fx_delta = s.fx_delta,
+            fx_delta_sticky_strike = s.fx_delta_sticky_strike,
+            fx_vega = s.fx_vega,
+            time = s.coupons.iter().map(|c| c.time).collect::<Vec<f64>>(),
+            forward = s.coupons.iter().map(|c| c.forward).collect::<Vec<f64>>(),
+            floor_strike = s.coupons.iter().map(|c| na(c.floor_strike)).collect::<Vec<f64>>(),
+            floor_volatility = s.coupons.iter().map(|c| na(c.floor_volatility)).collect::<Vec<f64>>(),
+            cap_strike = s.coupons.iter().map(|c| na(c.cap_strike)).collect::<Vec<f64>>(),
+            cap_volatility = s.coupons.iter().map(|c| na(c.cap_volatility)).collect::<Vec<f64>>(),
+            rate = s.coupons.iter().map(|c| c.rate).collect::<Vec<f64>>(),
+            coupon_value = s.coupons.iter().map(|c| c.value).collect::<Vec<f64>>(),
+            pillar_vega = s.pillar_vega.iter().flatten().copied().collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
 #[extendr]
 #[allow(clippy::too_many_arguments)]
 fn calibrate_prdc_fx_volatility(
@@ -3508,6 +3723,9 @@ extendr_module! {
     fn compute_prdc_value;
     fn compute_prdc_three_factor_value;
     fn calibrate_prdc_fx_volatility;
+    fn compute_fx_delta_conversion;
+    fn compute_fx_smile_values;
+    fn compute_prdc_smile_value;
     fn compute_european_option_value;
     fn compute_barrier_option_value;
     fn compute_binomial_option_value;

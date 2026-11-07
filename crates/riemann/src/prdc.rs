@@ -1543,6 +1543,156 @@ pub fn compute_target_redemption_prdc(
     })
 }
 
+// ---- the FX smile: static replication ----
+
+/// One coupon of a note valued on an FX smile.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrdcSmileCoupon {
+    pub time: f64,
+    /// `S P_f(0, T) / P_d(0, T)`.
+    pub forward: f64,
+    pub domestic_discount: f64,
+    /// The FX levels where the coupon reaches its floor and its cap, and the smile's volatilities there
+    /// (None for a fixed coupon, a level at or below 0, or no cap).
+    pub floor_strike: Option<f64>,
+    pub floor_volatility: Option<f64>,
+    pub cap_strike: Option<f64>,
+    pub cap_volatility: Option<f64>,
+    /// The coupon rate's expectation under the domestic forward measure of `T`.
+    pub rate: f64,
+    /// The coupon's value today.
+    pub value: f64,
+}
+
+/// A note valued on an FX smile and its first derivatives, by central differences of the closed form.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrdcSmileValue {
+    pub npv: f64,
+    pub coupons: Vec<PrdcSmileCoupon>,
+    /// The spot moves the surface too: the strikes of its deltas move with the spot (sticky delta).
+    pub fx_delta: f64,
+    /// The volatility at each strike stays (sticky strike).
+    pub fx_delta_sticky_strike: f64,
+    /// With respect to the same shift of every volatility of the surface.
+    pub fx_vega: f64,
+    /// With respect to each volatility of the surface, as `FxSmileSurface::volatilities` (expiry, pillar).
+    pub pillar_vega: Vec<Vec<f64>>,
+}
+
+/// The undiscounted Black call on the forward, its intrinsic value at a volatility of 0, and `F - K`
+/// for a strike at or below 0.
+fn smile_call(forward: f64, strike: f64, volatility: f64, t: f64) -> Result<f64, Error> {
+    if strike <= 0.0 {
+        return Ok(forward - strike);
+    }
+    if volatility <= 0.0 {
+        return Ok((forward - strike).max(0.0));
+    }
+    compute_forward_value(
+        ForwardModel::Black,
+        OptionType::Call,
+        &ForwardInputs { forward, strike, volatility, time: t, discount: 1.0 },
+    )
+}
+
+/// The note on the smile with the spot `spot` for the forwards and the volatilities of `surface`.
+fn smile_value(terms: &PrdcTerms, spot: f64, surface: &crate::fx_smile::FxSmileSurface) -> Result<(f64, Vec<PrdcSmileCoupon>), Error> {
+    let scale = terms.leverage / terms.fx_base;
+    let mut npv = 0.0;
+    let mut coupons = Vec::with_capacity(terms.coupon_times.len());
+    let mut last_discount = 1.0;
+    for i in 0..terms.coupon_times.len() {
+        let t = terms.coupon_times[i];
+        let domestic_discount = surface.domestic.discount_at(t, true)?;
+        let forward = spot * surface.foreign.discount_at(t, true)? / domestic_discount;
+        last_discount = domestic_discount;
+        let mut coupon = PrdcSmileCoupon {
+            time: t,
+            forward,
+            domestic_discount,
+            floor_strike: None,
+            floor_volatility: None,
+            cap_strike: None,
+            cap_volatility: None,
+            rate: 0.0,
+            value: 0.0,
+        };
+        coupon.rate = match terms.fixed_rates[i] {
+            Some(fixed) => fixed,
+            None => {
+                // clamp(scale S - subtraction, floor, cap) = floor + scale ((S - K_floor)+ - (S - K_cap)+)
+                let leg = |level: f64| -> Result<(f64, Option<f64>, Option<f64>), Error> {
+                    let strike = level / scale;
+                    if strike <= 0.0 {
+                        return Ok((smile_call(forward, strike, 0.0, t)?, None, None));
+                    }
+                    let vol = surface.volatility(t, strike)?;
+                    Ok((smile_call(forward, strike, vol, t)?, Some(strike), Some(vol)))
+                };
+                let (above_floor, k, v) = leg(terms.floor + terms.subtraction)?;
+                coupon.floor_strike = k;
+                coupon.floor_volatility = v;
+                let above_cap = if terms.cap.is_finite() {
+                    let (c, k, v) = leg(terms.cap + terms.subtraction)?;
+                    coupon.cap_strike = k;
+                    coupon.cap_volatility = v;
+                    c
+                } else {
+                    0.0
+                };
+                terms.floor + scale * (above_floor - above_cap)
+            }
+        };
+        coupon.value = coupon.rate * domestic_discount * terms.notional * terms.accrual_fractions[i];
+        npv += coupon.value;
+        coupons.push(coupon);
+    }
+    Ok((npv + last_discount * terms.redemption, coupons))
+}
+
+/// A note valued on an FX smile ([`crate::fx_smile::FxSmileSurface`]) by static replication: each
+/// coupon is its floor plus `leverage / fx_base` times the call spread between the FX levels of the
+/// floor and the cap, so under the domestic forward measure of its date it needs only the two calls,
+/// which the smile prices by Black's formula at its volatilities there; the forwards and discount
+/// factors come from the surface's curves and spot. This holds for any model of the FX rate that
+/// reproduces the smile, since each coupon depends only on the FX rate on its own date; the
+/// path-dependent terms (calls, target redemption, knock-out) need a model of the dynamics and are not
+/// valued here. The derivatives are central differences of the closed form: the spot by 1e-5
+/// relative (the surface moved with it, and also not), each volatility by 1e-5.
+pub fn compute_prdc_smile_value(terms: &PrdcTerms, surface: &crate::fx_smile::FxSmileSurface) -> Result<PrdcSmileValue, Error> {
+    terms.check()?;
+    surface.check()?;
+    let (npv, coupons) = smile_value(terms, surface.spot, surface)?;
+    let h = 1e-5;
+    let spot = surface.spot;
+    let moved = |s: f64| crate::fx_smile::FxSmileSurface { spot: s, ..surface.clone() };
+    let fx_delta = (smile_value(terms, spot * (1.0 + h), &moved(spot * (1.0 + h)))?.0
+        - smile_value(terms, spot * (1.0 - h), &moved(spot * (1.0 - h)))?.0)
+        / (2.0 * h * spot);
+    let fx_delta_sticky_strike = (smile_value(terms, spot * (1.0 + h), surface)?.0 - smile_value(terms, spot * (1.0 - h), surface)?.0) / (2.0 * h * spot);
+    let shifted = |f: &dyn Fn(usize, usize) -> f64| {
+        let mut s = surface.clone();
+        for (i, row) in s.volatilities.iter_mut().enumerate() {
+            for (j, v) in row.iter_mut().enumerate() {
+                *v += f(i, j);
+            }
+        }
+        s
+    };
+    let fx_vega = (smile_value(terms, spot, &shifted(&|_, _| h))?.0 - smile_value(terms, spot, &shifted(&|_, _| -h))?.0) / (2.0 * h);
+    let mut pillar_vega = Vec::with_capacity(surface.volatilities.len());
+    for (i, row) in surface.volatilities.iter().enumerate() {
+        let mut out = Vec::with_capacity(row.len());
+        for j in 0..row.len() {
+            let up = shifted(&|a, b| if (a, b) == (i, j) { h } else { 0.0 });
+            let down = shifted(&|a, b| if (a, b) == (i, j) { -h } else { 0.0 });
+            out.push((smile_value(terms, spot, &up)?.0 - smile_value(terms, spot, &down)?.0) / (2.0 * h));
+        }
+        pillar_vega.push(out);
+    }
+    Ok(PrdcSmileValue { npv, coupons, fx_delta, fx_delta_sticky_strike, fx_vega, pillar_vega })
+}
+
 // ---- calibration of the three-factor model ----
 
 /// The fit of the FX volatility of the three-factor model to FX option volatilities.
@@ -2470,6 +2620,77 @@ mod tests {
             }
         }
         assert!(compute_path_dependent_prdc_sensitivity(&t, &model, Some(&target), None, 100, 12, 23, 0.0).is_err());
+    }
+
+    // ---- the FX smile ----
+
+    fn smile<'c>(d: &'c YieldCurve, f: &'c YieldCurve, vols: Vec<Vec<f64>>) -> crate::fx_smile::FxSmileSurface<'c> {
+        use crate::fx_smile::*;
+        FxSmileSurface {
+            spot: 150.0,
+            domestic: d,
+            foreign: f,
+            expiries: vec![1.0, 2.0, 3.0, 5.0],
+            put_deltas: vec![-0.1, -0.25],
+            call_deltas: vec![0.25, 0.1],
+            has_atm: true,
+            volatilities: vols,
+            conventions: FxSmileConventions { delta_type: FxDeltaType::Spot, atm_type: FxAtmType::DeltaNeutral, atm_delta_type: FxDeltaType::Spot },
+            long_term: None,
+            interpolation: crate::fx_smile::SmileInterpolation::Linear,
+            flat_strike_extrapolation: true,
+        }
+    }
+
+    #[test]
+    fn a_flat_smile_gives_the_closed_form() {
+        let (d, f) = (jpy(), foreign());
+        // the same volatility at every delta and expiry: the note of the first model
+        let s = compute_prdc_smile_value(&terms(), &smile(&d, &f, vec![vec![0.11; 5]; 4])).unwrap();
+        let exact = compute_prdc_analytic(&terms(), 150.0, 0.11, &d, &f).unwrap();
+        assert!((s.npv / exact.npv - 1.0).abs() < 1e-13, "{} against {}", s.npv, exact.npv);
+        for (name, a, b) in [("delta", s.fx_delta, exact.fx_delta), ("sticky strike", s.fx_delta_sticky_strike, exact.fx_delta), ("vega", s.fx_vega, exact.fx_vega)] {
+            assert!((a / b - 1.0).abs() < 1e-6, "{name}: {a} against {b}");
+        }
+        let total: f64 = s.pillar_vega.iter().flatten().sum();
+        assert!((total / s.fx_vega - 1.0).abs() < 1e-6);
+        // the expiries' volatilities flat in delta: the piecewise FX volatility of the three-factor
+        // model without rate volatility, the pieces from the increments of the total variance
+        let atm = [0.10, 0.115, 0.12, 0.118];
+        let s = compute_prdc_smile_value(&terms(), &smile(&d, &f, atm.iter().map(|&v| vec![v; 5]).collect())).unwrap();
+        let still = three_factor(&d, &f, [0.0, 0.0], [0.3, -0.2, 0.4]);
+        let fit = calibrate_prdc_fx_volatility_term(&still, &[1.0, 2.0, 3.0, 5.0], &atm).unwrap();
+        let three = compute_prdc_three_factor_analytic(&terms(), &PrdcThreeFactor { fx_volatility_term: Some(fit.term()), ..still }).unwrap();
+        assert!((s.npv / three - 1.0).abs() < 1e-13, "{} against {three}", s.npv);
+        // the coupons' strikes are the FX levels of the floor (146.25) and the cap (161.25)
+        assert!(s.coupons.iter().all(|c| (c.floor_strike.unwrap() - 146.25).abs() < 1e-12 && (c.cap_strike.unwrap() - 161.25).abs() < 1e-12));
+    }
+
+    #[test]
+    fn a_skewed_smile_moves_the_note_and_its_deltas() {
+        let (d, f) = (jpy(), foreign());
+        // puts dearer than calls, as for a currency that falls in a crisis
+        let skew: Vec<Vec<f64>> = (0..4).map(|i| [0.16, 0.13, 0.11, 0.105, 0.11].iter().map(|v| v + 0.003 * i as f64).collect()).collect();
+        let s = compute_prdc_smile_value(&terms(), &smile(&d, &f, skew.clone())).unwrap();
+        // each coupon against Black's formula at the smile's volatilities, written out here
+        for c in &s.coupons {
+            let call = |k: f64, v: f64| {
+                let sd = v * c.time.sqrt();
+                let d1 = ((c.forward / k).ln() + 0.5 * sd * sd) / sd;
+                c.forward * crate::math::normal::compute_normal_cdf(d1) - k * crate::math::normal::compute_normal_cdf(d1 - sd)
+            };
+            let rate = 0.8 / 150.0 * (call(146.25, c.floor_volatility.unwrap()) - call(161.25, c.cap_volatility.unwrap()));
+            assert!((c.rate - rate).abs() < 1e-14, "{}: {} against {rate}", c.time, c.rate);
+        }
+        let flat = compute_prdc_smile_value(&terms(), &smile(&d, &f, skew.iter().map(|r| vec![r[2]; 5]).collect())).unwrap();
+        assert!((s.npv - flat.npv).abs() > 1e-4 * flat.npv, "the smile should matter: {} against {}", s.npv, flat.npv);
+        // a sticky-delta smile moves its strikes with the spot, so the two deltas differ
+        assert!((s.fx_delta - s.fx_delta_sticky_strike).abs() > 1e-3 * s.fx_delta.abs(), "{} {}", s.fx_delta, s.fx_delta_sticky_strike);
+        // a fixed coupon has no strikes; invalid surfaces are errors
+        let fixed = PrdcTerms { fixed_rates: vec![Some(0.02); 5], ..terms() };
+        let r = compute_prdc_smile_value(&fixed, &smile(&d, &f, skew.clone())).unwrap();
+        assert!(r.coupons.iter().all(|c| c.floor_strike.is_none()) && r.fx_delta.abs() < 1e-6 && r.fx_vega.abs() < 1e-6);
+        assert!(compute_prdc_smile_value(&terms(), &smile(&d, &f, vec![vec![0.1; 4]; 4])).is_err());
     }
 
     fn swaption_quotes(curve: &YieldCurve, a: f64, sigma: f64) -> Vec<crate::hull_white::CalibrationQuote> {

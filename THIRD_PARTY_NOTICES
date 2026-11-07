@@ -119,6 +119,15 @@ used for verification:
 - crates/riemann/src/lmm_market.rs (compute_reduced_pseudo_root, create_reduced_correlation):
   ql/math/matrixutilities/pseudosqrt.cpp, rankReducedSqrt and normalizePseudoRoot (Copyright (C) 2003,
   2004, 2007 Ferdinando Ametrano; (C) 2006 Yiping Chen; (C) 2007 Neil Firth)
+- crates/riemann/src/fx_smile.rs: ql/pricingengines/blackdeltacalculator.cpp (Copyright (C) 2010
+  Dimitri Reiswich), ql/termstructures/volatility/equityfx/blackvolsurfacedelta.cpp (Copyright (C)
+  2019 Quaternion Risk Management Ltd; (C) 2022 Skandinaviska Enskilda Banken AB (publ); (C) 2025
+  Paolo D'Elia), ql/termstructures/volatility/equityfx/blackvariancecurve.cpp (Copyright (C) 2002,
+  2003, 2004 Ferdinando Ametrano; (C) 2003 StatPro Italia srl; (C) 2026 Paolo D'Elia) and
+  ql/termstructures/volatility/interpolatedsmilesection.hpp (Copyright (C) 2006 Ferdinando Ametrano;
+  (C) 2006 François du Vignaud; (C) 2015 Peter Caspers)
+- crates/riemann/src/math/interpolation.rs (MonotonicCubicSpline::natural): the same
+  ql/math/interpolations/cubicinterpolation.hpp without the monotonicity filter
 
 The copyright holders of those files are listed at the top of each Riemann file.
 QuantLib is distributed under the following license.
