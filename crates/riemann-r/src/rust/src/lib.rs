@@ -25,6 +25,7 @@ use riemann::longstaff_schwartz::{
 };
 use riemann::math::sobol::SobolSequence;
 use riemann::lmm::{self, CapletTerms};
+use riemann::credit_risk;
 use riemann::market_risk;
 use riemann::mbs::{self, Amortization, PassThroughTerms, RatePaths};
 use riemann::interest_rate::{Compounding, InterestRate};
@@ -3858,6 +3859,89 @@ fn compute_traffic_light(exceptions: Vec<i32>, observations: i32, confidence_lev
     outcome(run())
 }
 
+// ---- credit portfolio, ASRF and IRB (docs/spec_credit_risk.md) ----------------------------------------------
+
+fn obligors_of(pd: &[f64], ead: &[f64], lgd: &[f64], rho: &[f64]) -> Core<Vec<credit_risk::Obligor>> {
+    let n = pd.len();
+    if [ead.len(), lgd.len(), rho.len()].iter().any(|&m| m != n) {
+        return Err(riemann::Error::InvalidInput { reason: "PD, EAD, LGD and rho must have one value per obligor".into() });
+    }
+    Ok((0..n).map(|i| credit_risk::Obligor { pd: pd[i], ead: ead[i], lgd: lgd[i], rho: rho[i] }).collect())
+}
+#[extendr]
+fn compute_conditional_pd(pd: Vec<f64>, rho: Vec<f64>, z: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        if pd.len() != rho.len() || pd.len() != z.len() {
+            return Err(riemann::Error::InvalidInput { reason: "PD, rho and z must have the same length".into() });
+        }
+        if pd.iter().any(|p| !(*p > 0.0 && *p < 1.0)) || rho.iter().any(|r| !(0.0..1.0).contains(r)) {
+            return Err(riemann::Error::InvalidInput { reason: "PD must be in (0, 1) and rho in [0, 1)".into() });
+        }
+        Ok(list!(value = (0..pd.len()).map(|i| credit_risk::compute_conditional_pd(pd[i], rho[i], z[i])).collect::<Vec<f64>>()))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_credit_loss_distribution(pd: Vec<f64>, ead: Vec<f64>, lgd: Vec<f64>, rho: Vec<f64>, unit: f64, panels: i32) -> List {
+    let run = || -> Core<List> {
+        let d = credit_risk::compute_credit_loss_distribution(&obligors_of(&pd, &ead, &lgd, &rho)?, unit, panels.max(0) as usize)?;
+        Ok(list!(probability = d.probability.clone(), mean = d.mean(), standard_deviation = d.standard_deviation()))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_distribution_risk(probability: Vec<f64>, unit: f64, confidence_levels: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        if probability.is_empty() || probability.iter().any(|p| !(*p >= 0.0) || !p.is_finite()) {
+            return Err(riemann::Error::InvalidInput { reason: "the probabilities must be finite and non-negative".into() });
+        }
+        let d = credit_risk::CreditLossDistribution { unit, probability };
+        let r: Vec<credit_risk::DistributionRisk> = confidence_levels.iter().map(|&a| credit_risk::compute_distribution_risk(&d, a)).collect::<Core<_>>()?;
+        Ok(list!(
+            var = r.iter().map(|x| x.var).collect::<Vec<f64>>(),
+            es = r.iter().map(|x| x.es).collect::<Vec<f64>>(),
+            tail_mean_es = r.iter().map(|x| x.tail_mean_es).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
+fn simulate_credit_losses(pd: Vec<f64>, ead: Vec<f64>, lgd: Vec<f64>, rho: Vec<f64>, scenarios: f64, seed: f64, threads: i32) -> List {
+    let run = || -> Core<List> {
+        if !(scenarios >= 1.0 && scenarios.fract() == 0.0 && seed >= 0.0 && seed.fract() == 0.0) {
+            return Err(riemann::Error::InvalidInput { reason: "the scenarios and the seed must be whole numbers".into() });
+        }
+        let losses = credit_risk::simulate_credit_losses(&obligors_of(&pd, &ead, &lgd, &rho)?, scenarios as usize, seed as u64, threads.max(0) as usize)?;
+        Ok(list!(loss = losses))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_asrf_var(pd: Vec<f64>, ead: Vec<f64>, lgd: Vec<f64>, rho: Vec<f64>, confidence_levels: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        let o = obligors_of(&pd, &ead, &lgd, &rho)?;
+        Ok(list!(var = confidence_levels.iter().map(|&a| credit_risk::compute_asrf_var(&o, a)).collect::<Core<Vec<f64>>>()?))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_irb_capital(pd: Vec<f64>, lgd: Vec<f64>, maturity: Vec<f64>, ead: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        let n = pd.len();
+        if [lgd.len(), maturity.len(), ead.len()].iter().any(|&m| m != n) {
+            return Err(riemann::Error::InvalidInput { reason: "PD, LGD, maturity and EAD must have the same length".into() });
+        }
+        let c: Vec<credit_risk::IrbCapital> = (0..n).map(|i| credit_risk::compute_irb_capital(pd[i], lgd[i], maturity[i], ead[i])).collect::<Core<_>>()?;
+        Ok(list!(
+            correlation = c.iter().map(|x| x.correlation).collect::<Vec<f64>>(),
+            maturity_adjustment = c.iter().map(|x| x.maturity_adjustment).collect::<Vec<f64>>(),
+            capital = c.iter().map(|x| x.capital).collect::<Vec<f64>>(),
+            risk_weighted_assets = c.iter().map(|x| x.risk_weighted_assets).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
+
 extendr_module! {
     mod RiemannFinMath;
     fn create_fixed_rate_bond;
@@ -3944,6 +4028,12 @@ extendr_module! {
     fn compute_var_backtest;
     fn compute_rolling_var;
     fn compute_traffic_light;
+    fn compute_conditional_pd;
+    fn compute_credit_loss_distribution;
+    fn compute_distribution_risk;
+    fn simulate_credit_losses;
+    fn compute_asrf_var;
+    fn compute_irb_capital;
     fn generate_sobol_sequence;
     fn generate_black_scholes_paths;
     fn compute_longstaff_schwartz_value;
