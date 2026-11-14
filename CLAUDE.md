@@ -22,6 +22,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_mbs.md` | P11-5 のパススルー MBS（LagrangeFinance の条件は 1 章、違いは 2 章） |
 | `docs/spec_lmm.md` | P11-6 の LMM の構成要素（Caplet と相関ショック。範囲は冒頭、LagrangeFinance の条件は 1 章） |
 | `docs/spec_rates_fx_extension.md` | 金利・通貨機能の拡張（通貨ベーシスの期間構造、担保 CTD、FMM、LMM）：現状の分類、検証基準、後続課題 |
+| `docs/spec_portfolio.md` | P12 の制約付きポートフォリオ最適化とリスク寄与（照合の計画は 3 章、後続の P13〜P15 は 4 章、決めたことは 5 章、照合結果は 6 章） |
 | `docs/quantlib_guide_inventory.md` | QuantLib Guide（全 39 ページ）と公式 Examples（v1.42）の棚卸し：対応表、不足機能、優先順位、今の機能で作れるサンプル |
 | `docs/design_distributed.md` | 分散計算基盤（Azure・Slurm・R と Rust の並列の区別）、開発方針（入口は厳格に、計算コアは単純に）、GPU の構想 |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
@@ -36,7 +37,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 - **日本式債券計算の規則**：`docs/spec_bonds.md` 5.1 節の規則を採用し、GaussQuant の `R/bond_yen_GQL.R`（コミット `4ff081c`）と照合する。文書では計算規則を直接説明し、VBA を根拠にしない（「VBA 互換」などと書かない）。二次情報の「市場慣行」だけを根拠に別の規則へ変えない。2 月 29 日の応当日が平年になる場合は 2 月 28 日とし、その期間を 1 年とする（例：2024-02-29 から 2025-02-28 は残存 1 年）。この規則は日本式債券計算だけのもので、QuantLib 互換の日付・日数計算には適用しない。
 - **新興国カレンダーの用途**：当面は債券の受渡日と利払日の営業日判定に使う。スワップの規約や金利カーブには広げない。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限定する。
 - **カレンダーの照合の正**：QuantLib C++ v1.42 をビルドした値（`tools/golden/p1_all_calendars.sh`）。R パッケージは突き合わせに使う（`Germany::Euwax` と `Indonesia::IDX` は R から作れない）。
-- **開発の目的**：自分の研究と分析の基盤。LagrangeFinance の第 II 部と第 III 部に相当する計算を備える。**利用の主体は R**。既存の LagrangeFinance は保持して変更しない。このリポジトリーの QMD は、動作確認用の `tools/verify/verify_riemann.qmd` と、QuantLib との比較資料 `comparison/` である。自動微分は torch ではなく自前で行う。第 I 部に相当する計算は対象外。対象は、市場価格の再現、解析解、無裁定の関係で検証できる計算（仕様書 1.2 節）。
+- **開発の目的**：自分の研究と分析の基盤。LagrangeFinance の第 II 部と第 III 部に相当する計算を備える。**利用の主体は R**。既存の LagrangeFinance は保持して変更しない。このリポジトリーの QMD は、動作確認用の `tools/verify/verify_riemann.qmd` と、QuantLib との比較資料 `comparison/` である。自動微分は torch ではなく自前で行う。対象は、市場価格の再現、解析解、無裁定の関係、最適性条件で検証できる計算（仕様書 1.2 節）。**第 I 部は、制約付きポートフォリオ最適化（I-8）、市場VaR（I-9、FRTB の ES）、信用VaR（I-10、DRC との関係）、トランチング（I-11）を対象にする**（2026-11-14 のユーザーの指示。それまでは第 I 部全体が対象外だった）。回帰・ファクターモデル・イベントスタディ・機械学習（I-1〜I-7）は R の統計関数で足りるので対象外のまま。
 - **正式名称**：RiemannFinMath（R パッケージ名も同じ）。リポジトリ名、crate 名（`riemann`、`riemann-r`）、API 名は変えない。CRAN への公開申請はしていない。
 - **著作権とライセンス**：著作権者は Eiichi Horigome、ライセンスは MIT と Apache-2.0 の併用。QuantLib 由来の部分は元の著作権者のまま。配布は社内のみの想定。リポジトリは現在公開で、非公開化は保留。
 - **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。`Operand` trait は P5 で入れた。2 階微分は逆伝播の記録、気配の微分は解いたカーブでの陰関数定理。
@@ -80,6 +81,8 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P9 | Hull-White、コール債、SABR、Bermudan | **主要部分が完了**（`docs/spec_hull_white.md`）。LMM、HW 校正、Longstaff–Schwartz、MBS は未対応 |
 | P8 | CDS（MidPoint、ISDA、ハザードのブートストラップ、`cds`・`cds2015` 規則） | **完了**（`docs/spec_cds.md`） |
 | P10 | PRDC：解析解、MC、自動微分 | **LagrangeFinance III-7 の簡略モデルと、確率的な金利の 3 因子モデル（解析式と MC、コール、感応度、ターゲット償還、ノックアウト、校正、FX ボラティリティの期間構造、経路依存の条項の差分による感応度、FX スマイル（delta 建ての面と静的複製、2026-11-07）まで完了**（`docs/spec_prdc.md` 5〜14 章）。スマイルの下での経路依存の条項（局所ボラティリティなど）、相関の推定、FX と金利の同時校正は未対応 |
+| P12 | 制約付きポートフォリオ最適化とリスク寄与（LagrangeFinance I-8。GaussQuant の `portfolio_optimize_GQL()`、閉じた式、KKT 条件と照合） | **完了**（2026-11-15、`docs/spec_portfolio.md` 6 章）。8 つの方法をすべて厳密に解く（2次計画は自前の Goldfarb–Idnani、最小 ES は自前の単体法）。quadprog・Rglpk・閉じた式との差はウエイトで最大 1.7e-12。GaussQuant が Nelder–Mead で解く 4 方法は、GaussQuant 自身の目的関数で上回る。リスク寄与は自動微分 |
+| P13〜P15 | 市場VaR（I-9）、信用VaR と DRC（I-10）、トランチング（I-11） | 未着手（`docs/spec_portfolio.md` 4 章） |
 | L1〜L3 | TypeScript の Node 版、ブラウザー版、Excel | 未着手。目標に必須ではない。P5 の後に WebAssembly で移植性を確認 |
 
 件数と結果は各仕様書の照合結果の節にある。段階の内容は `docs/specification.md` の 7 章。

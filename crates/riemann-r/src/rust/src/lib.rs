@@ -33,6 +33,7 @@ use riemann::names;
 use riemann::ois::{OisCurve, OisCurveInstrument, OisCurveSpec};
 use riemann::ois_swap::{self, Fixings, OisSwap, OisSwapSpec};
 use riemann::options::{self, Greeks, MonteCarloSettings, OptionInputs};
+use riemann::portfolio::{self, OptimalPortfolio, PortfolioConstraints, PortfolioMethod, ReturnMatrix};
 use riemann::prdc::{self, PrdcMonteCarlo, PrdcSensitivity, PrdcTerms};
 use riemann::risk;
 use riemann::sabr::{self, SabrParameters};
@@ -3677,6 +3678,96 @@ fn panic_for_test() {
     panic!("riemann deliberate panic for the test");
 }
 // The module has the name of the R package, because R looks for its routines by that name.
+// ---- portfolio (docs/spec_portfolio.md) -------------------------------------------------------------------
+
+fn portfolio_inputs<'a>(returns: &'a [f64], assets: i32, weight_sum: f64, lower: Vec<f64>, upper: Vec<f64>) -> (ReturnMatrix<'a>, PortfolioConstraints) {
+    (ReturnMatrix { values: returns, assets: assets.max(0) as usize }, PortfolioConstraints { weight_sum, lower, upper })
+}
+/// `parameters`: risk aversion, risk-free rate, confidence level, target return, target volatility.
+fn portfolio_method(method: &str, parameters: &[f64], budget: Vec<f64>) -> Core<PortfolioMethod> {
+    let p = |i: usize| parameters.get(i).copied().unwrap_or(f64::NAN);
+    Ok(match method {
+        "minimum_variance" => PortfolioMethod::MinimumVariance,
+        "mean_variance" => PortfolioMethod::MeanVariance { risk_aversion: p(0) },
+        "maximum_return" => PortfolioMethod::MaximumReturn,
+        "maximum_sharpe" => PortfolioMethod::MaximumSharpe { risk_free_rate: p(1) },
+        "minimum_ES" => PortfolioMethod::MinimumExpectedShortfall { confidence_level: p(2) },
+        "risk_budget" => PortfolioMethod::RiskBudget { budget },
+        "target_return" => PortfolioMethod::TargetReturn { target: p(3) },
+        "target_risk" => PortfolioMethod::TargetVolatility { target: p(4) },
+        other => return Err(riemann::Error::InvalidInput { reason: format!("unknown portfolio method `{other}`") }),
+    })
+}
+fn optimal_portfolio_list(p: &OptimalPortfolio) -> List {
+    list!(
+        weights = p.weights.clone(),
+        expected_return = p.expected_return,
+        volatility = p.volatility,
+        objective = p.objective,
+        at_lower = p.at_lower.clone(),
+        at_upper = p.at_upper.clone(),
+        solver = p.solver,
+        iterations = p.iterations as i32,
+        stationarity_residual = p.stationarity_residual
+    )
+}
+/// Returns come by rows: period 1's assets, then period 2's.
+#[extendr]
+fn compute_return_moments(returns: Vec<f64>, assets: i32) -> List {
+    let run = || -> Core<List> {
+        let m = portfolio::compute_return_moments(&ReturnMatrix { values: &returns, assets: assets.max(0) as usize })?;
+        Ok(list!(mean = m.mean, covariance = m.covariance.concat(), periods = m.periods as i32))
+    };
+    outcome(run())
+}
+#[extendr]
+fn check_portfolio_constraints(assets: i32, weight_sum: f64, lower: Vec<f64>, upper: Vec<f64>) -> List {
+    outcome(PortfolioConstraints { weight_sum, lower, upper }.check(assets.max(0) as usize).map(|_| list!(valid = true)))
+}
+#[extendr]
+fn compute_optimal_portfolio(returns: Vec<f64>, assets: i32, weight_sum: f64, lower: Vec<f64>, upper: Vec<f64>, method: &str, parameters: Vec<f64>, budget: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        let (r, c) = portfolio_inputs(&returns, assets, weight_sum, lower, upper);
+        let method = portfolio_method(method, &parameters, budget)?;
+        Ok(optimal_portfolio_list(&portfolio::compute_optimal_portfolio(&r, &c, &method)?))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_efficient_frontier(returns: Vec<f64>, assets: i32, weight_sum: f64, lower: Vec<f64>, upper: Vec<f64>, targets: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        let (r, c) = portfolio_inputs(&returns, assets, weight_sum, lower, upper);
+        let points = portfolio::compute_efficient_frontier(&r, &c, &targets)?;
+        Ok(list!(
+            expected_return = points.iter().map(|p| p.expected_return).collect::<Vec<f64>>(),
+            volatility = points.iter().map(|p| p.volatility).collect::<Vec<f64>>(),
+            weights = points.iter().flat_map(|p| p.weights.clone()).collect::<Vec<f64>>(),
+            stationarity_residual = points.iter().map(|p| p.stationarity_residual).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_portfolio_risk(returns: Vec<f64>, assets: i32, weights: Vec<f64>, confidence_level: f64) -> List {
+    let run = || -> Core<List> {
+        let r = portfolio::compute_portfolio_risk(&ReturnMatrix { values: &returns, assets: assets.max(0) as usize }, &weights, confidence_level)?;
+        Ok(list!(
+            expected_return = r.expected_return,
+            volatility = r.volatility,
+            normal_var = r.normal_var,
+            normal_es = r.normal_es,
+            historical_var = r.historical_var,
+            historical_es = r.historical_es,
+            tail_mean_es = r.tail_mean_es,
+            volatility_contribution = r.volatility_contribution,
+            normal_var_contribution = r.normal_var_contribution,
+            normal_es_contribution = r.normal_es_contribution,
+            historical_es_contribution = r.historical_es_contribution
+        ))
+    };
+    outcome(run())
+}
+
 extendr_module! {
     mod RiemannFinMath;
     fn create_fixed_rate_bond;
@@ -3753,6 +3844,11 @@ extendr_module! {
     fn compute_mbs_path_values;
     fn compute_mbs_oas;
     fn generate_hull_white_monthly_rates;
+    fn compute_return_moments;
+    fn check_portfolio_constraints;
+    fn compute_optimal_portfolio;
+    fn compute_efficient_frontier;
+    fn compute_portfolio_risk;
     fn generate_sobol_sequence;
     fn generate_black_scholes_paths;
     fn compute_longstaff_schwartz_value;

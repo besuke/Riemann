@@ -32,6 +32,7 @@ pub mod sabr;
 pub mod ois;
 pub mod ois_swap;
 pub mod options;
+pub mod portfolio;
 pub mod prdc;
 pub mod time;
 pub mod xccy;
