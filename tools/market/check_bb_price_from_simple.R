@@ -6,41 +6,69 @@
 # by git). Prints counts only, no quotes. Coupon-bearing JGBs only (not TDB, TIPS or when-issued rows).
 #
 # Remaining years: compute_remaining_years(start, maturity) (whole years plus days / 365, truncated to 7 decimals).
-# The start date is tried two ways: the file's reference date (基準日), and the business day before it (the month's
-# last business day, the date the closing prices are for).
+# The start date is tried two ways: the file's reference date, and the business day before it (the month's last
+# business day, the date the closing prices are for). The price is truncated to 3 decimals, as published.
 
-suppressPackageStartupMessages(library(RiemannFinMath))
-dir <- file.path("market_data", "bb_price")
-files <- list.files(dir, pattern = "^bb_price_\\d{8}\\.txt$", full.names = TRUE)
-rows <- do.call(rbind, lapply(files, function(f) {
-  x <- utils::read.delim(f, sep = "|", colClasses = "character")
-  x$file <- basename(f)
-  x
-}))
-x <- rows[rows$category %in% c("40Y", "30Y", "20Y", "10Y", "5Y", "2Y") & rows$when_issued == "FALSE" &
-          nzchar(rows$price) & nzchar(rows$simple_yield_pct) & nzchar(rows$coupon_pct), ]
-x <- x[as.Date(x$maturity_date) > as.Date(x$reference_date), ]
-prev_business_day <- function(d) {
-  d <- as.Date(d) - 1
-  while (format(d, "%u") %in% c("6", "7")) d <- d - 1  # weekends; no Japanese holiday falls on these month ends
-  d
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(purrr)
+  library(tidyr)
+  library(readr)
+  library(RiemannFinMath)
+})
+
+in_dir <- file.path("market_data", "bb_price")
+
+# The business day before a date; weekends only, as no Japanese holiday falls on these month ends.
+previous_business_day <- function(date) {
+  map_vec(date, \(d) {
+    d <- d - 1
+    while (format(d, "%u") %in% c("6", "7")) d <- d - 1
+    d
+  })
 }
-starts <- list(reference_date = as.Date(x$reference_date),
-               last_business_day = as.Date(vapply(x$reference_date, function(d) format(prev_business_day(d)), "")))
-out <- x[, c("file", "category", "issue_label", "reference_date", "maturity_date")]
-summary <- NULL
-for (nm in names(starts)) {
-  t <- compute_remaining_years(starts[[nm]], as.Date(x$maturity_date))
-  p <- compute_price_from_simple_rate(t, as.numeric(x$coupon_pct), as.numeric(x$simple_yield_pct), 100, digits = 3L)
-  d <- p - as.numeric(x$price)
-  out[[paste0("t_", nm)]] <- t
-  out[[paste0("price_", nm)]] <- p
-  out[[paste0("diff_", nm)]] <- round(d, 6)
-  summary <- rbind(summary, data.frame(start = nm, rows = length(d), exact = sum(abs(d) < 5e-7),
-                                       within_0.001 = sum(abs(d) <= 0.0010001), max_abs_diff = max(abs(d))))
-}
-utils::write.table(out, file.path(dir, "check_price_from_simple.txt"), sep = "|", quote = FALSE, row.names = FALSE)
-print(summary, row.names = FALSE)
-by_cat <- aggregate(cbind(exact_ref = abs(out$diff_reference_date) < 5e-7, exact_last = abs(out$diff_last_business_day) < 5e-7) ~ file + category, out, sum)
-by_cat$rows <- aggregate(issue_label ~ file + category, out, length)$issue_label
-print(by_cat, row.names = FALSE)
+
+bonds <- list.files(in_dir, pattern = "^bb_price_\\d{8}\\.txt$", full.names = TRUE) |>
+  set_names(basename) |>
+  map(\(path) read_delim(path, delim = "|", col_types = cols(.default = col_character()), na = "")) |>
+  list_rbind(names_to = "file") |>
+  filter(
+    category %in% c("40Y", "30Y", "20Y", "10Y", "5Y", "2Y"),
+    when_issued == "FALSE",
+    !is.na(price), !is.na(simple_yield_pct), !is.na(coupon_pct)
+  ) |>
+  mutate(
+    across(c(reference_date, maturity_date), as.Date),
+    across(c(coupon_pct, simple_yield_pct, price), as.numeric)
+  ) |>
+  filter(maturity_date > reference_date)
+
+checked <- bonds |>
+  mutate(last_business_day = previous_business_day(reference_date)) |>
+  pivot_longer(c(reference_date, last_business_day), names_to = "start", values_to = "start_date") |>
+  mutate(
+    t = compute_remaining_years(start_date, maturity_date),
+    price_from_simple = compute_price_from_simple_rate(t, coupon_pct, simple_yield_pct, 100, digits = 3L),
+    difference = round(price_from_simple - price, 6)
+  )
+
+checked |>
+  select(file, category, issue_label, start, start_date, maturity_date, t, price_from_simple, difference) |>
+  write_delim(file.path(in_dir, "check_price_from_simple.txt"), delim = "|", na = "", eol = "\n")
+
+checked |>
+  group_by(start) |>
+  summarise(
+    rows = n(),
+    exact = sum(abs(difference) < 5e-7),
+    within_0.001 = sum(abs(difference) <= 0.0010001),
+    max_abs_diff = max(abs(difference)),
+    .groups = "drop"
+  ) |>
+  print()
+
+checked |>
+  group_by(file, category, start) |>
+  summarise(exact = sum(abs(difference) < 5e-7), rows = n(), .groups = "drop") |>
+  pivot_wider(names_from = start, values_from = exact, names_prefix = "exact_") |>
+  print(n = Inf)
