@@ -225,6 +225,16 @@ pub fn compute_inverse_normal_cdf(x: f64) -> f64 {
     }
 }
 
+/// The normal quantile to full precision: QuantLib's approximation (relative error about 1e-9) and
+/// two Newton steps on the distribution function.
+pub fn compute_normal_quantile(alpha: f64) -> f64 {
+    let mut z = compute_inverse_normal_cdf(alpha);
+    for _ in 0..2 {
+        z -= (compute_normal_cdf(z) - alpha) / compute_normal_pdf(z);
+    }
+    z
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

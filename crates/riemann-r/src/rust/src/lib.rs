@@ -25,6 +25,7 @@ use riemann::longstaff_schwartz::{
 };
 use riemann::math::sobol::SobolSequence;
 use riemann::lmm::{self, CapletTerms};
+use riemann::market_risk;
 use riemann::mbs::{self, Amortization, PassThroughTerms, RatePaths};
 use riemann::interest_rate::{Compounding, InterestRate};
 use riemann::curves::{CurveInput, LogDiscountInterpolation, YieldCurve};
@@ -3768,6 +3769,95 @@ fn compute_portfolio_risk(returns: Vec<f64>, assets: i32, weights: Vec<f64>, con
     outcome(run())
 }
 
+// ---- market VaR and backtests (docs/spec_market_risk.md) ----------------------------------------------------
+
+#[extendr]
+fn compute_loss_risk(losses: Vec<f64>, confidence_levels: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        let r: Vec<market_risk::LossRisk> = confidence_levels.iter().map(|&a| market_risk::compute_loss_risk(&losses, a)).collect::<Core<_>>()?;
+        let col = |f: fn(&market_risk::LossRisk) -> f64| r.iter().map(f).collect::<Vec<f64>>();
+        Ok(list!(
+            confidence_level = col(|x| x.confidence_level),
+            gaussian_var = col(|x| x.gaussian_var),
+            gaussian_es = col(|x| x.gaussian_es),
+            historical_var = col(|x| x.historical_var),
+            historical_var_type1 = col(|x| x.historical_var_type1),
+            tail_mean_es = col(|x| x.tail_mean_es),
+            historical_es = col(|x| x.historical_es)
+        ))
+    };
+    outcome(run())
+}
+/// The covariance comes by rows.
+#[extendr]
+fn compute_monte_carlo_risk(weights: Vec<f64>, mean: Vec<f64>, covariance: Vec<f64>, confidence_level: f64, scenarios: f64, seed: f64, batches: i32, threads: i32) -> List {
+    let run = || -> Core<List> {
+        let n = mean.len();
+        if covariance.len() != n * n {
+            return Err(riemann::Error::InvalidInput { reason: "the covariance must be a square matrix of the size of the mean".into() });
+        }
+        let cov: Vec<Vec<f64>> = covariance.chunks(n.max(1)).map(|r| r.to_vec()).collect();
+        if !(scenarios >= 1.0 && scenarios.fract() == 0.0 && seed >= 0.0 && seed.fract() == 0.0) {
+            return Err(riemann::Error::InvalidInput { reason: "the scenarios and the seed must be whole numbers".into() });
+        }
+        let settings = market_risk::MonteCarloSettings { scenarios: scenarios as usize, seed: seed as u64, batches: batches.max(0) as usize, threads: threads.max(0) as usize };
+        let r = market_risk::compute_monte_carlo_risk(&weights, &mean, &cov, confidence_level, &settings)?;
+        Ok(list!(var = r.var, es = r.es, var_standard_error = r.var_standard_error, es_standard_error = r.es_standard_error, scenarios = r.scenarios as f64))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_var_backtest(losses: Vec<f64>, var: Vec<f64>, confidence_level: f64) -> List {
+    let run = || -> Core<List> {
+        let b = market_risk::compute_var_backtest(&losses, &var, confidence_level)?;
+        Ok(list!(
+            observations = b.observations as i32,
+            exceptions = b.exceptions as i32,
+            exception_rate = b.exception_rate,
+            expected_rate = b.expected_rate,
+            kupiec_lr = b.kupiec_lr,
+            kupiec_p_value = b.kupiec_p_value,
+            n00 = b.n00 as i32,
+            n01 = b.n01 as i32,
+            n10 = b.n10 as i32,
+            n11 = b.n11 as i32,
+            independence_lr = b.independence_lr,
+            independence_p_value = b.independence_p_value,
+            conditional_coverage_lr = b.conditional_coverage_lr,
+            conditional_coverage_p_value = b.conditional_coverage_p_value
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_rolling_var(losses: Vec<f64>, window: i32, confidence_level: f64, method: &str) -> List {
+    let run = || -> Core<List> {
+        let method = match method {
+            "historical" => market_risk::RollingMethod::Historical,
+            "gaussian" => market_risk::RollingMethod::Gaussian,
+            other => return Err(riemann::Error::InvalidInput { reason: format!("unknown rolling method `{other}`") }),
+        };
+        Ok(list!(var = market_risk::compute_rolling_var(&losses, window.max(0) as usize, confidence_level, method)?))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_traffic_light(exceptions: Vec<i32>, observations: i32, confidence_level: f64) -> List {
+    let run = || -> Core<List> {
+        let r: Vec<(market_risk::TrafficLight, f64)> = exceptions
+            .iter()
+            .map(|&k| market_risk::compute_traffic_light(k.max(0) as usize, observations.max(0) as usize, confidence_level))
+            .collect::<Core<_>>()?;
+        let zone = |z: market_risk::TrafficLight| match z {
+            market_risk::TrafficLight::Green => "green",
+            market_risk::TrafficLight::Yellow => "yellow",
+            market_risk::TrafficLight::Red => "red",
+        };
+        Ok(list!(zone = r.iter().map(|x| zone(x.0)).collect::<Vec<&str>>(), cumulative_probability = r.iter().map(|x| x.1).collect::<Vec<f64>>()))
+    };
+    outcome(run())
+}
+
 extendr_module! {
     mod RiemannFinMath;
     fn create_fixed_rate_bond;
@@ -3849,6 +3939,11 @@ extendr_module! {
     fn compute_optimal_portfolio;
     fn compute_efficient_frontier;
     fn compute_portfolio_risk;
+    fn compute_loss_risk;
+    fn compute_monte_carlo_risk;
+    fn compute_var_backtest;
+    fn compute_rolling_var;
+    fn compute_traffic_light;
     fn generate_sobol_sequence;
     fn generate_black_scholes_paths;
     fn compute_longstaff_schwartz_value;

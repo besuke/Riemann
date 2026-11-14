@@ -17,7 +17,7 @@
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
 use crate::autodiff::{compute_value_and_gradient, Operand};
-use crate::math::normal::{compute_inverse_normal_cdf, compute_normal_cdf, compute_normal_pdf};
+use crate::math::normal::{compute_normal_pdf, compute_normal_quantile};
 use crate::math::quadratic::{solve_quadratic_program, LinearConstraints};
 use crate::math::simplex::solve_linear_program;
 use crate::Error;
@@ -547,16 +547,6 @@ fn bisect_frontier(m: &ReturnMoments, c: &PortfolioConstraints, target: f64, mut
 /// Minimum-variance portfolios at each target return.
 pub fn compute_efficient_frontier(returns: &ReturnMatrix, constraints: &PortfolioConstraints, targets: &[f64]) -> Result<Vec<OptimalPortfolio>, Error> {
     targets.iter().map(|&target| compute_optimal_portfolio(returns, constraints, &PortfolioMethod::TargetReturn { target })).collect()
-}
-
-/// The normal quantile to full precision: QuantLib's approximation (relative error about 1e-9) and
-/// two Newton steps on the distribution function.
-fn compute_normal_quantile(alpha: f64) -> f64 {
-    let mut z = compute_inverse_normal_cdf(alpha);
-    for _ in 0..2 {
-        z -= (compute_normal_cdf(z) - alpha) / compute_normal_pdf(z);
-    }
-    z
 }
 
 fn check_confidence(alpha: f64) -> Result<(), Error> {
