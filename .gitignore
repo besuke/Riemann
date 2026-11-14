@@ -9,3 +9,6 @@ Cargo.lock.bak
 /tools/verify/.quarto/
 /tools/verify/*.knit.md
 /dist/
+
+# market data (JBTS BB closing prices etc.): local only, not committed
+/market_data/
