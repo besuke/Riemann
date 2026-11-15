@@ -42,6 +42,7 @@ use riemann::sabr::{self, SabrParameters};
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
 use riemann::tranche;
 use riemann::trs;
+use riemann::irrbb;
 use riemann::yen_bond;
 use riemann::xccy::{bootstrap_xccy_curve as bootstrap_xccy_curve_core, ResettingLeg, XccyCurve, XccyCurveSpec, XccyInstrument, XccyLeg};
 type Core<T> = std::result::Result<T, riemann::Error>;
@@ -4274,8 +4275,82 @@ fn compute_trs_return_cashflows(
     outcome(run())
 }
 
+// ---- IRRBB interest rate shock scenarios (SRP31.90-31.93) ----------------------------------------------
+fn irrbb_sizes(parallel_bp: f64, short_bp: f64, long_bp: f64) -> irrbb::IrrbbShockSizes {
+    irrbb::IrrbbShockSizes { parallel: parallel_bp / 1e4, short: short_bp / 1e4, long: long_bp / 1e4 }
+}
+/// "base" means no shock: the base curve rebuilt on the same dates.
+fn irrbb_scenario(name: &str) -> Core<Option<irrbb::IrrbbScenario>> {
+    if name == "base" { Ok(None) } else { irrbb::IrrbbScenario::parse(name).map(Some) }
+}
+#[extendr]
+fn get_irrbb_shock_sizes(currency: &str) -> List {
+    outcome(irrbb::get_irrbb_shock_sizes(currency).map(|s| list!(parallel_bp = s.parallel * 1e4, short_bp = s.short * 1e4, long_bp = s.long * 1e4)))
+}
+#[extendr]
+fn compute_irrbb_shocks(times: Vec<f64>, scenario: &str, parallel_bp: f64, short_bp: f64, long_bp: f64, x: f64) -> List {
+    let run = || -> Core<List> {
+        let s = irrbb::IrrbbScenario::parse(scenario)?;
+        let sizes = irrbb_sizes(parallel_bp, short_bp, long_bp);
+        let shocks = times.iter().map(|&t| irrbb::compute_irrbb_shock(t, s, &sizes, x).map(|v| v * 1e4)).collect::<Core<Vec<f64>>>()?;
+        Ok(list!(shock_bp = shocks))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn compute_irrbb_curve_points(
+    curve: ExternalPtr<OisCurve>,
+    scenario: &str,
+    dates: Vec<i32>,
+    parallel_bp: f64,
+    short_bp: f64,
+    long_bp: f64,
+    x: f64,
+    floor: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<_>>>()?;
+        let p = irrbb::compute_irrbb_curve_points(&curve.curve, irrbb_scenario(scenario)?, &irrbb_sizes(parallel_bp, short_bp, long_bp), x,
+                                                  floor.first().copied(), &dates)?;
+        Ok(list!(
+            date = p.iter().map(|q| q.date.serial()).collect::<Vec<i32>>(),
+            time = p.iter().map(|q| q.time).collect::<Vec<f64>>(),
+            base_zero = p.iter().map(|q| q.base_zero).collect::<Vec<f64>>(),
+            shock = p.iter().map(|q| q.shock).collect::<Vec<f64>>(),
+            shocked_zero = p.iter().map(|q| q.shocked_zero).collect::<Vec<f64>>(),
+            floored = p.iter().map(|q| q.floored).collect::<Vec<bool>>()
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn create_irrbb_shocked_curve(
+    curve: ExternalPtr<OisCurve>,
+    scenario: &str,
+    dates: Vec<i32>,
+    parallel_bp: f64,
+    short_bp: f64,
+    long_bp: f64,
+    x: f64,
+    floor: Vec<f64>,
+) -> List {
+    let run = || -> Core<OisCurve> {
+        let dates = dates.iter().map(|&d| date(d)).collect::<Core<Vec<_>>>()?;
+        let shocked = irrbb::create_irrbb_shocked_curve(&curve.curve, irrbb_scenario(scenario)?, &irrbb_sizes(parallel_bp, short_bp, long_bp), x,
+                                                        floor.first().copied(), &dates)?;
+        Ok(OisCurve::given(shocked, curve.spec.index.clone()))
+    };
+    outcome(run().map(|c| list!(value = ExternalPtr::new(c))))
+}
+
 extendr_module! {
     mod RiemannFinMath;
+    fn get_irrbb_shock_sizes;
+    fn compute_irrbb_shocks;
+    fn compute_irrbb_curve_points;
+    fn create_irrbb_shocked_curve;
     fn create_trs_funding_leg;
     fn get_trs_funding_schedule;
     fn get_trs_funding_observations;

@@ -27,6 +27,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_credit_risk.md` | P14 の信用ポートフォリオの損失分布・信用VaR・ASRF・IRB（照合結果は 3 章、DRC との関係と未確認事項は 4 章） |
 | `docs/spec_tranching.md` | P15 の信用トランシェと CMO（実際の差と許容誤差は 3 章、損失配分の検算は 3.1 節） |
 | `docs/spec_trs.md` | TRS の FundingLeg・ReturnLeg の日程と金額（QuantLet の C1 から。照合結果は 2 章、2026-11-15） |
+| `docs/spec_irrbb.md` | IRRBB の金利ショック・シナリオ（SRP31.90〜31.93、QuantLet から。照合結果は 3 章、2026-11-15） |
 | `docs/quantlib_guide_inventory.md` | QuantLib Guide（全 39 ページ）と公式 Examples（v1.42）の棚卸し：対応表、不足機能、優先順位、今の機能で作れるサンプル |
 | `docs/design_distributed.md` | 分散計算基盤（Azure・Slurm・R と Rust の並列の区別）、開発方針（入口は厳格に、計算コアは単純に）、GPU の構想 |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
