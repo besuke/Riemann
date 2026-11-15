@@ -41,6 +41,7 @@ use riemann::risk;
 use riemann::sabr::{self, SabrParameters};
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
 use riemann::tranche;
+use riemann::trs;
 use riemann::yen_bond;
 use riemann::xccy::{bootstrap_xccy_curve as bootstrap_xccy_curve_core, ResettingLeg, XccyCurve, XccyCurveSpec, XccyInstrument, XccyLeg};
 type Core<T> = std::result::Result<T, riemann::Error>;
@@ -4035,8 +4036,253 @@ fn compute_pac_support_cmo(principal: Vec<f64>, interest: Vec<f64>, schedule: Ve
     outcome(run())
 }
 
+// ---- total return swaps -------------------------------------------------------------------------
+/// The periods of a TRS leg. A negative payment lag means that the leg has no payment terms.
+#[allow(clippy::too_many_arguments)]
+fn trs_periods(
+    effective_date: i32,
+    termination_date: i32,
+    frequency: i32,
+    calendar: &str,
+    period_convention: &str,
+    rule: &str,
+    end_of_month: bool,
+    payment_calendar: &str,
+    payment_convention: &str,
+    payment_lag: i32,
+) -> Core<trs::TrsPeriodSpec> {
+    Ok(trs::TrsPeriodSpec {
+        effective_date: date(effective_date)?,
+        termination_date: date(termination_date)?,
+        frequency: frequency as u32,
+        calendar: calendar_of(calendar)?,
+        period_convention: names::parse_business_day_convention(period_convention)?,
+        rule: names::parse_date_generation_rule(rule)?,
+        end_of_month,
+        payment: if payment_lag < 0 {
+            None
+        } else {
+            Some(trs::PaymentTerms {
+                calendar: calendar_of(payment_calendar)?,
+                convention: names::parse_business_day_convention(payment_convention)?,
+                lag: payment_lag as u32,
+            })
+        },
+    })
+}
+fn serial_or_zero(d: Option<Date>) -> i32 {
+    d.map(|x| x.serial()).unwrap_or(0)
+}
+fn optional_value(x: Option<f64>) -> f64 {
+    x.unwrap_or_else(na_real)
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn create_trs_funding_leg(
+    effective_date: i32,
+    termination_date: i32,
+    frequency: i32,
+    calendar: &str,
+    period_convention: &str,
+    rule: &str,
+    end_of_month: bool,
+    payment_calendar: &str,
+    payment_convention: &str,
+    payment_lag: i32,
+    index: &str,
+    day_count: &str,
+    notional: f64,
+    spread: f64,
+    lookback: i32,
+    reset_relative_to: &str,
+    fixing_offset: i32,
+    fixing_calendar: &str,
+    fixing_convention: &str,
+) -> List {
+    let build = || -> Core<trs::TrsFundingLeg> {
+        if lookback < 0 {
+            return Err(riemann::Error::InvalidInput { reason: "the lookback must not be negative".into() });
+        }
+        trs::create_trs_funding_leg(trs::TrsFundingLegSpec {
+            periods: trs_periods(effective_date, termination_date, frequency, calendar, period_convention, rule, end_of_month,
+                                 payment_calendar, payment_convention, payment_lag)?,
+            index: names::parse_overnight_index(index)?,
+            day_count: names::parse_day_count(day_count)?,
+            notional,
+            spread,
+            lookback: lookback as u32,
+            reset_relative_to: match reset_relative_to {
+                "period_start" => trs::ResetRelativeTo::PeriodStart,
+                "period_end" => trs::ResetRelativeTo::PeriodEnd,
+                other => return Err(riemann::Error::InvalidInput { reason: format!("unknown reset date rule: {other}") }),
+            },
+            fixing_offset,
+            fixing_calendar: calendar_of(fixing_calendar)?,
+            fixing_convention: names::parse_business_day_convention(fixing_convention)?,
+        })
+    };
+    outcome(build().map(|leg| list!(value = ExternalPtr::new(leg))))
+}
+#[extendr]
+fn get_trs_funding_schedule(leg: ExternalPtr<trs::TrsFundingLeg>) -> List {
+    let p = &leg.periods;
+    list!(
+        unadjusted_start = p.iter().map(|x| x.period.unadjusted_start.serial()).collect::<Vec<i32>>(),
+        unadjusted_end = p.iter().map(|x| x.period.unadjusted_end.serial()).collect::<Vec<i32>>(),
+        accrual_start = p.iter().map(|x| x.period.start.serial()).collect::<Vec<i32>>(),
+        accrual_end = p.iter().map(|x| x.period.end.serial()).collect::<Vec<i32>>(),
+        reset_date = p.iter().map(|x| x.reset_date.serial()).collect::<Vec<i32>>(),
+        fixing_date = p.iter().map(|x| x.fixing_date.serial()).collect::<Vec<i32>>(),
+        observation_start = p.iter().map(|x| x.observation_start.serial()).collect::<Vec<i32>>(),
+        observation_end = p.iter().map(|x| x.observation_end.serial()).collect::<Vec<i32>>(),
+        payment_date = p.iter().map(|x| serial_or_zero(x.period.payment_date)).collect::<Vec<i32>>(),
+        accrual = p.iter().map(|x| x.accrual).collect::<Vec<f64>>(),
+        business_days = p.iter().map(|x| x.days.len() as i32).collect::<Vec<i32>>()
+    )
+}
+/// The daily observation of one period: each business day, its fixing date and its weight.
+#[extendr]
+fn get_trs_funding_observations(leg: ExternalPtr<trs::TrsFundingLeg>) -> List {
+    let mut period = Vec::new();
+    let (mut day, mut fixing_date, mut weight) = (Vec::new(), Vec::new(), Vec::new());
+    for (k, p) in leg.periods.iter().enumerate() {
+        for i in 0..p.days.len() {
+            period.push(k as i32 + 1);
+            day.push(p.days[i].serial());
+            fixing_date.push(p.observation_dates[i].serial());
+            weight.push(p.day_fractions[i]);
+        }
+    }
+    list!(period = period, day = day, fixing_date = fixing_date, day_fraction = weight)
+}
+#[extendr]
+fn compute_trs_funding_cashflows(
+    leg: ExternalPtr<trs::TrsFundingLeg>,
+    curve: Robj,
+    evaluation_date: i32,
+    fixing_dates: Vec<i32>,
+    fixing_rates: Vec<f64>,
+) -> List {
+    let run = || -> Core<List> {
+        let fixings = fixings_of(&fixing_dates, &fixing_rates)?;
+        let curve: Option<ExternalPtr<OisCurve>> = if curve.is_null() {
+            None
+        } else {
+            let c = ExternalPtr::<OisCurve>::try_from(curve)
+                .map_err(|_| riemann::Error::InvalidInput { reason: "the curve is not an OIS curve".into() })?;
+            if c.spec.index != leg.spec.index {
+                return Err(riemann::Error::InvalidInput { reason: "the curve is not of the leg's overnight index".into() });
+            }
+            Some(c)
+        };
+        let a = trs::compute_trs_funding_amounts(&leg, date(evaluation_date)?, &fixings, curve.as_ref().map(|c| &c.curve));
+        Ok(list!(
+            status = a.iter().map(|x| x.status.name()).collect::<Vec<&str>>(),
+            compounded_rate = a.iter().map(|x| optional_value(x.compounded_rate)).collect::<Vec<f64>>(),
+            amount = a.iter().map(|x| optional_value(x.amount)).collect::<Vec<f64>>(),
+            fixed_days = a.iter().map(|x| x.fixed_days as i32).collect::<Vec<i32>>(),
+            projected_days = a.iter().map(|x| x.projected_days as i32).collect::<Vec<i32>>(),
+            days = a.iter().map(|x| x.days as i32).collect::<Vec<i32>>(),
+            reason = a.iter().map(|x| x.reason.clone()).collect::<Vec<String>>()
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn create_trs_return_leg(
+    effective_date: i32,
+    termination_date: i32,
+    frequency: i32,
+    calendar: &str,
+    period_convention: &str,
+    rule: &str,
+    end_of_month: bool,
+    payment_calendar: &str,
+    payment_convention: &str,
+    payment_lag: i32,
+    notional: f64,
+    initial_price: f64,
+    valuation_relative_to: &str,
+    valuation_offset: i32,
+    valuation_calendar: &str,
+    valuation_convention: &str,
+    final_valuation_date: i32,
+) -> List {
+    let build = || -> Core<trs::TrsReturnLeg> {
+        trs::create_trs_return_leg(trs::TrsReturnLegSpec {
+            periods: trs_periods(effective_date, termination_date, frequency, calendar, period_convention, rule, end_of_month,
+                                 payment_calendar, payment_convention, payment_lag)?,
+            notional,
+            initial_price,
+            valuation_relative_to: match valuation_relative_to {
+                "payment_date" => trs::ValuationRelativeTo::PaymentDate,
+                "period_end" => trs::ValuationRelativeTo::PeriodEnd,
+                other => return Err(riemann::Error::InvalidInput { reason: format!("unknown valuation date rule: {other}") }),
+            },
+            valuation_offset,
+            valuation_calendar: calendar_of(valuation_calendar)?,
+            valuation_convention: names::parse_business_day_convention(valuation_convention)?,
+            final_valuation_date: optional_date(final_valuation_date)?,
+        })
+    };
+    outcome(build().map(|leg| list!(value = ExternalPtr::new(leg))))
+}
+#[extendr]
+fn get_trs_return_schedule(leg: ExternalPtr<trs::TrsReturnLeg>) -> List {
+    let p = &leg.periods;
+    list!(
+        unadjusted_start = p.iter().map(|x| x.period.unadjusted_start.serial()).collect::<Vec<i32>>(),
+        unadjusted_end = p.iter().map(|x| x.period.unadjusted_end.serial()).collect::<Vec<i32>>(),
+        period_start = p.iter().map(|x| x.period.start.serial()).collect::<Vec<i32>>(),
+        period_end = p.iter().map(|x| x.period.end.serial()).collect::<Vec<i32>>(),
+        start_valuation_date = p.iter().map(|x| serial_or_zero(x.start_valuation_date)).collect::<Vec<i32>>(),
+        valuation_date = p.iter().map(|x| x.valuation_date.serial()).collect::<Vec<i32>>(),
+        valuation_date_by_rule = p.iter().map(|x| x.valuation_date_by_rule.serial()).collect::<Vec<i32>>(),
+        payment_date = p.iter().map(|x| serial_or_zero(x.period.payment_date)).collect::<Vec<i32>>()
+    )
+}
+#[extendr]
+fn compute_trs_return_cashflows(
+    leg: ExternalPtr<trs::TrsReturnLeg>,
+    level_dates: Vec<i32>,
+    levels: Vec<f64>,
+    level_kinds: Vec<String>,
+) -> List {
+    let run = || -> Core<List> {
+        let mut map = std::collections::BTreeMap::new();
+        for ((&d, &l), k) in level_dates.iter().zip(&levels).zip(&level_kinds) {
+            let kind = match k.as_str() {
+                "observed" => trs::LevelKind::Observed,
+                "scenario" => trs::LevelKind::Scenario,
+                other => return Err(riemann::Error::InvalidInput { reason: format!("unknown level kind: {other}") }),
+            };
+            if map.insert(date(d)?, (l, kind)).is_some() {
+                return Err(riemann::Error::InvalidInput { reason: "a level date is given twice".into() });
+            }
+        }
+        let a = trs::compute_trs_return_amounts(&leg, &map);
+        Ok(list!(
+            status = a.iter().map(|x| x.status.name()).collect::<Vec<&str>>(),
+            start_level = a.iter().map(|x| optional_value(x.start_level)).collect::<Vec<f64>>(),
+            end_level = a.iter().map(|x| optional_value(x.end_level)).collect::<Vec<f64>>(),
+            period_return = a.iter().map(|x| optional_value(x.period_return)).collect::<Vec<f64>>(),
+            amount = a.iter().map(|x| optional_value(x.amount)).collect::<Vec<f64>>(),
+            reason = a.iter().map(|x| x.reason.clone()).collect::<Vec<String>>()
+        ))
+    };
+    outcome(run())
+}
+
 extendr_module! {
     mod RiemannFinMath;
+    fn create_trs_funding_leg;
+    fn get_trs_funding_schedule;
+    fn get_trs_funding_observations;
+    fn compute_trs_funding_cashflows;
+    fn create_trs_return_leg;
+    fn get_trs_return_schedule;
+    fn compute_trs_return_cashflows;
     fn create_fixed_rate_bond;
     fn compute_settlement_date;
     fn compute_bond_values;
