@@ -12,7 +12,7 @@ fmt <- function(x) sprintf("%.17g", x)
 at <- function(x) QuantLib::Date(as.integer(as.Date(x)) + 25569L)
 number_of <- function(d) as.integer(QuantLib::Date_serialNumber(d))
 
-chapter <- readLines("../LagrangeFinance/part2_quantive_riemann/ch03_ois_swaps_multicurve.qmd", encoding = "UTF-8")
+chapter <- readLines("../coral-book/part2_quantive_riemann/ch03_ois_swaps_multicurve.qmd", encoding = "UTF-8")
 start <- which(startsWith(chapter, "tona_quotes <- tibble::tribble("))
 end <- start + which(chapter[(start + 1):length(chapter)] == ")")[1]
 trade_date_tona <- "2022-08-19"

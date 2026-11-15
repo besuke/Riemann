@@ -100,7 +100,7 @@ for (i in 1:400) {
 }
 
 # The callable bond of LagrangeFinance II-8: its functions, read from the chapter
-chapter <- readLines("../LagrangeFinance/part2_quantive_riemann/ch08_early_redemption_models.qmd", encoding = "UTF-8")
+chapter <- readLines("../coral-book/part2_quantive_riemann/ch08_early_redemption_models.qmd", encoding = "UTF-8")
 chunk <- function(label, stop_at = NULL) {
   start <- which(chapter == paste0("#| label: ", label))
   end <- start + which(startsWith(chapter[(start + 1):length(chapter)], "```"))[1]

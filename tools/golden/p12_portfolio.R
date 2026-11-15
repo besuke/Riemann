@@ -5,7 +5,7 @@
 #
 # Cases
 #   lf_i8   LagrangeFinance I-8: the first rebalance year's 20 largest firms, their complete months
-#           (anonymized public data, read from ../LagrangeFinance), weights 0 to 0.20 summing to 1.
+#           (anonymized public data, read from ../coral-book, formerly LagrangeFinance), weights 0 to 0.20 summing to 1.
 #   syn_1.. synthetic returns (set.seed below): without bounds (closed forms) and with bounds.
 #
 # References, all computed here in R, independently of RiemannFinMath:
@@ -29,7 +29,7 @@ suppressPackageStartupMessages({
 
 out <- file.path("tests", "golden", "portfolio.csv")
 fmt <- function(x) sprintf("%.17g", x)
-lagrange <- file.path("..", "LagrangeFinance", "data", "derived", "portfolios")
+lagrange <- file.path("..", "coral-book", "data", "derived", "portfolios")  # Coral Book, formerly LagrangeFinance
 
 # ---- references -------------------------------------------------------------------------------------------
 

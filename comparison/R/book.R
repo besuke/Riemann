@@ -5,7 +5,7 @@
 suppressPackageStartupMessages(library(tidyverse))
 
 comparison_tolerance <- 1e-4
-lagrange_root <- "../../LagrangeFinance"
+lagrange_root <- "../../coral-book"  # Coral Book, formerly LagrangeFinance (renamed 2026-11-15)
 
 # ---- dates --------------------------------------------------------------------------------------
 ql_date <- function(x) QuantLib::Date(as.integer(as.Date(x)) + 25569L)

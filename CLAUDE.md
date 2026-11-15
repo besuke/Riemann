@@ -32,6 +32,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ## 決定事項
 
+- **関連プロジェクトの改名（2026-11-15）**：LagrangeFinance は Coral Book（`../coral-book`）、LagrangeFinLab は Carmine Studio（`../carmine-studio`）、LagrangeAcademy は Crimson Proof（`../crimson-proof`）になった。実行時に読むパス（`tools/golden/p9`・`p11`・`p12`・`p13`、`comparison/R/book.R`）は新しい名前に直した。仕様書と照合記録の旧名は当時の名前として残す。
 - **設計の主題**：オブジェクト指向とテンプレートからの脱却。値と純粋関数、enum と match。継承・オブザーバー・グローバル状態（評価日など）は使わない。利用者が選ぶものは実行時の値。総称型は禁止しないが、内部（自動微分など）に留めて公開 API に出さない。`#![forbid(unsafe_code)]`。
 - **対応言語**：R と TypeScript が主。C ABI は不要。Python は必要になってから。言語間の一致は計算ごとの許容誤差で確かめ、ネイティブと WebAssembly は分けて扱う。
 - **日付・カレンダー・規約**：QuantLib に従う。日本のカレンダーは「QuantLib 互換の実装」であり、祝日法の説明とは区別する。

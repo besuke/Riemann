@@ -4,7 +4,7 @@
 # Writes tests/golden/market_risk.csv: case, kind, i, j, value.
 #
 # Case lf_i9: the manuscript's equal-weight portfolio of the first rebalance year's 20 largest firms, the mean of
-# the available returns each month (I-9.3; anonymized public data read from ../LagrangeFinance), and its
+# the available returns each month (I-9.3; anonymized public data read from ../coral-book, formerly LagrangeFinance), and its
 # losses L_t = -R_t. References, all in R:
 #   Gaussian VaR and ES      -mu + qnorm(alpha) sd, -mu + dnorm(qnorm(alpha)) / (1 - alpha) sd
 #   historical VaR           quantile(type = 7) (the manuscript) and type 1
@@ -26,7 +26,7 @@ suppressPackageStartupMessages({
 
 out <- file.path("tests", "golden", "market_risk.csv")
 fmt <- function(x) sprintf("%.17g", x)
-lagrange <- file.path("..", "LagrangeFinance", "data", "derived", "portfolios")
+lagrange <- file.path("..", "coral-book", "data", "derived", "portfolios")  # Coral Book, formerly LagrangeFinance
 history <- arrow::read_parquet(file.path(lagrange, "asset_return_history.parquet"))
 universe <- arrow::read_parquet(file.path(lagrange, "investment_universe.parquet"))
 

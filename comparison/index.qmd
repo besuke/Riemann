@@ -61,4 +61,4 @@ Each chapter ends with a table that separates two kinds of difference:
 
 ## Market data
 
-The 2026-10-06 OIS quotes and the bond prices of the deliverable basket are market data. They are read from the local files of the legacy text at render time, and they are neither stored in this directory nor shown. Rendering therefore needs `../../LagrangeFinance` next to this repository.
+The 2026-10-06 OIS quotes and the bond prices of the deliverable basket are market data. They are read from the local files of the legacy text at render time, and they are neither stored in this directory nor shown. Rendering therefore needs `../../coral-book` (Coral Book, formerly LagrangeFinance) next to this repository.
