@@ -37,6 +37,7 @@ pub mod options;
 pub mod portfolio;
 pub mod prdc;
 pub mod time;
+pub mod tranche;
 pub mod xccy;
 pub mod yen_bond;
 

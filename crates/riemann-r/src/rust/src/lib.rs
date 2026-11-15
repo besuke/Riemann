@@ -40,6 +40,7 @@ use riemann::prdc::{self, PrdcMonteCarlo, PrdcSensitivity, PrdcTerms};
 use riemann::risk;
 use riemann::sabr::{self, SabrParameters};
 use riemann::time::{Date, HolidayCalendar, ScheduleSpec};
+use riemann::tranche;
 use riemann::yen_bond;
 use riemann::xccy::{bootstrap_xccy_curve as bootstrap_xccy_curve_core, ResettingLeg, XccyCurve, XccyCurveSpec, XccyInstrument, XccyLeg};
 type Core<T> = std::result::Result<T, riemann::Error>;
@@ -3942,6 +3943,98 @@ fn compute_irb_capital(pd: Vec<f64>, lgd: Vec<f64>, maturity: Vec<f64>, ead: Vec
     outcome(run())
 }
 
+// ---- credit tranches and CMO (docs/spec_tranching.md) -------------------------------------------------------
+
+#[extendr]
+fn compute_tranche_loss(loss_rate: Vec<f64>, attachment: f64, detachment: f64) -> List {
+    let run = || -> Core<List> {
+        if !(0.0..1.0).contains(&attachment) || !(detachment > attachment && detachment <= 1.0) {
+            return Err(riemann::Error::InvalidInput { reason: format!("a tranche needs 0 <= A < D <= 1, not A = {attachment}, D = {detachment}") });
+        }
+        Ok(list!(value = loss_rate.iter().map(|l| tranche::compute_tranche_loss(*l, attachment, detachment)).collect::<Vec<f64>>()))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_tranche_risk(probability: Vec<f64>, unit: f64, total: f64, attachment: Vec<f64>, detachment: Vec<f64>, confidence_level: f64) -> List {
+    let run = || -> Core<List> {
+        if attachment.len() != detachment.len() {
+            return Err(riemann::Error::InvalidInput { reason: "one detachment per attachment".into() });
+        }
+        let d = credit_risk::CreditLossDistribution { unit, probability };
+        let r: Vec<tranche::TrancheRisk> = attachment.iter().zip(&detachment).map(|(a, b)| tranche::compute_tranche_risk(&d, total, *a, *b, confidence_level)).collect::<Core<_>>()?;
+        Ok(list!(
+            expected_tranche_loss = r.iter().map(|x| x.expected_tranche_loss).collect::<Vec<f64>>(),
+            hit_probability = r.iter().map(|x| x.hit_probability).collect::<Vec<f64>>(),
+            wipeout_probability = r.iter().map(|x| x.wipeout_probability).collect::<Vec<f64>>(),
+            var = r.iter().map(|x| x.var).collect::<Vec<f64>>()
+        ))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_lhp_expected_tranche_loss(pd: f64, lgd: f64, rho: f64, attachment: Vec<f64>, detachment: Vec<f64>, panels: i32) -> List {
+    let run = || -> Core<List> {
+        if attachment.len() != detachment.len() {
+            return Err(riemann::Error::InvalidInput { reason: "one detachment per attachment".into() });
+        }
+        let v = attachment.iter().zip(&detachment).map(|(a, b)| tranche::compute_lhp_expected_tranche_loss(pd, lgd, rho, *a, *b, panels.max(1) as usize)).collect::<Core<Vec<f64>>>()?;
+        Ok(list!(value = v))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_tranche_legs(hazard: Vec<f64>, ead: Vec<f64>, lgd: Vec<f64>, rho: Vec<f64>, unit: f64, times: Vec<f64>, discount_rate: f64, attachment: f64, detachment: f64, panels: i32) -> List {
+    let run = || -> Core<List> {
+        let n = hazard.len();
+        if [ead.len(), lgd.len(), rho.len()].iter().any(|&m| m != n) {
+            return Err(riemann::Error::InvalidInput { reason: "hazard, EAD, LGD and rho must have one value per obligor".into() });
+        }
+        let o: Vec<tranche::HazardObligor> = (0..n).map(|i| tranche::HazardObligor { hazard: hazard[i], ead: ead[i], lgd: lgd[i], rho: rho[i] }).collect();
+        let l = tranche::compute_tranche_legs(&o, unit, &times, discount_rate, attachment, detachment, panels.max(1) as usize)?;
+        Ok(list!(
+            expected_tranche_loss = l.expected_tranche_loss,
+            discount = l.discount,
+            premium_per_unit_spread = l.premium_per_unit_spread,
+            loss_leg = l.loss_leg,
+            fair_spread = l.fair_spread
+        ))
+    };
+    outcome(run())
+}
+fn cmo_list(c: &tranche::CmoCashflows) -> List {
+    list!(
+        interest = c.interest.concat(),
+        principal = c.principal.concat(),
+        accrued = c.accrued.concat(),
+        balance = c.balance.concat(),
+        residual = c.residual.clone(),
+        weighted_average_life = c.weighted_average_life()
+    )
+}
+#[extendr]
+fn compute_sequential_cmo(principal: Vec<f64>, interest: Vec<f64>, balances: Vec<f64>, coupons: Vec<f64>, z_last: bool) -> List {
+    let run = || -> Core<List> {
+        if balances.len() != coupons.len() {
+            return Err(riemann::Error::InvalidInput { reason: "one coupon per tranche".into() });
+        }
+        let t: Vec<tranche::CmoTranche> = balances.iter().zip(&coupons).map(|(b, c)| tranche::CmoTranche { balance: *b, coupon: *c }).collect();
+        Ok(cmo_list(&tranche::compute_sequential_cmo(&principal, &interest, &t, z_last)?))
+    };
+    outcome(run())
+}
+#[extendr]
+fn compute_pac_support_cmo(principal: Vec<f64>, interest: Vec<f64>, schedule: Vec<f64>, balances: Vec<f64>, coupons: Vec<f64>) -> List {
+    let run = || -> Core<List> {
+        if balances.len() != 2 || coupons.len() != 2 {
+            return Err(riemann::Error::InvalidInput { reason: "a PAC and a support tranche: two balances and two coupons".into() });
+        }
+        let t = |k: usize| tranche::CmoTranche { balance: balances[k], coupon: coupons[k] };
+        Ok(cmo_list(&tranche::compute_pac_support_cmo(&principal, &interest, &schedule, t(0), t(1))?))
+    };
+    outcome(run())
+}
+
 extendr_module! {
     mod RiemannFinMath;
     fn create_fixed_rate_bond;
@@ -4034,6 +4127,12 @@ extendr_module! {
     fn simulate_credit_losses;
     fn compute_asrf_var;
     fn compute_irb_capital;
+    fn compute_tranche_loss;
+    fn compute_tranche_risk;
+    fn compute_lhp_expected_tranche_loss;
+    fn compute_tranche_legs;
+    fn compute_sequential_cmo;
+    fn compute_pac_support_cmo;
     fn generate_sobol_sequence;
     fn generate_black_scholes_paths;
     fn compute_longstaff_schwartz_value;

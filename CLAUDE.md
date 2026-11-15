@@ -25,6 +25,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `docs/spec_portfolio.md` | P12 の制約付きポートフォリオ最適化とリスク寄与（照合の計画は 3 章、後続の P13〜P15 は 4 章、決めたことは 5 章、照合結果は 6 章） |
 | `docs/spec_market_risk.md` | P13 の市場VaR・ES・バックテスト（原稿の計算は 1 章、照合結果は 3 章、未対応は 4 章） |
 | `docs/spec_credit_risk.md` | P14 の信用ポートフォリオの損失分布・信用VaR・ASRF・IRB（照合結果は 3 章、DRC との関係と未確認事項は 4 章） |
+| `docs/spec_tranching.md` | P15 の信用トランシェと CMO（実際の差と許容誤差は 3 章、損失配分の検算は 3.1 節） |
 | `docs/quantlib_guide_inventory.md` | QuantLib Guide（全 39 ページ）と公式 Examples（v1.42）の棚卸し：対応表、不足機能、優先順位、今の機能で作れるサンプル |
 | `docs/design_distributed.md` | 分散計算基盤（Azure・Slurm・R と Rust の並列の区別）、開発方針（入口は厳格に、計算コアは単純に）、GPU の構想 |
 | `docs/library_comparison.md` | QuantLib と finmath-lib の比較（参考） |
@@ -86,7 +87,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | P12 | 制約付きポートフォリオ最適化とリスク寄与（LagrangeFinance I-8。GaussQuant の `portfolio_optimize_GQL()`、閉じた式、KKT 条件と照合） | **完了**（2026-11-15、`docs/spec_portfolio.md` 6 章）。8 つの方法をすべて厳密に解く（2次計画は自前の Goldfarb–Idnani、最小 ES は自前の単体法）。quadprog・Rglpk・閉じた式との差はウエイトで最大 1.7e-12。GaussQuant が Nelder–Mead で解く 4 方法は、GaussQuant 自身の目的関数で上回る。リスク寄与は自動微分 |
 | P13 | 市場VaR・ES・バックテスト（LagrangeFinance I-9） | **完了**（2026-11-15、`docs/spec_market_risk.md`）。原稿の 71 か月の VaR・ES・バックテストを R と相対 1e-12 以内で照合。ローリング・バックテスト、Kupiec・Christoffersen の検定、バーゼルの信号、多変量のモンテカルロ（スレッド数によらない）を追加 |
 | P14 | 信用VaR（LagrangeFinance I-10）、ASRF、IRB | **完了**（2026-11-15、`docs/spec_credit_risk.md`）。One-Factor Gaussian の損失分布を厳密に計算（条件付き独立の漸化式と複合ガウス・ルジャンドル求積。R の別の求積と 3.4e-15）。原稿のモンテカルロの VaR と一致。DRC は関係を整理しただけで、基準本文の確認と実装は未了 |
-| P15 | トランチング（I-11） | 未着手（`docs/spec_portfolio.md` 4 章） |
+| P15 | 信用トランシェと CMO（LagrangeFinance I-11） | **完了**（2026-11-15、`docs/spec_tranching.md`）。厳密な損失分布からの期待トランシェ損失・確率・VaR、大数極限、Premium Leg・Loss Leg・フェア・スプレッド、Sequential＋Z と PAC/Support のウォーターフォール。R の独立な計算との差は最大 7.1e-15、損失配分の検算も一致。第 I 部（I-8〜I-11）はここで一区切り |
 | L1〜L3 | TypeScript の Node 版、ブラウザー版、Excel | 未着手。目標に必須ではない。P5 の後に WebAssembly で移植性を確認 |
 
 件数と結果は各仕様書の照合結果の節にある。段階の内容は `docs/specification.md` の 7 章。
