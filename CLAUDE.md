@@ -118,9 +118,14 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 **配布（`docs/spec_r.md` 8 章）**：
 
-- 最新は 0.3.2（2026-11-18）。
-  - Windows zip を GitHub Releases の `v0.3.2` に添付した。Rust なしでの導入と smoke test 34 項目を確認済み。
-  - `remotes::install_github(..., subdir = "crates/riemann-r")` は、`configure` が `RemoteSha` のコミットの中核を GitHub から取る形にして直した（`e12a68a`）。
+- 最新は 0.3.4（2026-11-18）。
+  - **Windows の入れ方（Rust なし）**：`install.packages("RiemannFinMath", repos = c("https://besuke.github.io/Riemann", "https://cloud.r-project.org"))`。公開した URL から、Rust を外した PATH で導入と smoke test 34 項目を確認済み（`dist/smoke_from_pages_0.3.4.log`）。
+  - `remotes::install_github()` は常にソースからビルドするので Rust が要る。`subdir = "crates/riemann-r"` が必要で、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust がなければ `configure.win` が上の入れ方を示して止まる。
+  - Windows zip と tar.gz は GitHub Releases の `v0.3.4` にもある。
+- **`gh-pages` ブランチ**は R リポジトリ（zip、tar.gz、`PACKAGES` 索引）だけを持つ配布専用で、`main` とは別。GitHub Pages が https://besuke.github.io/Riemann/ で公開する。Riemann の作業フォルダーには取り込まず、一時フォルダーから push する。
+  - 版を上げるとき：(1) `DESCRIPTION` の版を変える。(2) zip を `R CMD INSTALL --build -l <別ライブラリー>`、tar.gz を `tools/package/build_source_package.R` で作る。(3) `Rscript tools/package/build_binary_repo.R <zip> <tar.gz> <フォルダー>` で索引を更新する（古い版は残り、`install.packages` は新しい版を選ぶ）。(4) そのフォルダーを `gh-pages` に push する（Pages の設定は済み）。(5) 公開 URL から導入して smoke test を実行する。
+  - zip と tar.gz は同じ版にする。そろわないと Windows が新しいソースをビルドしようとする。ソースを置かないと、Windows の R は「このパッケージはない」と判断して失敗する。
+  - 既定のライブラリーに別の R（Positron など）が `RiemannFinMath.dll` を使っていると、`R CMD INSTALL --build` が失敗する。別のライブラリーに作り、その R は終了させない。
 - tar.gz の `R CMD check` とソース導入は 0.3.0 以降、アプリ制御に止められて未完了。Windows 以外は未確認。
 - 配布ファイルの記録は `dist/MANIFEST.txt`（`dist/` は git に入れない）。
 
