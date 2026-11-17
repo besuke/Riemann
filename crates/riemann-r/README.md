@@ -6,19 +6,30 @@ Rust の金融計算ライブラリー RiemannFinMath を、R から直接呼ぶ
 
 ## 導入
 
-### Windows バイナリ（zip）：Rust も Rtools も不要
+### Windows：Rust も Rtools も不要（推奨）
 
-R 4.6 用です。GitHub の Releases（https://github.com/besuke/Riemann/releases）に置いてあります。依存パッケージの `purrr` と `tibble` は、zip からの導入では自動で入らないので、先に入れます。
+R 4.6 用のバイナリを、GitHub Pages の R リポジトリから入れます。依存の `purrr` と `tibble` も CRAN から自動で入ります。
+
+```r
+install.packages(
+  "RiemannFinMath",
+  repos = c("https://besuke.github.io/Riemann", "https://cloud.r-project.org")
+)
+```
+
+**`remotes::install_github()` は使えません。** `install_github()` は常にソースからビルドするので、Windows でも Rust が要ります（Rust がない PC では `configure.win` が上の入れ方を示して止まります）。
+
+zip を直接入れる場合は、GitHub の Releases（https://github.com/besuke/Riemann/releases）にあります。`purrr` と `tibble` は先に入れます。
 
 ```r
 install.packages(c("purrr", "tibble"))
 install.packages(
-  "https://github.com/besuke/Riemann/releases/download/v0.3.2/RiemannFinMath_0.3.2.zip",
+  "https://github.com/besuke/Riemann/releases/download/v0.3.4/RiemannFinMath_0.3.4.zip",
   repos = NULL, type = "binary"
 )
 ```
 
-### GitHub から（ソース）：Rust と Rtools が必要
+### GitHub から（ソース）：Rust が必要（Windows では Rtools も）
 
 ```r
 remotes::install_github("besuke/Riemann", subdir = "crates/riemann-r")
@@ -32,7 +43,7 @@ R パッケージは `crates/riemann-r` にあるので、`subdir` が必要で�
 
 ```
 rustup target add x86_64-pc-windows-gnu
-R CMD INSTALL RiemannFinMath_0.3.0.tar.gz
+R CMD INSTALL RiemannFinMath_0.3.4.tar.gz
 ```
 
 **パスが長いと失敗します。** ビルドのパスが Windows の 260 文字の制限を超えると、`LNK1104` で止まります。短いパスのフォルダーで実行してください。
@@ -49,8 +60,8 @@ Riemann のルートで実行します。Rtools の `tar` と `xz` が PATH に�
 
 ```
 Rscript tools/package/build_source_package.R dist
-R CMD check --as-cran dist/RiemannFinMath_0.3.0.tar.gz
-R CMD INSTALL --build dist/RiemannFinMath_0.3.0.tar.gz
+R CMD check --as-cran dist/RiemannFinMath_0.3.4.tar.gz
+R CMD INSTALL --build dist/RiemannFinMath_0.3.4.tar.gz
 ```
 
 ## Positron の R コンソールで試す
