@@ -193,12 +193,26 @@ P11（Z スプレッド、OIS スワップ、Hull-White の校正、Longstaff–
 
 **残り**：tar.gz からのソース導入と `R CMD check` は、アプリ制御がビルドスクリプトを止めない環境（設定を変えた Windows、または Linux）で実行する必要がある。それまで、ソース版は「作成済み・検査未完了」として扱う。この確認は数値の照合ではなく導入の確認であり、数値の照合は Rust のテスト、比較文書、検証 QMD にある。
 
+### 8.7 版 0.3.2：GitHub からの導入と Releases の zip【実行確認】（2026-11-18）
+
+**`remotes::install_github` が失敗した原因**【実行照合済み】：`remotes::install_github("besuke/Riemann", subdir = "crates/riemann-r")` は、`crates/riemann-r` だけを `R CMD build` でソースパッケージにしてから導入する。`src/rust/Cargo.toml` は中核を `riemann = { path = "../../../riemann" }` で指すので、そのパッケージの中には中核がなく、cargo が `failed to load manifest for dependency riemann`（os error 3）で止まった。2026-11-18 にコミット `3f14521` を対象に、別ライブラリーで再現した。
+
+**対処**：`configure` と `configure.win`（同じ内容）を加えた。中核が隣にあれば（リポジトリからの導入）、またはソースパッケージが `riemann-core` を同梱していれば、何も変えない。どちらでもなければ、remotes が DESCRIPTION に書く `RemoteSha`（なければ `GithubSHA1`）を読み、依存を `riemann = { git = "https://github.com/besuke/Riemann", rev = "<sha>" }` に書き換える。導入するパッケージと同じコミットの中核を使う。どちらの値もなければ、理由を示して止まる。この経路は Rust、Rtools、ネットワークが必要である。
+
+| 確認 | 結果 |
+|---|---|
+| remotes と同じ手順の再現 | `crates/riemann-r` を短いパスに複製し、DESCRIPTION に `RemoteSha: 3f14521…` を加えて `R CMD build` と `R CMD INSTALL`。configure が中核を GitHub から取り、導入は成功。smoke test は 34 項目すべて成功 |
+| リポジトリでの configure | 何も変えない（`Cargo.toml` の差分なし） |
+| push 後の本物の `install_github` | 下の表 |
+
+**Windows バイナリ**：`RiemannFinMath_0.3.2.zip` を、コミット `3f14521` の `crates/riemann-r` から `R CMD INSTALL --build` で作った（configure の追加の前だが、configure はリポジトリでは何もしないので、中身は同じ）。CRAN から `purrr` と `tibble`（依存を含め 11 個）だけを入れた新しいライブラリー `C:\rfm032\lib` に導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで smoke test を実行した：34 項目すべて成功、終了コード 0。環境変数をすべて消すと終了時に落ちるのは 8.4 節と同じ（`library(RiemannFinMath)` だけのスクリプトでも同じ。`tibble` だけで起きることは 0.2.0 で確認済み）。zip は GitHub Releases の `v0.3.2` に添付する。SHA-256 は `bd994df134729b064ff9c5bf503c21c8d4e0af5bc9cd1b65e9f80f00de904add`。
+
 ### 8.5 制限と残り
 
 - **パスの長さ**：ソースからのビルドは、パスが Windows の 260 文字の制限を超えると `LNK1104` で失敗する（実測で 263 文字の例）。短いパスで実行する。
 - **依存の導入**：zip からの導入では `tibble` は自動で入らない。先に入れる。
 - **Windows 以外は未確認**：`Makevars` は実行していない。
 - **R のバージョン**：R 4.6 の Windows 用の zip である。他のバージョンでは確かめていない。
-- **配布ファイル**：`dist/` にあり、git には入れない。GitHub Releases などへの公開はしていない。
+- **配布ファイル**：`dist/` にあり、git には入れない。0.3.2 の Windows zip は GitHub Releases に添付する（8.7 節）。
 - **CRAN**：公開申請はしていない。18 crate の同梱など、CRAN の Rust パッケージの方針との照合もしていない。
 - **既定のライブラリーの古い `riemann`**：名前を変える前の版が残る。Positron の R セッションが読み込んでいたので、消していない。

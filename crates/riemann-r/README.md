@@ -8,12 +8,23 @@ Rust の金融計算ライブラリー RiemannFinMath を、R から直接呼ぶ
 
 ### Windows バイナリ（zip）：Rust も Rtools も不要
 
-R 4.6 用です。依存パッケージの `tibble` は、zip からの導入では自動で入らないので、先に入れます。
+R 4.6 用です。GitHub の Releases（https://github.com/besuke/Riemann/releases）に置いてあります。依存パッケージの `purrr` と `tibble` は、zip からの導入では自動で入らないので、先に入れます。
 
 ```r
-install.packages("tibble")
-install.packages("RiemannFinMath_0.3.0.zip", repos = NULL, type = "binary")
+install.packages(c("purrr", "tibble"))
+install.packages(
+  "https://github.com/besuke/Riemann/releases/download/v0.3.2/RiemannFinMath_0.3.2.zip",
+  repos = NULL, type = "binary"
+)
 ```
+
+### GitHub から（ソース）：Rust と Rtools が必要
+
+```r
+remotes::install_github("besuke/Riemann", subdir = "crates/riemann-r")
+```
+
+R パッケージは `crates/riemann-r` にあるので、`subdir` が必要です。中核の crate（`crates/riemann`）はこのフォルダーの外にあるため、`configure` が DESCRIPTION の `RemoteSha`（remotes が書くコミット）を読み、同じコミットの中核を cargo が GitHub から取ります。Windows では Rtools 4.5 と Rust（`rustup target add x86_64-pc-windows-gnu`）、ネットワークが必要です。
 
 ### ソースパッケージ（tar.gz）：リポジトリもネットワークも不要
 
