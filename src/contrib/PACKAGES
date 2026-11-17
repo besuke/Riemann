@@ -1,0 +1,9 @@
+Package: RiemannFinMath
+Version: 0.3.4
+Depends: R (>= 4.1.0)
+Imports: purrr, tibble
+Suggests: testthat (>= 3.0.0)
+License: MIT + file LICENSE | Apache License 2.0
+MD5sum: 425a9be914235b34ccb32740cde15653
+NeedsCompilation: yes
+File: RiemannFinMath_0.3.4.tar.gz
