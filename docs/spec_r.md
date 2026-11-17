@@ -203,7 +203,8 @@ P11（Z スプレッド、OIS スワップ、Hull-White の校正、Longstaff–
 |---|---|
 | remotes と同じ手順の再現 | `crates/riemann-r` を短いパスに複製し、DESCRIPTION に `RemoteSha: 3f14521…` を加えて `R CMD build` と `R CMD INSTALL`。configure が中核を GitHub から取り、導入は成功。smoke test は 34 項目すべて成功 |
 | リポジトリでの configure | 何も変えない（`Cargo.toml` の差分なし） |
-| push 後の本物の `install_github` | 下の表 |
+| push 後の本物の `install_github` | コミット `e12a68a` で、別ライブラリーへ `remotes::install_github("besuke/Riemann", ref = "main", subdir = "crates/riemann-r")`（remotes 2.5.0）。configure が同じコミットの中核を取り、導入は成功。smoke test は 34 項目すべて成功 |
+| Releases の URL からの導入 | 新しいライブラリーに CRAN の `purrr`・`tibble` と Releases の zip の URL を導入し、Rust を外した PATH で smoke test：34 項目すべて成功、終了コード 0 |
 
 **Windows バイナリ**：`RiemannFinMath_0.3.2.zip` を、コミット `3f14521` の `crates/riemann-r` から `R CMD INSTALL --build` で作った（configure の追加の前だが、configure はリポジトリでは何もしないので、中身は同じ）。CRAN から `purrr` と `tibble`（依存を含め 11 個）だけを入れた新しいライブラリー `C:\rfm032\lib` に導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで smoke test を実行した：34 項目すべて成功、終了コード 0。環境変数をすべて消すと終了時に落ちるのは 8.4 節と同じ（`library(RiemannFinMath)` だけのスクリプトでも同じ。`tibble` だけで起きることは 0.2.0 で確認済み）。zip は GitHub Releases の `v0.3.2` に添付する。SHA-256 は `bd994df134729b064ff9c5bf503c21c8d4e0af5bc9cd1b65e9f80f00de904add`。
 
