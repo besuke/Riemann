@@ -18,6 +18,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `QuantLib_tidy`、`LeanStudy`、`TypeScriptStudy` | 学習・試作 | | |
 
 - クライアントを扱う前に、そのリポジトリの `CLAUDE.md` を読む（自動では読まれない）。
+- **クライアントが RiemannFinMath を入れる・更新する・呼ぶ方法は `docs/client_guide.md`**。クライアントの `CLAUDE.md` や README からここを指す。
 - 別の会話が同じリポジトリで作業中のことがある。未コミットの変更があるリポジトリの共有ファイルは、頼まれない限り編集しない（2026-11-18、Infrago Quant に 34 件の未コミットの変更があった）。
 - RiemannFinMath を入れ直す前に、その DLL を使っている R API（Infrago Quant、Carmine Studio）を止める。
 
@@ -54,7 +55,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ## 文書の索引（`docs/`）
 
-- 全体：`specification.md`（原則 R1〜R16、7 章の開発段階、5.1 の許容誤差）、`naming_migration.md`（旧名と新名）、`design_distributed.md`（分散計算・GPU の構想）、`library_comparison.md`（QuantLib と finmath-lib の比較）
+- 全体：`specification.md`（原則 R1〜R16、7 章の開発段階、5.1 の許容誤差）、`naming_migration.md`（旧名と新名）、`client_guide.md`（クライアントの入れ方・呼び方）、`design_distributed.md`（分散計算・GPU の構想）、`library_comparison.md`（QuantLib と finmath-lib の比較）
 - 照合の範囲：`lagrangefinance_coverage.md`（Coral Book の計算の網羅状況）、`quantlib_guide_inventory.md`（QuantLib Guide と公式 Examples の棚卸し）
 - 段階ごとの仕様と照合結果：
 
