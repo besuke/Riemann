@@ -208,12 +208,32 @@ P11（Z スプレッド、OIS スワップ、Hull-White の校正、Longstaff–
 
 **Windows バイナリ**：`RiemannFinMath_0.3.2.zip` を、コミット `3f14521` の `crates/riemann-r` から `R CMD INSTALL --build` で作った（configure の追加の前だが、configure はリポジトリでは何もしないので、中身は同じ）。CRAN から `purrr` と `tibble`（依存を含め 11 個）だけを入れた新しいライブラリー `C:\rfm032\lib` に導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで smoke test を実行した：34 項目すべて成功、終了コード 0。環境変数をすべて消すと終了時に落ちるのは 8.4 節と同じ（`library(RiemannFinMath)` だけのスクリプトでも同じ。`tibble` だけで起きることは 0.2.0 で確認済み）。zip は GitHub Releases の `v0.3.2` に添付する。SHA-256 は `bd994df134729b064ff9c5bf503c21c8d4e0af5bc9cd1b65e9f80f00de904add`。
 
+### 8.8 版 0.3.4：R リポジトリ（GitHub Pages）による Rust なしの導入【実行確認】（2026-11-18）
+
+**ほかの PC で `remotes::install_github` が動かず、Rust を求められた件**：`subdir = "crates/riemann-r"` を付けない `install_github("besuke/Riemann")` は `HTTP error 404` で止まる（R パッケージが `crates/riemann-r` にあるため。2026-11-18 に再現）。また `install_github` は常にソースからビルドするので、Windows でも Rust と Rtools が要る。そこで、Windows の導入はバイナリを R リポジトリから入れる形にした。
+
+**R リポジトリ**：`gh-pages` ブランチ（https://besuke.github.io/Riemann/ ）が、`bin/windows/contrib/4.6/`（zip）、`src/contrib/`（tar.gz）、それぞれの `PACKAGES` 索引を持つ。`tools/package/build_binary_repo.R` が作る。
+
+```r
+install.packages("RiemannFinMath",
+                 repos = c("https://besuke.github.io/Riemann", "https://cloud.r-project.org"))
+```
+
+| 確認 | 結果 |
+|---|---|
+| zip だけを置いた場合 | 失敗。Windows の既定（`type = "both"`）は先にソースの索引を見るので、`package 'RiemannFinMath' is not available for this version of R` になった |
+| zip と tar.gz を同じ版で置いた場合 | Windows ではバイナリが選ばれ、`purrr`、`tibble` とその依存の 11 パッケージも入った |
+| 公開 URL からの導入 | Rust を外した PATH、新しいライブラリーで成功。smoke test 34 項目すべて成功（`dist/smoke_from_pages_0.3.4.log`） |
+| Rust がない PC でソースを入れた場合 | `configure.win` が、上の入れ方を示して止まる（cargo の有無の検査を、手元で有無の両方について確認） |
+
+版 0.3.4 の zip（SHA-256 `b2e2ed00e8fe428b9716dee6c6b96f37f1e9e9ad38d513d34622d3b93a1599ab`）は、既定のライブラリーを別の R セッションが使っていたため、別のライブラリー（`-l`）に `R CMD INSTALL --build` して作った。GitHub Releases の `v0.3.4` にも添付した。Windows 以外と R 4.6 以外の版は確かめていない。クライアント向けの手順は `docs/client_guide.md`。
+
 ### 8.5 制限と残り
 
 - **パスの長さ**：ソースからのビルドは、パスが Windows の 260 文字の制限を超えると `LNK1104` で失敗する（実測で 263 文字の例）。短いパスで実行する。
-- **依存の導入**：zip からの導入では `tibble` は自動で入らない。先に入れる。
+- **依存の導入**：R リポジトリからの導入では `purrr` と `tibble` も自動で入る（8.8 節）。zip を直接入れる場合は入らないので、先に入れる。
 - **Windows 以外は未確認**：`Makevars` は実行していない。
 - **R のバージョン**：R 4.6 の Windows 用の zip である。他のバージョンでは確かめていない。
-- **配布ファイル**：`dist/` にあり、git には入れない。0.3.2 の Windows zip は GitHub Releases に添付する（8.7 節）。
+- **配布ファイル**：`dist/` にあり、git には入れない。最新の 0.3.4 は、R リポジトリ（`gh-pages`）と GitHub Releases にある（8.8 節）。
 - **CRAN**：公開申請はしていない。18 crate の同梱など、CRAN の Rust パッケージの方針との照合もしていない。
 - **既定のライブラリーの古い `riemann`**：名前を変える前の版が残る。Positron の R セッションが読み込んでいたので、消していない。
