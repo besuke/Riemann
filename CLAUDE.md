@@ -2,7 +2,7 @@
 
 Rust の金融計算ライブラリー。利用の主体は R（extendr）で、TypeScript の Node 版（napi-rs）とブラウザー版（wasm-bindgen）は開発目標である。ユーザーとのやり取りは日本語。
 
-**Riemann は計算サーバー（計算エンジン）である**（2026-11-18 のユーザーの指示）。クライアントのリポジトリは金融計算を自分で実装せず、RiemannFinMath を呼ぶ。足りない計算はここに足す。作業の会話は Riemann のフォルダーで始め（デスクトップの `Riemann-Claude.bat`、`claude --continue`）、クライアントもここから扱う。全リポジトリ共通のきまりはこのファイルにまとめた（親の `../CLAUDE.md` は置かない）。
+**Riemann は計算サーバー（計算エンジン）である**（2026-11-18 のユーザーの指示）。クライアントのリポジトリは金融計算を自分で実装せず、RiemannFinMath を呼ぶ。足りない計算はここに足す。作業の会話は Riemann のフォルダーで始め（リポジトリ直下の `Riemann-Claude.bat`）、クライアントもここから扱う。全リポジトリ共通のきまりはこのファイルにまとめた（親の `../CLAUDE.md` は置かない）。
 
 仕様の本体は `docs/` にある。ここには、次の会話で作業を判断するための決定事項・状態・手順だけを書く。
 
@@ -105,43 +105,80 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ## 状態と引継ぎ（2026-11-18）
 
-**完了**（詳細と件数は各仕様書の照合結果の節）：
+### まず読む：いまの作業と次の一手
 
-- P1〜P15、P11-1〜P11-6、TRS、IRRBB はすべて実装と照合が済んでいる。
+**作業中：OIS スワップをテナー（`7Y` など）から作る機能**（Carmine Studio の要望）。
+
+| 層 | 状態 |
+|---|---|
+| Rust の中核 `riemann::ois::compute_ois_swap_dates` | **完了**。QuantLib 1.42 `MakeOIS` と 13,520 件で照合し、成功 13,514 件は完全一致、失敗 6 件も同じ（`docs/spec_ois_swap.md` 7 章） |
+| R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L)` | **未了**。下の手順 |
+| Carmine Studio の置き換え | 未了。`server/R/tona_ois_model.R` の `TONA_SWAP_DATES` を新しい関数にする |
+| 版と公開 | 未了。0.3.5 に上げる |
+
+**R の関数の手順**（Rust の中核ができているので、あとは R の入口だけ）：
+
+1. `crates/riemann-r/src/rust/src/lib.rs` に `#[extendr] fn compute_ois_swap_dates(index, evaluation_date: Vec<i32>, tenor: Vec<String>, settlement_days: i32) -> List` を足し、`extendr_module!` に登録する。評価日とテナーは R 側で同じ長さにそろえ、3 列（`effective`、`termination`、`maturity`）をそれぞれ `value_list` で返す。`settlement_days` が負なら入力エラー。
+2. `crates/riemann-r/R/ois_swaps.R` に R 関数を足す。返り値は `effective_date`、`termination_date`、`maturity_date` の tibble。スワップには `termination_date`（調整前）を渡す。roxygen2 で `man/` と `NAMESPACE` を更新する（roxygen2 は入っている）。
+3. `tests/testthat` に、`tests/golden/ois_swap_dates.csv` の一部と 7Y（2026-09-10、日本、受渡 2 → 開始 2026-09-14、満期 2033-09-14）を確かめるテストを足す。
+4. 全テストと clippy、`R CMD INSTALL`（別の R が DLL を使っていたら、別のライブラリー `-l` に入れる）。
+5. Carmine Studio の `TONA_SWAP_DATES` を置き換え、`reconciliation/RECONCILIATION.md` 6 章 #1 を更新する。
+6. 版を 0.3.5 にして公開する（下の「配布」の手順）。
+
+**ユーザーの未回答の要望**（2026-11-18）：「Windows だけでいいので、インストール先で Rust が不要な形で git に上げたい」。**`remotes::install_github()` は常にソースからビルドするので、いまは Rust と Rtools が要る**（今の `main` で動作確認済み）。Rust を不要にする案は次の二つ。どちらも、リンクのために **Rtools は要る**。
+
+- (a) ビルド済みの静的ライブラリー `libriemann_r.a` を、版ごとに Releases に置き、`configure.win` がそれを取って `Makevars.win` の cargo を飛ばす。ソースの更新と食い違わないよう、DESCRIPTION の版とコミットの照合が要る。
+- (b) 入れ方を `install.packages(repos = "https://besuke.github.io/Riemann")` に一本化する（Rtools も要らない。すでに動く）。
+
+ユーザーに、(a) を作るか、(b) で足りるかを確かめる。
+
+### 完了したもの
+
+**実装と照合**（詳細と件数は各仕様書の照合結果の節）：
+
+- P1〜P15、P11-1〜P11-6、TRS、IRRBB は実装と照合が済んでいる。
 - 残っている主なもの：
   - P3：±8% で振れる入力の 3 カーブが、入力気配の再現基準に届かない（`spec_ois.md` 10.3 節）。GaussQuant・Coral Book との照合（仕様書 7 章）は未実施。
   - P9：LMM 全体は未実装（P11-6 は Caplet と相関の例の再現だけ）。
   - P10：スマイルの下での経路依存の条項、相関の推定、FX と金利の同時校正は未対応（`spec_prdc.md`）。
   - P14：DRC は関係を整理しただけで、基準本文の確認と実装は未了。
   - P1：一致は QuantLib とのもので、実際の市場休日は検証していない。
-- QuantLib Guide と公式 Examples：`quantlib_guide_inventory.md` 4 章の優先順位 1〜6 は実装済み。残りは「後回し」の項目、公式 Examples のサンプル追加、比較資料の全体の再描画。サンプルは `crates/riemann-r/inst/examples/quantlib_guide/` と `quantlib_examples/`。Guide の表示との差は、QuantLib 1.42 と一致すれば「版の差」として記録する。
+- QuantLib Guide と公式 Examples：`quantlib_guide_inventory.md` 4 章の優先順位 1〜6 は実装済み。残りは「後回し」の項目、公式 Examples のサンプル追加、比較資料の全体の再描画。サンプルは `crates/riemann-r/inst/examples/quantlib_guide/` と `quantlib_examples/`。
 - L1〜L3（TypeScript の Node 版、ブラウザー版、Excel）は未着手。
 
 **配布（`docs/spec_r.md` 8 章）**：
 
 - 最新は 0.3.4（2026-11-18）。
   - **Windows の入れ方（Rust なし）**：`install.packages("RiemannFinMath", repos = c("https://besuke.github.io/Riemann", "https://cloud.r-project.org"))`。公開した URL から、Rust を外した PATH で導入と smoke test 34 項目を確認済み（`dist/smoke_from_pages_0.3.4.log`）。
-  - `remotes::install_github()` は常にソースからビルドするので Rust が要る。`subdir = "crates/riemann-r"` が必要で、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust がなければ `configure.win` が上の入れ方を示して止まる。
+  - `remotes::install_github("besuke/Riemann", subdir = "crates/riemann-r")` は、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust と Rtools が要る。2026-11-18 に今の `main` で再確認済み（34 項目成功）。`subdir` なしは 404。Rust がなければ `configure.win` が上の入れ方を示して止まる。
   - Windows zip と tar.gz は GitHub Releases の `v0.3.4` にもある。
 - **`gh-pages` ブランチ**は R リポジトリ（zip、tar.gz、`PACKAGES` 索引）だけを持つ配布専用で、`main` とは別。GitHub Pages が https://besuke.github.io/Riemann/ で公開する。Riemann の作業フォルダーには取り込まず、一時フォルダーから push する。
-  - 版を上げるとき：(1) `DESCRIPTION` の版を変える。(2) zip を `R CMD INSTALL --build -l <別ライブラリー>`、tar.gz を `tools/package/build_source_package.R` で作る。(3) `Rscript tools/package/build_binary_repo.R <zip> <tar.gz> <フォルダー>` で索引を更新する（古い版は残り、`install.packages` は新しい版を選ぶ）。(4) そのフォルダーを `gh-pages` に push する（Pages の設定は済み）。(5) 公開 URL から導入して smoke test を実行する。
+  - **版を上げるとき**：(1) `DESCRIPTION` の版を変える。(2) zip を `R CMD INSTALL --build -l <別ライブラリー>`、tar.gz を `tools/package/build_source_package.R` で作る。(3) `Rscript tools/package/build_binary_repo.R <zip> <tar.gz> <フォルダー>` で索引を更新する（古い版は残り、`install.packages` は新しい版を選ぶ）。(4) そのフォルダーを `gh-pages` に push する（Pages の設定は済み）。(5) 公開 URL から導入して smoke test を実行する。(6) Releases に `vX.Y.Z` を作る。
   - zip と tar.gz は同じ版にする。そろわないと Windows が新しいソースをビルドしようとする。ソースを置かないと、Windows の R は「このパッケージはない」と判断して失敗する。
   - 既定のライブラリーに別の R（Positron など）が `RiemannFinMath.dll` を使っていると、`R CMD INSTALL --build` が失敗する。別のライブラリーに作り、その R は終了させない。
 - tar.gz の `R CMD check` とソース導入は 0.3.0 以降、アプリ制御に止められて未完了。Windows 以外は未確認。
-- 配布ファイルの記録は `dist/MANIFEST.txt`（`dist/` は git に入れない）。
+- 配布ファイルの記録は `dist/MANIFEST.txt`（`dist/` は git に入れない）。クライアント向けの手順は `docs/client_guide.md`。
 
-**未解決の点**：
+### 未解決の点
 
 - 許容誤差内の微小な差：P2-2 は R と Rust の数学ライブラリーの差を確かめた。P2-3・P2-4 も同じ原因と考えているが、未確認の推定。
 - カーブ（P2-3）について、v1.42 と `70f240f` の差は確認していない。
 - `docs/library_comparison.md` の先頭の空行 1 行は由来不明で、扱いはユーザーに確認していない。
+- Infrago Quant に別の会話の未コミットの変更がある（2026-11-18 に 34 件）。頼まれない限り触らない。
 
-**次の候補**（ユーザーの指示待ち）：
+### その他の候補（ユーザーの指示待ち）
 
-- クライアントの要望（「クライアントのニーズ」の表）。すぐ足せるのは、OIS スワップを期間で作る機能（Carmine Studio）。
-- 上の「残っている主なもの」。
+- クライアントの要望（「クライアントのニーズ」の表）。
 - 比較資料の判定できない項目（PRDC、第 5・13 章）を減らすか。
 - 配布の Windows 以外の確認。
+
+### 別の PC でダウンロードして続ける
+
+1. 取得：`git clone https://github.com/besuke/Riemann.git`（または `git pull`）。RStudio では `Riemann.Rproj` を開く。
+2. 準備：R 4.6、Rtools 4.5、Rust（`rustup target add x86_64-pc-windows-gnu`）、Claude Code。R パッケージだけ使うなら、上の `install.packages(...)` の 1 行で足りる。
+3. 起動：`Riemann-Claude.bat`（または `Riemann-Claude.ps1`）を実行する。この PC に会話の履歴があれば続きから、なければ新しい会話で始まる。新しい会話では、**このファイル（CLAUDE.md）の「まず読む」から続ける**。
+4. 会話の履歴と記憶は PC ごとにあり、git には入らない。引継ぎはこのファイルが担う。作業を切るときは、ここを更新してコミットする。
+5. クライアント（`../carmine-studio`、`../InfragoQuant`、`../crimson-proof`）と参照元（`../coral-book`、`../GaussQuant`）は、同じ親フォルダーに clone する。
 
 ## QuantLib との比較資料（`comparison/`）
 
@@ -173,7 +210,7 @@ Coral Book の入力と計算例で、RiemannFinMath を基準と比べる英語
     2. 終了コードと、最後の進捗行（章名と直前のチャンク名）を記録する。
     3. その章だけを `quarto render <章>.qmd --log-level debug` で描画する。
     4. そのうえで全体を再実行する。
-- 会話の再開：デスクトップ（`C:\Users\besuk\OneDrive\デスクトップ`）の `Riemann-Claude.bat` が、Riemann のフォルダーで `claude --continue` を起動する。
+- 会話の再開：リポジトリ直下の `Riemann-Claude.bat`（または `.ps1`）が、そのフォルダーで `claude --continue` を起動する（会話がなければ新しい会話）。デスクトップの `Riemann-Claude.bat` は旧パス固定の複製で、リポジトリのものを使う。
 
 ## Riemann 固有の環境
 

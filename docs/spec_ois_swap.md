@@ -63,4 +63,13 @@ GaussQuant の `trade_ois_swap_py_GQH` を通して、QuantLib の `MakeOIS` で
 
 - EONIA の例（II-3.5、II-3.6）：OIS は 4 指標に限定する方針のため対象外。
 - IBOR のスワップとマルチカーブ（II-3.4.3、II-3.4.4）：OIS に絞る方針のため対象外。割引カーブだけは別に渡せる。
-- `MakeOIS` のテナー指定と受渡日数からの開始日。R は効果日と満期日を渡す。
+- `MakeOIS` のテナー指定の **R の入口**（Rust の中核は 7 章で完了）。R は効果日と満期日を渡す形のまま。
+
+## 7. テナーからの日付（2026-11-18、Carmine Studio の要望）
+
+【実行照合済み・Rust の中核】`riemann::ois::compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days)` が、QuantLib `MakeOIS(swapTenor, index)` に受渡日数を指定した場合の日付を返す。`OisSwapDates` は `effective_date`、`termination_date`（調整前。スワップにはこちらを渡す）、`maturity_date`（修正翌営業日で調整した値。QuantLib のスワップが報告する満期日）を持つ。
+
+- **規則**：評価日を翌営業日に寄せ、受渡日数だけ営業日で進めて開始日とする。満期日は、開始日にテナーを足し、開始日がその月の最終営業日でテナーが 1 か月以上なら月末にする。それを修正翌営業日で調整したものが `maturity_date`。
+- **照合**（`tools/golden/p11_ois_swap_dates.R`、`tests/golden/ois_swap_dates.csv`、`tests/golden_ois_swap_dates.rs`）：QuantLib R 1.42 の `MakeOIS`。4 指標、評価日 6 区間（週末・祝日・月末・年末年始と、Carmine Studio の 2026-09-10 を含む）、テナー 13 種（1D から 30Y、7Y を含む）、受渡日数 0〜3 の 13,520 件。**成功 13,514 件で開始日と満期日が完全一致**。QuantLib が失敗する 6 件（12/30〜12/31 の 1 日 OIS で、スケジュールが 1 日に縮退）は、調整前の満期日を渡したスワップの作成も同じく失敗する。
+- **気づいた点**：満期日を「開始日＋テナー」のままにしても、調整しても、スケジュールの結果は同じだが、1 日 OIS の縮退の再現には調整前の日付を渡す必要がある。Carmine Studio の今の作り方（`seq()` で 7 年後）は、2026-09-10 の条件では一致する（開始 2026-09-14、満期 2033-09-14）。
+- **未了（引継ぎ）**：R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L)`【設計案】。`crates/riemann-r/src/rust/src/lib.rs` に extendr のラッパー（評価日とテナーのベクトル、3 列を返す）、`R/ois_swaps.R` に R 関数、roxygen と NAMESPACE、テスト、使用例を足し、Carmine Studio の `server/R/tona_ois_model.R` の `TONA_SWAP_DATES` をこの関数に置き換える。版は 0.3.5 に上げて公開する。

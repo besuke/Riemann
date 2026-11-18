@@ -248,6 +248,38 @@ fn ois_helper(
     payment_frequency: u32,
     payment_lag: u32,
 ) -> Result<Helper, Error> {
+    let (dates, _) = compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days)?;
+    let (start, end) = (dates.effective_date, dates.termination_date);
+    let end_of_month = index.calendar.is_end_of_month(start)?;
+    let periods = periods_between(index, start, end, end_of_month, payment_frequency, payment_lag)?;
+    Ok(Helper::Ois { periods })
+}
+
+/// The dates of an OIS made from a tenor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OisSwapDates {
+    /// The start of the swap.
+    pub effective_date: Date,
+    /// The termination date as `MakeOIS` passes it to the schedules: the effective date plus the tenor,
+    /// not adjusted. Give this one to the swap; its schedules adjust it.
+    pub termination_date: Date,
+    /// The termination date adjusted modified following: the maturity date QuantLib's swap reports.
+    pub maturity_date: Date,
+}
+
+/// The dates of an OIS of `tenor` that starts `settlement_days` business days after `evaluation_date`
+/// (QuantLib `MakeOIS(swapTenor, index)` with settlement days, at v1.42). The second value is the
+/// end-of-month flag of the schedules.
+///
+/// On a non-business evaluation date the settlement days count from the next business day. The
+/// termination date is the effective date plus the tenor, and the end of that month when the effective
+/// date is the last business day of its month and the tenor is at least a month.
+pub fn compute_ois_swap_dates(
+    index: &OvernightIndex,
+    evaluation_date: Date,
+    tenor: Period,
+    settlement_days: u32,
+) -> Result<(OisSwapDates, bool), Error> {
     let calendar = &index.calendar;
     let days = |n: i32| Period::new(n, TimeUnit::Days);
     let reference = calendar.adjust(evaluation_date, Following)?;
@@ -258,8 +290,12 @@ fn ois_helper(
     if end_of_month && allows_end_of_month(tenor) {
         end = calendar.end_of_month(end)?;
     }
-    let periods = periods_between(index, start, end, end_of_month, payment_frequency, payment_lag)?;
-    Ok(Helper::Ois { periods })
+    let dates = OisSwapDates {
+        effective_date: start,
+        termination_date: end,
+        maturity_date: calendar.adjust(end, ModifiedFollowing)?,
+    };
+    Ok((dates, end_of_month))
 }
 
 /// The periods of an overnight leg from `start` to `end` (QuantLib `MakeOIS`, as in `ois_helper`).
