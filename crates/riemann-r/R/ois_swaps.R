@@ -36,6 +36,49 @@ create_ois_swap <- function(side, nominal, effective_date, termination_date, ind
                  termination_date = as_date(as_serial(termination_date))), class = "riemann_ois_swap")
 }
 
+
+#' Dates of an overnight indexed swap made from a tenor
+#'
+#' The effective and the termination date that QuantLib's `MakeOIS(swapTenor, index)` gives a swap of
+#' a tenor such as `"7Y"`, which starts `settlement_days` business days after the evaluation date.
+#' [create_ois_swap()] takes dates, so this is the step before it.
+#'
+#' The evaluation date moves to the next business day of the index's calendar if it is not one, and
+#' the settlement days are counted from there. The termination date is the effective date plus the
+#' tenor, and the end of that month when the effective date is the last business day of its month and
+#' the tenor is at least a month. Give `termination_date` to [create_ois_swap()]: its schedules adjust
+#' it modified following. `maturity_date` is that adjusted date, the one QuantLib's swap reports.
+#'
+#' @param index `"tonar"`, `"estr"`, `"sofr"` or `"sonia"`.
+#' @param evaluation_date Dates: `Date` or ISO strings. Recycled with `tenor`.
+#' @param tenor Strings such as `"1W"`, `"3M"`, `"7Y"`. Recycled with `evaluation_date`.
+#' @param settlement_days Business days from the evaluation date to the effective date; 2 is
+#'   QuantLib's default and not a market convention.
+#' @param on_error `"stop"` or `"na"`; see [RiemannFinMath-package].
+#' @return A tibble with `effective_date`, `termination_date` and `maturity_date`.
+#' @examples
+#' dates <- compute_ois_swap_dates("tonar", "2026-09-10", "7Y")
+#' dates
+#' create_ois_swap("payer", 1e10, dates$effective_date, dates$termination_date, "tonar", 0.012)
+#' @export
+compute_ois_swap_dates <- function(index, evaluation_date, tenor, settlement_days = 2L, on_error = "stop") {
+  if (length(evaluation_date) == 0L || length(tenor) == 0L) stop("`evaluation_date` and `tenor` must not be empty.", call. = FALSE)
+  if (!is.character(tenor)) stop("`tenor` must be strings such as \"7Y\".", call. = FALSE)
+  if (length(settlement_days) != 1L || is.na(settlement_days)) stop("`settlement_days` must be one whole number.", call. = FALSE)
+  n <- max(length(evaluation_date), length(tenor))
+  if (n %% length(evaluation_date) != 0L || n %% length(tenor) != 0L) {
+    stop("`evaluation_date` and `tenor` must have lengths that recycle.", call. = FALSE)
+  }
+  rows <- checked(.Call(
+    wrap__compute_ois_swap_dates, index, rep_len(as_serial(evaluation_date), n), rep_len(tenor, n), as.integer(settlement_days)
+  ))
+  # The three columns fail together, so only the first one reports the error.
+  effective <- finish_values(rows$effective, on_error)
+  termination <- suppressWarnings(finish_values(rows$termination, "na"))
+  maturity <- suppressWarnings(finish_values(rows$maturity, "na"))
+  tibble::tibble(effective_date = as_date(effective), termination_date = as_date(termination), maturity_date = as_date(maturity))
+}
+
 #' @export
 print.riemann_ois_swap <- function(x, ...) {
   cat("<riemann_ois_swap>", x$side, x$index, "fixed", x$fixed_rate, "maturing", format(x$termination_date), "\n")

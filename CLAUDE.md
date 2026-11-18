@@ -36,7 +36,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 | クライアント | 要望 | 出典 | Riemann の状態 |
 |---|---|---|---|
-| Carmine Studio | OIS スワップを期間（`7Y`）で作る（`MakeOIS` の規則） | `reconciliation/RECONCILIATION.md` 6 章 #1 | 未対応。`create_ois_swap()` は開始日と満期日だけを受け取る。今はクライアント側でカレンダー関数から日付を作っている |
+| Carmine Studio | OIS スワップを期間（`7Y`）で作る（`MakeOIS` の規則） | `reconciliation/RECONCILIATION.md` 6 章 #1 | **対応済み（2026-11-18、未公開）**：`compute_ois_swap_dates()`。公開は 0.3.5。クライアント側の置き換えは未了（「まず読む」） |
 | Carmine Studio | 照合に使った RiemannFinMath のコミットを固定する | 同 #5 | 0.3.2 は Releases の zip と `RemoteSha` で固定できるようになった。クライアント側の記録は未更新 |
 | Carmine Studio | ブラウザーで直接動かす（WebAssembly 版） | 同 #6 | L1〜L3 は未着手 |
 | Carmine Studio | 元本リセット型 CCS、FX スワップによる受渡日の調整、CCS の期間構造の校正 | `README.md` の円換算 ASW の「未対応」 | 一部の部品（`create_xccy_instruments` の `resetting`、`bootstrap_xccy_curve`）はある。クライアントから使える形かは未確認 |
@@ -107,23 +107,20 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ### まず読む：いまの作業と次の一手
 
-**作業中：OIS スワップをテナー（`7Y` など）から作る機能**（Carmine Studio の要望）。
+**作業中：OIS スワップをテナー（`7Y` など）から作る機能**（Carmine Studio の要望）。**引継ぎはこのファイルだけに書く**（仕様書の `docs/spec_ois_swap.md` 7 章は仕様と照合結果だけ）。
 
 | 層 | 状態 |
 |---|---|
-| Rust の中核 `riemann::ois::compute_ois_swap_dates` | **完了**。QuantLib 1.42 `MakeOIS` と 13,520 件で照合し、成功 13,514 件は完全一致、失敗 6 件も同じ（`docs/spec_ois_swap.md` 7 章） |
-| R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L)` | **未了**。下の手順 |
-| Carmine Studio の置き換え | 未了。`server/R/tona_ois_model.R` の `TONA_SWAP_DATES` を新しい関数にする |
-| 版と公開 | 未了。0.3.5 に上げる |
+| Rust の中核 `riemann::ois::compute_ois_swap_dates` | **完了**。QuantLib 1.42 `MakeOIS` と 13,520 件で照合し、成功 13,514 件は完全一致、失敗 6 件も同じ（`docs/spec_ois_swap.md` 7 章）。コミット済み（`d8c5ba7`） |
+| R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L, on_error)` | **実装とテストは完了、コミット済み（2026-11-18）**。ラッパーは `crates/riemann-r/src/rust/src/lib.rs`、R 関数は `R/ois_swaps.R`、ヘルプは `man/compute_ois_swap_dates.Rd`、テストは `tests/testthat/test-ois-swap-dates.R`。R のテスト全体は 156 件成功、Rust は 278 件成功、`cargo clippy --all-targets` は通る |
+| Carmine Studio の置き換え | **未了**。`../carmine-studio/server/R/tona_ois_model.R` の `TONA_SWAP_DATES` を `compute_ois_swap_dates("tonar", evaluation_date, "7Y")` に置き換える。結果は同じ日付（開始 2026-09-14、満期 2033-09-14）のはず。置き換えたら `reconciliation/RECONCILIATION.md` 6 章 #1 を「解消」に更新する（クライアントの会話で、頼まれたときだけコミット） |
+| 版と公開 | **未了**。`DESCRIPTION` を 0.3.5 にして、下の「配布」の手順で公開する。公開してから、Carmine Studio は `stopifnot(packageVersion("RiemannFinMath") >= "0.3.5")` を足す |
 
-**R の関数の手順**（Rust の中核ができているので、あとは R の入口だけ）：
+**注意**：
 
-1. `crates/riemann-r/src/rust/src/lib.rs` に `#[extendr] fn compute_ois_swap_dates(index, evaluation_date: Vec<i32>, tenor: Vec<String>, settlement_days: i32) -> List` を足し、`extendr_module!` に登録する。評価日とテナーは R 側で同じ長さにそろえ、3 列（`effective`、`termination`、`maturity`）をそれぞれ `value_list` で返す。`settlement_days` が負なら入力エラー。
-2. `crates/riemann-r/R/ois_swaps.R` に R 関数を足す。返り値は `effective_date`、`termination_date`、`maturity_date` の tibble。スワップには `termination_date`（調整前）を渡す。roxygen2 で `man/` と `NAMESPACE` を更新する（roxygen2 は入っている）。
-3. `tests/testthat` に、`tests/golden/ois_swap_dates.csv` の一部と 7Y（2026-09-10、日本、受渡 2 → 開始 2026-09-14、満期 2033-09-14）を確かめるテストを足す。
-4. 全テストと clippy、`R CMD INSTALL`（別の R が DLL を使っていたら、別のライブラリー `-l` に入れる）。
-5. Carmine Studio の `TONA_SWAP_DATES` を置き換え、`reconciliation/RECONCILIATION.md` 6 章 #1 を更新する。
-6. 版を 0.3.5 にして公開する（下の「配布」の手順）。
+- 既定のライブラリーの `RiemannFinMath` は 0.3.2 のまま（別の R が DLL を使っている）。新しい関数を試すには、`R CMD INSTALL -l <別ライブラリー> crates/riemann-r` に入れる（今回は `C:/rfmdev/lib`）。
+- `crates/riemann-r`（ワークスペースの外）の `cargo clippy` は、もとから 13 件のエラーが出る（引数の多さ、不要な型変換など）。今回の追加分ではない。プロジェクトの検査は、ルートの `cargo clippy --all-targets -- -D warnings`。
+- 1 日の OIS が QuantLib で縮退して失敗するケース（年末年始）は、`compute_ois_swap_dates` は日付を返し、`create_ois_swap` が同じく失敗する（テストで確認済み）。
 
 **決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/Riemann")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
 

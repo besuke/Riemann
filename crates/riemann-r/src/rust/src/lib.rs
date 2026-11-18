@@ -312,6 +312,28 @@ fn compute_yield_from_price(
     outcome(rows())
 }
 #[extendr]
+fn compute_ois_swap_dates(index: &str, evaluation_date: Vec<i32>, tenor: Vec<String>, settlement_days: i32) -> List {
+    let run = || -> Core<List> {
+        let index = names::parse_overnight_index(index)?;
+        let settlement_days = u32::try_from(settlement_days)
+            .map_err(|_| riemann::Error::InvalidInput { reason: format!("settlement_days must not be negative ({settlement_days})") })?;
+        let rows: Vec<Core<riemann::ois::OisSwapDates>> = evaluation_date
+            .iter()
+            .zip(&tenor)
+            .map(|(&d, t)| Ok(riemann::ois::compute_ois_swap_dates(&index, date(d)?, names::parse_period(t)?, settlement_days)?.0))
+            .collect();
+        let column = |pick: fn(&riemann::ois::OisSwapDates) -> riemann::Date| -> List {
+            value_list(rows.iter().map(|r| r.as_ref().map(|d| f64::from(pick(d).serial())).map_err(Clone::clone)).collect())
+        };
+        Ok(list!(
+            effective = column(|d| d.effective_date),
+            termination = column(|d| d.termination_date),
+            maturity = column(|d| d.maturity_date)
+        ))
+    };
+    run().unwrap_or_else(failure)
+}
+#[extendr]
 #[allow(clippy::too_many_arguments)]
 fn create_ois_swap(
     side: &str,
@@ -4364,6 +4386,7 @@ extendr_module! {
     fn compute_duration;
     fn compute_yield_from_price;
     fn create_ois_swap;
+    fn compute_ois_swap_dates;
     fn compute_ois_swap_value;
     fn compute_ois_swap_cashflows;
     fn compute_ois_swap_daily_rates;
