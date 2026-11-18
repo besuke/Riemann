@@ -11,7 +11,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | フォルダー | 内容 | GitHub | 扱い |
 |---|---|---|---|
 | `carmine-studio` | Carmine Studio『エンタープライズ金融モデル』（旧 LagrangeFinLab）。React＋R サーバー（httpuv）。画面 8081、R API 8787 | besuke/carmine-studio | **クライアント** |
-| `InfragoQuant` | Infrago Quant（旧 QuantLet）。Curie の後継の業務 Web アプリ。画面 8091、R API 8790 | besuke/infrago-quant（非公開） | **クライアント** |
+| `InfragoQuant` | Infrago Quant（旧 QuantLet）。Curie の後継の業務 Web アプリ。画面 8091、R API 8790 | besuke/infrago（旧 infrago-quant。公開か非公開かは `InfragoQuant/HANDOVER.md` を見る） | **クライアント** |
 | `crimson-proof` | Crimson Proof『Leanから見た金融数学』（旧 LagrangeAcademy）。Quarto＋Lean 4。R は `R/utility_LAD.R` だけから呼ぶ | besuke/crimson-proof（公開） | **クライアント**。QuantLib を一切使わない・言及しない |
 | `coral-book` | Coral Book『金融工学の応用基礎』（旧 LagrangeFinance）。照合の基準 | besuke/coral-book | **変更しない** |
 | `GaussQuant`、`Curie` | 既存の R の計算・業務ツール。照合の基準 | besuke/GaussQuant ほか | **変更しない** |
@@ -21,6 +21,19 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 - **クライアントが RiemannFinMath を入れる・更新する・呼ぶ方法は `docs/client_guide.md`**。クライアントの `CLAUDE.md` や README からここを指す。
 - 別の会話が同じリポジトリで作業中のことがある。未コミットの変更があるリポジトリの共有ファイルは、頼まれない限り編集しない（2026-11-18、Infrago Quant に 34 件の未コミットの変更があった）。
 - RiemannFinMath を入れ直す前に、その DLL を使っている R API（Infrago Quant、Carmine Studio）を止める。
+
+### 引継ぎの所在（入口はこの表。正本は各リポジトリに 1 つだけ）
+
+内容は重ねて書かない。このファイルの「状態と引継ぎ」は **Riemann の作業**の正本で、クライアントの状態はそれぞれの正本を読む（2026-11-18 に整理）。
+
+| 対象 | 正本 | 備考 |
+|---|---|---|
+| Riemann（計算サーバー）と全体 | このファイルの「状態と引継ぎ」 | |
+| Infrago Quant | `../InfragoQuant/HANDOVER.md` | 状態・未了・新しい PC での準備はすべてここ。`CLAUDE.md` と README は指すだけ。ブランチ `rename-infrago-quant-and-analytics`（PR #1）が未マージで、別の会話の未コミットの変更がある |
+| Crimson Proof | `../crimson-proof/CLAUDE.md` の「現在の状態と次の作業（引継ぎ）」 | **古い（2026-11-10）**。章の進み具合は、旧名 LagrangeAcademy の会話の記憶（`~/.claude/projects/C--AnalyticFin-Projects-LagrangeAcademy/memory/project-book-status.md`、2026-11-14）と食い違う。Crimson Proof の会話で、リポジトリの状態（`git log`、`_quarto.yml`）を確かめてから、`CLAUDE.md` の節を書き直す |
+| Carmine Studio | `../carmine-studio/README.md` と `reconciliation/RECONCILIATION.md` | 専用の引継ぎ節はない。Riemann への要望は上の「要望と未対応」の表 |
+
+**デスクトップの起動用ファイル**（`C:\Users\besuk\OneDrive\デスクトップ`）：`Riemann-Claude.bat`（旧パス固定の複製。リポジトリのものを使う）、`InfragoClaude.bat`、`CrimsonProof.bat`、`resume_claude_CarmineStudio.bat`、`CoralBook_Rontgen.bat`。各プロジェクトの会話を開くものなので、残す。Riemann から全体を扱う方針（この会話）では、`Riemann-Claude.bat` だけで足りる。
 
 ### クライアントのニーズ（2026-11-18 に各リポジトリを読んで整理）
 
