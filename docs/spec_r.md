@@ -195,28 +195,28 @@ P11（Z スプレッド、OIS スワップ、Hull-White の校正、Longstaff–
 
 ### 8.7 版 0.3.2：GitHub からの導入と Releases の zip【実行確認】（2026-11-18）
 
-**`remotes::install_github` が失敗した原因**【実行照合済み】：`remotes::install_github("besuke/rmql", subdir = "crates/rmql-r")` は、`crates/rmql-r` だけを `R CMD build` でソースパッケージにしてから導入する。`src/rust/Cargo.toml` は中核を `rmql = { path = "../../../rmql" }` で指すので、そのパッケージの中には中核がなく、cargo が `failed to load manifest for dependency rmql`（os error 3）で止まった。2026-11-18 にコミット `3f14521` を対象に、別ライブラリーで再現した。
+**`remotes::install_github` が失敗した原因**【実行照合済み】：`remotes::install_github("besuke/RiemannQL", subdir = "crates/rmql-r")` は、`crates/rmql-r` だけを `R CMD build` でソースパッケージにしてから導入する。`src/rust/Cargo.toml` は中核を `rmql = { path = "../../../rmql" }` で指すので、そのパッケージの中には中核がなく、cargo が `failed to load manifest for dependency rmql`（os error 3）で止まった。2026-11-18 にコミット `3f14521` を対象に、別ライブラリーで再現した。
 
-**対処**：`configure` と `configure.win`（同じ内容）を加えた。中核が隣にあれば（リポジトリからの導入）、またはソースパッケージが `rmql-core` を同梱していれば、何も変えない。どちらでもなければ、remotes が DESCRIPTION に書く `RemoteSha`（なければ `GithubSHA1`）を読み、依存を `rmql = { git = "https://github.com/besuke/rmql", rev = "<sha>" }` に書き換える。導入するパッケージと同じコミットの中核を使う。どちらの値もなければ、理由を示して止まる。この経路は Rust、Rtools、ネットワークが必要である。
+**対処**：`configure` と `configure.win`（同じ内容）を加えた。中核が隣にあれば（リポジトリからの導入）、またはソースパッケージが `rmql-core` を同梱していれば、何も変えない。どちらでもなければ、remotes が DESCRIPTION に書く `RemoteSha`（なければ `GithubSHA1`）を読み、依存を `rmql = { git = "https://github.com/besuke/RiemannQL", rev = "<sha>" }` に書き換える。導入するパッケージと同じコミットの中核を使う。どちらの値もなければ、理由を示して止まる。この経路は Rust、Rtools、ネットワークが必要である。
 
 | 確認 | 結果 |
 |---|---|
 | remotes と同じ手順の再現 | `crates/rmql-r` を短いパスに複製し、DESCRIPTION に `RemoteSha: 3f14521…` を加えて `R CMD build` と `R CMD INSTALL`。configure が中核を GitHub から取り、導入は成功。smoke test は 34 項目すべて成功 |
 | リポジトリでの configure | 何も変えない（`Cargo.toml` の差分なし） |
-| push 後の本物の `install_github` | コミット `e12a68a` で、別ライブラリーへ `remotes::install_github("besuke/rmql", ref = "main", subdir = "crates/rmql-r")`（remotes 2.5.0）。configure が同じコミットの中核を取り、導入は成功。smoke test は 34 項目すべて成功 |
+| push 後の本物の `install_github` | コミット `e12a68a` で、別ライブラリーへ `remotes::install_github("besuke/RiemannQL", ref = "main", subdir = "crates/rmql-r")`（remotes 2.5.0）。configure が同じコミットの中核を取り、導入は成功。smoke test は 34 項目すべて成功 |
 | Releases の URL からの導入 | 新しいライブラリーに CRAN の `purrr`・`tibble` と Releases の zip の URL を導入し、Rust を外した PATH で smoke test：34 項目すべて成功、終了コード 0 |
 
 **Windows バイナリ**：`rmql_0.3.2.zip` を、コミット `3f14521` の `crates/rmql-r` から `R CMD INSTALL --build` で作った（configure の追加の前だが、configure はリポジトリでは何もしないので、中身は同じ）。CRAN から `purrr` と `tibble`（依存を含め 11 個）だけを入れた新しいライブラリー `C:\rfm032\lib` に導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで smoke test を実行した：34 項目すべて成功、終了コード 0。環境変数をすべて消すと終了時に落ちるのは 8.4 節と同じ（`library(rmql)` だけのスクリプトでも同じ。`tibble` だけで起きることは 0.2.0 で確認済み）。zip は GitHub Releases の `v0.3.2` に添付する。SHA-256 は `bd994df134729b064ff9c5bf503c21c8d4e0af5bc9cd1b65e9f80f00de904add`。
 
 ### 8.8 版 0.3.4：R リポジトリ（GitHub Pages）による Rust なしの導入【実行確認】（2026-11-18）
 
-**ほかの PC で `remotes::install_github` が動かず、Rust を求められた件**：`subdir = "crates/rmql-r"` を付けない `install_github("besuke/rmql")` は `HTTP error 404` で止まる（R パッケージが `crates/rmql-r` にあるため。2026-11-18 に再現）。また `install_github` は常にソースからビルドするので、Windows でも Rust と Rtools が要る。そこで、Windows の導入はバイナリを R リポジトリから入れる形にした。
+**ほかの PC で `remotes::install_github` が動かず、Rust を求められた件**：`subdir = "crates/rmql-r"` を付けない `install_github("besuke/RiemannQL")` は `HTTP error 404` で止まる（R パッケージが `crates/rmql-r` にあるため。2026-11-18 に再現）。また `install_github` は常にソースからビルドするので、Windows でも Rust と Rtools が要る。そこで、Windows の導入はバイナリを R リポジトリから入れる形にした。
 
-**R リポジトリ**：`gh-pages` ブランチ（https://besuke.github.io/rmql/ ）が、`bin/windows/contrib/4.6/`（zip）、`src/contrib/`（tar.gz）、それぞれの `PACKAGES` 索引を持つ。`tools/package/build_binary_repo.R` が作る。
+**R リポジトリ**：`gh-pages` ブランチ（https://besuke.github.io/RiemannQL/ ）が、`bin/windows/contrib/4.6/`（zip）、`src/contrib/`（tar.gz）、それぞれの `PACKAGES` 索引を持つ。`tools/package/build_binary_repo.R` が作る。
 
 ```r
 install.packages("rmql",
-                 repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org"))
+                 repos = c("https://besuke.github.io/RiemannQL", "https://cloud.r-project.org"))
 ```
 
 | 確認 | 結果 |

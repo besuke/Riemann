@@ -36,8 +36,8 @@ error and keeps running.
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/besuke/rmql}
-  \item Report bugs at \url{https://github.com/besuke/rmql/issues}
+  \item \url{https://github.com/besuke/RiemannQL}
+  \item Report bugs at \url{https://github.com/besuke/RiemannQL/issues}
 }
 
 }

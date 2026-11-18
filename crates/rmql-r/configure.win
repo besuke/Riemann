@@ -15,7 +15,7 @@ if ! command -v cargo > /dev/null 2>&1; then
   echo "rmql: Rust (cargo) was not found, so this source package cannot be built." >&2
   echo "On Windows, install the binary instead; it needs neither Rust nor Rtools:" >&2
   echo '  install.packages("rmql",' >&2
-  echo '                   repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org"))' >&2
+  echo '                   repos = c("https://besuke.github.io/RiemannQL", "https://cloud.r-project.org"))' >&2
   echo "remotes::install_github() always builds from source." >&2
   exit 1
 fi
@@ -41,7 +41,7 @@ if [ -z "$sha" ]; then
   exit 1
 fi
 
-echo "rmql: taking the core crate from https://github.com/besuke/rmql at $sha"
-sed "s|^rmql = { path = \"../../../rmql\" }|rmql = { git = \"https://github.com/besuke/rmql\", rev = \"$sha\" }|" \
+echo "rmql: taking the core crate from https://github.com/besuke/RiemannQL at $sha"
+sed "s|^rmql = { path = \"../../../rmql\" }|rmql = { git = \"https://github.com/besuke/RiemannQL\", rev = \"$sha\" }|" \
   "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
 grep -q "rev = \"$sha\"" "$manifest" || { echo "rmql: could not rewrite $manifest" >&2; exit 1; }

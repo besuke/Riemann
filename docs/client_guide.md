@@ -7,7 +7,7 @@
 ```r
 install.packages(
   "rmql",
-  repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org")
+  repos = c("https://besuke.github.io/RiemannQL", "https://cloud.r-project.org")
 )
 ```
 
@@ -21,7 +21,7 @@ zip を直接入れる場合（ネットワークが GitHub Pages に届かな�
 ```r
 install.packages(c("purrr", "tibble"))
 install.packages(
-  "https://github.com/besuke/rmql/releases/download/v0.3.4/rmql_0.3.4.zip",
+  "https://github.com/besuke/RiemannQL/releases/download/v0.3.4/rmql_0.3.4.zip",
   repos = NULL, type = "binary"
 )
 ```
@@ -41,7 +41,7 @@ stopifnot(packageVersion("rmql") >= "0.3.4")
 ```
 
 - 照合を固定するときは、版と配布ファイルの SHA-256（`dist/MANIFEST.txt`、Releases の説明）を記録する。0.3.4 の zip は `b2e2ed00e8fe428b9716dee6c6b96f37f1e9e9ad38d513d34622d3b93a1599ab`。
-- 古い版を入れ直したいときは、Releases（https://github.com/besuke/rmql/releases）の zip を指定する。
+- 古い版を入れ直したいときは、Releases（https://github.com/besuke/RiemannQL/releases）の zip を指定する。
 
 ## 4. 呼び方のきまり
 

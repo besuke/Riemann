@@ -29,7 +29,7 @@ if [ -z "$sha" ]; then
   exit 1
 fi
 
-echo "rmql: taking the core crate from https://github.com/besuke/rmql at $sha"
-sed "s|^rmql = { path = \"../../../rmql\" }|rmql = { git = \"https://github.com/besuke/rmql\", rev = \"$sha\" }|" \
+echo "rmql: taking the core crate from https://github.com/besuke/RiemannQL at $sha"
+sed "s|^rmql = { path = \"../../../rmql\" }|rmql = { git = \"https://github.com/besuke/RiemannQL\", rev = \"$sha\" }|" \
   "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
 grep -q "rev = \"$sha\"" "$manifest" || { echo "rmql: could not rewrite $manifest" >&2; exit 1; }

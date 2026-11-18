@@ -13,18 +13,18 @@ R 4.6 用のバイナリを、GitHub Pages の R リポジトリから入れま�
 ```r
 install.packages(
   "rmql",
-  repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org")
+  repos = c("https://besuke.github.io/RiemannQL", "https://cloud.r-project.org")
 )
 ```
 
 **`remotes::install_github()` は使えません。** `install_github()` は常にソースからビルドするので、Windows でも Rust が要ります（Rust がない PC では `configure.win` が上の入れ方を示して止まります）。
 
-zip を直接入れる場合は、GitHub の Releases（https://github.com/besuke/rmql/releases）にあります。`purrr` と `tibble` は先に入れます。
+zip を直接入れる場合は、GitHub の Releases（https://github.com/besuke/RiemannQL/releases）にあります。`purrr` と `tibble` は先に入れます。
 
 ```r
 install.packages(c("purrr", "tibble"))
 install.packages(
-  "https://github.com/besuke/rmql/releases/download/v0.3.4/rmql_0.3.4.zip",
+  "https://github.com/besuke/RiemannQL/releases/download/v0.3.4/rmql_0.3.4.zip",
   repos = NULL, type = "binary"
 )
 ```
@@ -32,7 +32,7 @@ install.packages(
 ### GitHub から（ソース）：Rust が必要（Windows では Rtools も）
 
 ```r
-remotes::install_github("besuke/rmql", subdir = "crates/rmql-r")
+remotes::install_github("besuke/RiemannQL", subdir = "crates/rmql-r")
 ```
 
 R パッケージは `crates/rmql-r` にあるので、`subdir` が必要です。中核の crate（`crates/rmql`）はこのフォルダーの外にあるため、`configure` が DESCRIPTION の `RemoteSha`（remotes が書くコミット）を読み、同じコミットの中核を cargo が GitHub から取ります。Windows では Rtools 4.5 と Rust（`rustup target add x86_64-pc-windows-gnu`）、ネットワークが必要です。

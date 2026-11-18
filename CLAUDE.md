@@ -136,11 +136,11 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 - `crates/rmql-r`（ワークスペースの外）の `cargo clippy` は、もとから 13 件のエラーが出る（引数の多さ、不要な型変換など）。今回の追加分ではない。プロジェクトの検査は、ルートの `cargo clippy --all-targets -- -D warnings`。
 - 1 日の OIS が QuantLib で縮退して失敗するケース（年末年始）は、`compute_ois_swap_dates` は日付を返し、`create_ois_swap` が同じく失敗する（テストで確認済み）。
 
-**決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/rmql")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
+**決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/RiemannQL")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
 
 検討したが採用しなかった案：ビルド済みの静的ライブラリー `librmql_r.a`（約 35 MB）を Releases に置き、`configure.win` が `RemoteSha` と SHA-256 の一致を確かめて取得して cargo を飛ばす案。リンクのために Rtools は要るままで、タグごとの添付も要るので、(b) で足りるとしてやめた。必要になったら、版・コミット・SHA-256 が一致するときだけ使い、不一致なら cargo にもどす形にする。
 
-**検討中（2026-11-19、ユーザー）：パッケージ名を `rmql`（Rust Mathematical Quantitative Library）に改める案。** 「rmql」がrmql・ブラザーズを連想させ、金融では縁起が悪いかもしれないため。**未決定・未着手**。影響は大きい（R パッケージ名 `rmql`、リポジトリ名・crate 名 `rmql`・`rmql-r`、公開 URL `besuke.github.io/rmql`、3 つのクライアントの `rmql::` の呼び出し、配布物、文書）。決める点：新しい名前をどの範囲に付けるか（R パッケージだけか、crate・リポジトリも）、関数名は変えないか、旧名の互換期間を置くか。決めるまで名前は変えない。
+**決定（2026-11-19、ユーザー）：名前を改めた。** R パッケージ名・crate 名は `rmql`（Rust Mathematical Quantitative Library。`rmql`、`rmql-r`）、GitHub のリポジトリ名は `RiemannQL`（`besuke/RiemannQL`。公開 URL は https://besuke.github.io/RiemannQL/）。理由：「リーマン」がリーマン・ブラザーズを連想させ、金融では縁起が悪いかもしれないため。関数名は変えていない。旧名の互換パッケージは作っていない。**済み**：コードと文書の名前（2026-11-19、ブランチ `rename-to-rmql`、テスト・clippy 合格）、GitHub のリポジトリの改名（`origin` も更新）。**未了**：`rename-to-rmql` を `main` に入れること、フォルダー名 `C:\AnalyticFin\Projects\Riemann` を変えること、新しい名前の版（`rmql` 0.4.0 を想定）を gh-pages に公開すること（公開するまで、`https://besuke.github.io/RiemannQL/` の R リポジトリには旧名 `RiemannFinMath` の古い版が残る）、クライアント側の `rename-to-rmql` を各 `main` や作業ブランチに入れること。Coral Book と GaussQuant は変更しない（Coral Book のフォルダー名 `part2_quantive_riemann` などはそのまま）。
 
 ### 完了したもの
 
@@ -159,10 +159,10 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 **配布（`docs/spec_r.md` 8 章）**：
 
 - 最新は 0.3.4（2026-11-18）。
-  - **Windows の入れ方（Rust なし）**：`install.packages("rmql", repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org"))`。公開した URL から、Rust を外した PATH で導入と smoke test 34 項目を確認済み（`dist/smoke_from_pages_0.3.4.log`）。
-  - `remotes::install_github("besuke/rmql", subdir = "crates/rmql-r")` は、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust と Rtools が要る。2026-11-18 に今の `main` で再確認済み（34 項目成功）。`subdir` なしは 404。Rust がなければ `configure.win` が上の入れ方を示して止まる。
+  - **Windows の入れ方（Rust なし）**：`install.packages("rmql", repos = c("https://besuke.github.io/RiemannQL", "https://cloud.r-project.org"))`。公開した URL から、Rust を外した PATH で導入と smoke test 34 項目を確認済み（`dist/smoke_from_pages_0.3.4.log`）。
+  - `remotes::install_github("besuke/RiemannQL", subdir = "crates/rmql-r")` は、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust と Rtools が要る。2026-11-18 に今の `main` で再確認済み（34 項目成功）。`subdir` なしは 404。Rust がなければ `configure.win` が上の入れ方を示して止まる。
   - Windows zip と tar.gz は GitHub Releases の `v0.3.4` にもある。
-- **`gh-pages` ブランチ**は R リポジトリ（zip、tar.gz、`PACKAGES` 索引）だけを持つ配布専用で、`main` とは別。GitHub Pages が https://besuke.github.io/rmql/ で公開する。rmql の作業フォルダーには取り込まず、一時フォルダーから push する。
+- **`gh-pages` ブランチ**は R リポジトリ（zip、tar.gz、`PACKAGES` 索引）だけを持つ配布専用で、`main` とは別。GitHub Pages が https://besuke.github.io/RiemannQL/ で公開する。rmql の作業フォルダーには取り込まず、一時フォルダーから push する。
   - **版を上げるとき**：(1) `DESCRIPTION` の版を変える。(2) zip を `R CMD INSTALL --build -l <別ライブラリー>`、tar.gz を `tools/package/build_source_package.R` で作る。(3) `Rscript tools/package/build_binary_repo.R <zip> <tar.gz> <フォルダー>` で索引を更新する（古い版は残り、`install.packages` は新しい版を選ぶ）。(4) そのフォルダーを `gh-pages` に push する（Pages の設定は済み）。(5) 公開 URL から導入して smoke test を実行する。(6) Releases に `vX.Y.Z` を作る。
   - zip と tar.gz は同じ版にする。そろわないと Windows が新しいソースをビルドしようとする。ソースを置かないと、Windows の R は「このパッケージはない」と判断して失敗する。
   - 既定のライブラリーに別の R（Positron など）が `rmql.dll` を使っていると、`R CMD INSTALL --build` が失敗する。別のライブラリーに作り、その R は終了させない。
@@ -184,7 +184,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ### 別の PC でダウンロードして続ける
 
-1. 取得：`git clone https://github.com/besuke/rmql.git`（または `git pull`）。RStudio では `rmql.Rproj` を開く。
+1. 取得：`git clone https://github.com/besuke/RiemannQL.git`（または `git pull`）。RStudio では `rmql.Rproj` を開く。
 2. 準備：R 4.6、Rtools 4.5、Rust（`rustup target add x86_64-pc-windows-gnu`）、Claude Code。R パッケージだけ使うなら、上の `install.packages(...)` の 1 行で足りる。
 3. 起動：`rmql-Claude.bat`（または `rmql-Claude.ps1`）を実行する。この PC に会話の履歴があれば続きから、なければ新しい会話で始まる。新しい会話では、**このファイル（CLAUDE.md）の「まず読む」から続ける**。
 4. 会話の履歴と記憶は PC ごとにあり、git には入らない。引継ぎはこのファイルが担う。作業を切るときは、ここを更新してコミットする。
@@ -206,7 +206,7 @@ Coral Book の入力と計算例で、rmql を基準と比べる英語の資料�
 - パッケージの導入は `R CMD INSTALL`（`devtools::install` は pak の DLL がアプリ制御で止められる）。
 - **rmql の入れ方**：
   - 開発中：ルートで `R CMD INSTALL crates/rmql-r`。Rust の `x86_64-pc-windows-gnu` と Rtools が必要。
-  - 配布版：GitHub Releases の Windows zip（Rust 不要）、または `remotes::install_github("besuke/rmql", subdir = "crates/rmql-r")`（`docs/spec_r.md` 8.7 節）。
+  - 配布版：GitHub Releases の Windows zip（Rust 不要）、または `remotes::install_github("besuke/RiemannQL", subdir = "crates/rmql-r")`（`docs/spec_r.md` 8.7 節）。
   - パスが長いとビルドが `LNK1104` で失敗する。短いパスで行う。
 - **Smart App Control** が、新しくビルドした未署名の実行ファイルを止めることがある。
   - 症状：`os error 4551`、`Permission denied`。
