@@ -125,12 +125,9 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 5. Carmine Studio の `TONA_SWAP_DATES` を置き換え、`reconciliation/RECONCILIATION.md` 6 章 #1 を更新する。
 6. 版を 0.3.5 にして公開する（下の「配布」の手順）。
 
-**ユーザーの未回答の要望**（2026-11-18）：「Windows だけでいいので、インストール先で Rust が不要な形で git に上げたい」。**`remotes::install_github()` は常にソースからビルドするので、いまは Rust と Rtools が要る**（今の `main` で動作確認済み）。Rust を不要にする案は次の二つ。どちらも、リンクのために **Rtools は要る**。
+**決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/Riemann")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
 
-- (a) ビルド済みの静的ライブラリー `libriemann_r.a` を、版ごとに Releases に置き、`configure.win` がそれを取って `Makevars.win` の cargo を飛ばす。ソースの更新と食い違わないよう、DESCRIPTION の版とコミットの照合が要る。
-- (b) 入れ方を `install.packages(repos = "https://besuke.github.io/Riemann")` に一本化する（Rtools も要らない。すでに動く）。
-
-ユーザーに、(a) を作るか、(b) で足りるかを確かめる。
+検討したが採用しなかった案：ビルド済みの静的ライブラリー `libriemann_r.a`（約 35 MB）を Releases に置き、`configure.win` が `RemoteSha` と SHA-256 の一致を確かめて取得して cargo を飛ばす案。リンクのために Rtools は要るままで、タグごとの添付も要るので、(b) で足りるとしてやめた。必要になったら、版・コミット・SHA-256 が一致するときだけ使い、不一致なら cargo にもどす形にする。
 
 ### 完了したもの
 
