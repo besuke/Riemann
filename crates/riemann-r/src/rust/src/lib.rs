@@ -1705,6 +1705,64 @@ fn compute_hull_white_callable_bond_value(
 }
 #[extendr]
 #[allow(clippy::too_many_arguments)]
+fn compute_hull_white_callable_bond_decisions(
+    time: Vec<f64>,
+    coupon: Vec<f64>,
+    principal: Vec<f64>,
+    call_price: Vec<f64>,
+    mean_reversion: f64,
+    volatility: f64,
+    curve: ExternalPtr<OisCurve>,
+    points: i32,
+    limit: f64,
+    nodes: i32,
+    spacing: f64,
+) -> List {
+    let flows: Vec<CallableFlow> = (0..time.len())
+        .map(|i| CallableFlow {
+            time: time[i],
+            coupon: coupon[i],
+            principal: principal[i],
+            // R has turned NA into a value of NaN here, which means no call on this date
+            call_price: if call_price[i].is_nan() { None } else { Some(call_price[i]) },
+        })
+        .collect();
+    let settings = grid_settings(points, limit, nodes, spacing);
+    outcome(
+        hull_white::compute_callable_bond_decisions(&flows, mean_reversion, volatility, &curve.curve, &settings).map(|r| {
+            // one row per call date and state, in increasing time and state
+            let mut payment_time = Vec::new();
+            let mut state = Vec::new();
+            let mut short_rate = Vec::new();
+            let mut continuation = Vec::new();
+            let mut price = Vec::new();
+            let mut exercise = Vec::new();
+            for d in &r.decisions {
+                for k in 0..d.states.len() {
+                    payment_time.push(d.time);
+                    state.push(d.states[k]);
+                    short_rate.push(d.short_rates[k]);
+                    continuation.push(d.continuation[k]);
+                    price.push(d.call_price);
+                    exercise.push(d.exercise[k]);
+                }
+            }
+            list!(
+                bullet = r.value.bullet,
+                callable = r.value.callable,
+                issuer_call_value = r.value.issuer_call_value,
+                payment_time = payment_time,
+                state = state,
+                short_rate = short_rate,
+                continuation_ex_coupon = continuation,
+                call_price = price,
+                exercise_now = exercise
+            )
+        }),
+    )
+}
+#[extendr]
+#[allow(clippy::too_many_arguments)]
 fn compute_sabr_volatility(
     kind: &str,
     strike: Vec<f64>,
@@ -4410,6 +4468,7 @@ extendr_module! {
     fn compute_hull_white_swaption_value;
     fn compute_hull_white_bermudan_swaption_value;
     fn compute_hull_white_callable_bond_value;
+    fn compute_hull_white_callable_bond_decisions;
     fn compute_sabr_volatility;
     fn calibrate_hull_white;
     fn calibrate_sabr;

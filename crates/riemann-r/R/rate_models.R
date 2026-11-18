@@ -11,6 +11,13 @@
 #' `compute_hull_white_callable_bond_value()` use a backward induction on a state grid, where each step is an exact
 #' conditional expectation, integrated numerically.
 #'
+#' `compute_hull_white_callable_bond_decisions()` repeats the callable bond's backward induction and also returns the
+#' issuer's choice on each call date, at every state of the grid. The issuer calls where `continuation_ex_coupon`, the
+#' value of the payments after the date (without that date's coupon, and already holding the later calls), exceeds the
+#' call price. The short rate of a state is the state plus the model's shift: the instantaneous forward of the initial
+#' curve (the rate over 0.0001 years) and `sigma^2 / (2 a^2) (1 - exp(-a t))^2`. For a coupon above the market rate the
+#' issuer calls at low short rates, so `boundary` gives, on each call date, the highest short rate of a state where it calls.
+#'
 #' The kink at an exercise boundary limits Gauss-Hermite quadrature, so the Bermudan default is the
 #' trapezoid rule. Set `spacing` to compare. The callable bond's default, `nodes = 24`, repeats
 #' LagrangeFinance II-8.
@@ -34,7 +41,11 @@
 #' @return `compute_hull_white_bond_option_value()` returns a numeric vector, `compute_hull_white_swaption_value()` a one-row
 #'   tibble with `value`, `d_mean_reversion` and `d_volatility`, `compute_hull_white_bermudan_swaption_value()` a
 #'   number, and `compute_hull_white_callable_bond_value()` a one-row tibble with `bullet`, `callable` and
-#'   `issuer_call_value`.
+#'   `issuer_call_value`. `compute_hull_white_callable_bond_decisions()` returns a list: `value` (the same one-row tibble),
+#'   `decisions` (a tibble with `payment_time`, `state`, `short_rate`, `continuation_ex_coupon`, `call_price` and
+#'   `exercise_now`, one row per call date and state) and `boundary` (a tibble with `payment_time`,
+#'   `call_below_short_rate`, the highest short rate at which the issuer calls, or `NA` where it never does, and
+#'   `share_of_grid_called`).
 #' @examples
 #' instruments <- create_ois_instruments(c("1Y", "5Y", "10Y", "20Y"), c(0.01, 0.015, 0.02, 0.022), 2L, 1L, 0L)
 #' curve <- bootstrap_ois_curve("2026-11-02", "2026-11-02", "tonar", "actual_365_fixed", instruments)
@@ -45,6 +56,10 @@
 #'   time = (1:10) / 2, coupon = 1.5, principal = c(rep(0, 9), 100),
 #'   call_price = c(NA, rep(100, 8), NA), 0.15, 0.012, curve
 #' )
+#' compute_hull_white_callable_bond_decisions(
+#'   time = (1:10) / 2, coupon = 1.5, principal = c(rep(0, 9), 100),
+#'   call_price = c(NA, rep(100, 8), NA), 0.15, 0.012, curve
+#' )$boundary
 #' @export
 compute_hull_white_bond_option_value <- function(option_type, strike, maturity, bond_maturity, mean_reversion, volatility, curve, on_error = "stop") {
   i <- tibble(option_type = as.character(option_type), strike = as.numeric(strike), maturity = as.numeric(maturity), bond_maturity = as.numeric(bond_maturity))
@@ -73,6 +88,21 @@ compute_hull_white_callable_bond_value <- function(time, coupon, principal, call
   i <- tibble(time = as.numeric(time), coupon = as.numeric(coupon), principal = as.numeric(principal), call_price = as.numeric(call_price))
   tibble::as_tibble(checked(.Call(wrap__compute_hull_white_callable_bond_value, i$time, i$coupon, i$principal, i$call_price, as.numeric(mean_reversion), as.numeric(volatility),
                                   curve$pointer, as.integer(points), as.numeric(limit), as.integer(nodes), as.numeric(spacing))))
+}
+
+#' @rdname compute_hull_white_bond_option_value
+#' @export
+compute_hull_white_callable_bond_decisions <- function(time, coupon, principal, call_price, mean_reversion, volatility, curve, points = 321L, limit = 0.13, nodes = 24L, spacing = 0) {
+  i <- tibble(time = as.numeric(time), coupon = as.numeric(coupon), principal = as.numeric(principal), call_price = as.numeric(call_price))
+  r <- checked(.Call(wrap__compute_hull_white_callable_bond_decisions, i$time, i$coupon, i$principal, i$call_price, as.numeric(mean_reversion), as.numeric(volatility),
+                     curve$pointer, as.integer(points), as.numeric(limit), as.integer(nodes), as.numeric(spacing)))
+  decisions <- tibble::tibble(payment_time = r$payment_time, state = r$state, short_rate = r$short_rate, continuation_ex_coupon = r$continuation_ex_coupon,
+                              call_price = r$call_price, exercise_now = r$exercise_now)
+  boundary <- purrr::list_rbind(purrr::map(split(decisions, decisions$payment_time), function(d) {
+    called <- d$short_rate[d$exercise_now]
+    tibble::tibble(payment_time = d$payment_time[1], call_below_short_rate = if (length(called)) max(called) else NA_real_, share_of_grid_called = mean(d$exercise_now))
+  }))
+  list(value = tibble::tibble(bullet = r$bullet, callable = r$callable, issuer_call_value = r$issuer_call_value), decisions = decisions, boundary = boundary)
 }
 
 #' Calibrate the Hull-White model to market prices

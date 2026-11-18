@@ -5,6 +5,7 @@
 \alias{compute_hull_white_swaption_value}
 \alias{compute_hull_white_bermudan_swaption_value}
 \alias{compute_hull_white_callable_bond_value}
+\alias{compute_hull_white_callable_bond_decisions}
 \title{Hull-White model on a curve}
 \usage{
 compute_hull_white_bond_option_value(
@@ -58,6 +59,20 @@ compute_hull_white_callable_bond_value(
   nodes = 24L,
   spacing = 0
 )
+
+compute_hull_white_callable_bond_decisions(
+  time,
+  coupon,
+  principal,
+  call_price,
+  mean_reversion,
+  volatility,
+  curve,
+  points = 321L,
+  limit = 0.13,
+  nodes = 24L,
+  spacing = 0
+)
 }
 \arguments{
 \item{option_type}{\code{"call"} or \code{"put"}.}
@@ -95,7 +110,11 @@ principal paid, and the call price after the coupon, or \code{NA} where there is
 \code{compute_hull_white_bond_option_value()} returns a numeric vector, \code{compute_hull_white_swaption_value()} a one-row
 tibble with \code{value}, \code{d_mean_reversion} and \code{d_volatility}, \code{compute_hull_white_bermudan_swaption_value()} a
 number, and \code{compute_hull_white_callable_bond_value()} a one-row tibble with \code{bullet}, \code{callable} and
-\code{issuer_call_value}.
+\code{issuer_call_value}. \code{compute_hull_white_callable_bond_decisions()} returns a list: \code{value} (the same one-row tibble),
+\code{decisions} (a tibble with \code{payment_time}, \code{state}, \code{short_rate}, \code{continuation_ex_coupon}, \code{call_price} and
+\code{exercise_now}, one row per call date and state) and \code{boundary} (a tibble with \code{payment_time},
+\code{call_below_short_rate}, the highest short rate at which the issuer calls, or \code{NA} where it never does, and
+\code{share_of_grid_called}).
 }
 \description{
 The one-factor model \verb{dr = (theta(t) - a r) dt + sigma dW}, fitted to \code{curve}. These are model values:
@@ -107,6 +126,13 @@ implementation, not the model.
 parameters come from automatic differentiation. \code{compute_hull_white_bermudan_swaption_value()} and
 \code{compute_hull_white_callable_bond_value()} use a backward induction on a state grid, where each step is an exact
 conditional expectation, integrated numerically.
+
+\code{compute_hull_white_callable_bond_decisions()} repeats the callable bond's backward induction and also returns the
+issuer's choice on each call date, at every state of the grid. The issuer calls where \code{continuation_ex_coupon}, the
+value of the payments after the date (without that date's coupon, and already holding the later calls), exceeds the
+call price. The short rate of a state is the state plus the model's shift: the instantaneous forward of the initial
+curve (the rate over 0.0001 years) and \verb{sigma^2 / (2 a^2) (1 - exp(-a t))^2}. For a coupon above the market rate the
+issuer calls at low short rates, so \code{boundary} gives, on each call date, the highest short rate of a state where it calls.
 
 The kink at an exercise boundary limits Gauss-Hermite quadrature, so the Bermudan default is the
 trapezoid rule. Set \code{spacing} to compare. The callable bond's default, \code{nodes = 24}, repeats
@@ -122,4 +148,8 @@ compute_hull_white_callable_bond_value(
   time = (1:10) / 2, coupon = 1.5, principal = c(rep(0, 9), 100),
   call_price = c(NA, rep(100, 8), NA), 0.15, 0.012, curve
 )
+compute_hull_white_callable_bond_decisions(
+  time = (1:10) / 2, coupon = 1.5, principal = c(rep(0, 9), 100),
+  call_price = c(NA, rep(100, 8), NA), 0.15, 0.012, curve
+)$boundary
 }

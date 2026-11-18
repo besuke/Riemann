@@ -52,7 +52,7 @@ LagrangeFinance（コミット `05e1932`）の第II部と第III部の各節に�
 | II-7.2 | Hull–White の状態遷移（厳密な OU）と割引係数の確認（年 24 ステップ、平坦なカーブ） | `generate_hull_white_monthly_rates` は月次の短期金利だけ。割引係数の検証の表はない | 一部 |
 | II-7.3 | HJM | 説明だけでコードがない | 対象外 |
 | II-7.4〜7.5 | LMM のキャップレット・相関ショック、後決め金利と FMM | `compute_lmm_caplet_value`、`compute_caplet_from_normals`、`compute_backward_caplet_value` ほか | 対応 |
-| II-8.1〜8.7 | 満期債と発行体コール、Hull–White のバックワード・インダクション、コール判定、Bermudan | `compute_hull_white_callable_bond_value`、`compute_hull_white_bermudan_swaption_value` | 対応（行使判断の表は返さない） |
+| II-8.1〜8.7 | 満期債と発行体コール、Hull–White のバックワード・インダクション、コール判定、Bermudan | `compute_hull_white_callable_bond_value`、`compute_hull_white_callable_bond_decisions`、`compute_hull_white_bermudan_swaption_value` | 対応（行使判断の表は `compute_hull_white_callable_bond_decisions`、2026-11-19） |
 | II-8.8 | MBS のプリペイメント、PSA 別の OAS | `compute_mbs_cashflows`、`compute_mbs_path_values`、`compute_mbs_oas` | 対応 |
 | II-9.1〜9.3.3 | PRDC の条件、クーポン日、カーブ、FX 過程、クーポン、MC の現在価値 | `generate_schedule`、`compute_prdc_value` | 対応 |
 | II-9.3.4、9.4 | 期待クーポンとキャッシュフロー、期待クーポンの期間構造、キャップ・フロアへの到達確率、クーポンの分布 | 返さない | 未対応 |

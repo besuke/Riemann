@@ -5,7 +5,7 @@ mod common;
 
 use common::golden_rows;
 use riemann::curves::{LogDiscountInterpolation, YieldCurve};
-use riemann::hull_white::{MIN_FITTED_MEAN_REVERSION, calibrate_hull_white, CalibrationInstrument, CalibrationQuote, CalibrationSettings, CalibrationStop, compute_bermudan_swaption, compute_callable_bond, compute_jamshidian_swaption, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
+use riemann::hull_white::{MIN_FITTED_MEAN_REVERSION, calibrate_hull_white, CalibrationInstrument, CalibrationQuote, CalibrationSettings, CalibrationStop, compute_bermudan_swaption, compute_callable_bond, compute_callable_bond_decisions, compute_jamshidian_swaption, CallableFlow, GridSettings, HullWhite, Quadrature, SwaptionFlows};
 use riemann::interest_rate::{Compounding, InterestRate};
 use riemann::names;
 use riemann::sabr::{compute_sabr_volatility, SabrParameters, SabrVolatilityType};
@@ -108,6 +108,66 @@ fn callable_bonds_against_lagrangefinance() {
         assert!((v.callable - n(11)).abs() < 1e-10, "callable {} against {}", v.callable, n(11));
     }
     println!("Callable: worst absolute difference {worst:e}");
+}
+
+#[test]
+fn callable_decisions_against_lagrangefinance() {
+    // the `decisions` of compute_callable_bond_LRL: every state of the grid, on each call date
+    let today = Date::from_ymd(2026, 11, 2).unwrap();
+    let dc = names::parse_day_count("actual_365_fixed").unwrap();
+    let cases = golden_rows("hw_callable_decisions_cases.csv");
+    let rows = golden_rows("hw_callable_decisions.csv");
+    assert_eq!(cases.len(), 5);
+    let (mut worst_rate, mut worst_value, mut total, mut ties) = (0.0f64, 0.0f64, 0usize, 0usize);
+    for c in &cases {
+        let n = |i: usize| number(&c[i]);
+        let (id, coupon_rate, call, first, maturity) = (&c[0], n(1), n(2), n(3), n(4));
+        let curve = YieldCurve::flat(today, InterestRate::new(n(5), dc.clone(), Compounding::Continuous, 0).unwrap());
+        let periods = (maturity / 0.5).round() as usize;
+        let flows: Vec<CallableFlow> = (1..=periods)
+            .map(|i| {
+                let time = i as f64 * 0.5;
+                CallableFlow {
+                    time,
+                    coupon: 100.0 * coupon_rate * 0.5,
+                    principal: if i == periods { 100.0 } else { 0.0 },
+                    call_price: if time >= first && i < periods { Some(call) } else { None },
+                }
+            })
+            .collect();
+        let settings = GridSettings { points: n(8) as usize, limit: n(9), quadrature: Quadrature::GaussHermite(n(10) as usize) };
+        let d = compute_callable_bond_decisions(&flows, n(6), n(7), &curve, &settings).unwrap();
+        // the golden rows of this case, in the order of the manuscript: increasing time, then increasing state
+        let mine: Vec<&Vec<String>> = rows.iter().filter(|r| &r[0] == id).collect();
+        let expected: usize = d.decisions.iter().map(|x| x.states.len()).sum();
+        assert_eq!(mine.len(), expected, "case {id}: number of rows");
+        let mut k = 0;
+        for x in &d.decisions {
+            for s in 0..x.states.len() {
+                let r = mine[k];
+                k += 1;
+                assert!((x.time - number(&r[1])).abs() < 1e-12, "case {id}: time");
+                assert!((x.states[s] - number(&r[2])).abs() < 1e-12, "case {id}: state");
+                worst_rate = worst_rate.max((x.short_rates[s] - number(&r[3])).abs());
+                worst_value = worst_value.max((x.continuation[s] - number(&r[4])).abs());
+                assert!((x.call_price - number(&r[5])).abs() < 1e-12, "case {id}: call price");
+                let golden_exercise = r[6] == "1";
+                if x.exercise[s] != golden_exercise {
+                    // a flip is allowed only where the continuation equals the call price to the last digits
+                    assert!((x.continuation[s] - x.call_price).abs() < 1e-9, "case {id}: decision at t = {}, state {}", x.time, x.states[s]);
+                    ties += 1;
+                }
+                total += 1;
+            }
+        }
+        // the price is the one of compute_callable_bond
+        let v = compute_callable_bond(&flows, n(6), n(7), &curve, &settings).unwrap();
+        assert_eq!(d.value, v);
+    }
+    // the instantaneous forward is the rate over 0.0001 years (QuantLib forwardRate(t, t)), whose last digits are about 1e-12
+    assert!(worst_rate < 1e-10, "short rate: {worst_rate:e}");
+    assert!(worst_value < 1e-10, "continuation value: {worst_value:e}");
+    println!("Callable decisions: {total} rows; worst short rate {worst_rate:e}, worst continuation {worst_value:e}; {ties} decisions flipped at a tie");
 }
 
 #[test]

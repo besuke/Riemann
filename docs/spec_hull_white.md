@@ -14,11 +14,31 @@
 | European スワップション | `compute_hull_white_swaption_value` | Jamshidian の分解 |
 | Bermudan スワップション | `compute_hull_white_bermudan_swaption_value` | 状態格子の後退計算 |
 | コール債 | `compute_hull_white_callable_bond_value` | 状態格子の後退計算（LagrangeFinance II-8.4） |
+| コール債の行使判断 | `compute_hull_white_callable_bond_decisions` | 同じ後退計算で、コール日ごとの状態の格子上の継続価値と行使の有無を返す（1.2 節） |
 | 校正 | `calibrate_hull_white` | 対数変数の Levenberg–Marquardt、自動微分（1.1 節） |
 
 **感応度**：European スワップションの `a` と `sigma` についての微分は自動微分である。臨界金利 `r*` は数値で解いたうえで、記録した値の上で Newton 法を 1 回行い、陰関数定理の微分を伝える。1 階の微分が正確になる。格子の計算（Bermudan、コール債）の自動微分は未対応である。ノード数が多く、確保するメモリーが大きいためである。
 
 **格子の計算**：各ステップは、状態と割引の同時正規分布から求めた正確な条件付き期待値である。積分は数値で行い、次の時点の値を線形に補間する。任意の初期カーブで使える。
+
+## 1.2 コール債の行使判断【実行照合済み】
+
+`compute_hull_white_callable_bond_decisions` は、`compute_hull_white_callable_bond_value` と同じ後退計算（同じ格子・求積）で、コール価格のある日ごとに、状態の格子の全点について次を返す。価格は 1 つ目の関数と同じ値である（テストで一致を確かめた）。
+
+| 列 | 内容 |
+|---|---|
+| `payment_time` | コール日（年）。昇順 |
+| `state` | 格子の状態 x（短期金利からモデルの平行移動を引いたもの） |
+| `short_rate` | 状態の短期金利 = `state` + 初期カーブの瞬間フォワード + `sigma^2 / (2 a^2) (1 - exp(-a t))^2` |
+| `continuation_ex_coupon` | その日のクーポンを除いた、以降の支払いの価値（それ以降のコールを織り込み済み、コールする前の値） |
+| `call_price` | コール価格（クーポン支払後） |
+| `exercise_now` | `continuation_ex_coupon > call_price`。コールのほうが安いときに発行体はコールする |
+
+R の関数は、さらに各コール日の境界 `boundary`（`call_below_short_rate`：コールする状態のうち最も高い短期金利、`share_of_grid_called`：コールする状態の割合）を返す。クーポンが市場金利より高いと、継続価値は短期金利が低いほど大きいので、発行体は低い金利側でコールする。コールする日がなければ、`decisions` と `boundary` は空である。
+
+**瞬間フォワード**：`YieldCurve::forward_rate_at_time`（QuantLib の `forwardRate(t, t)`、0.0001 年の金利）を使う。平坦なカーブでは正確で、それ以外では 0.0001 年の幅の近似である。この桁落ちのため、短期金利の照合の差は最大 2.6e-12 である。
+
+**照合**：LagrangeFinance II-8.4.2 の `compute_callable_bond_LRL`（`decisions`）を、`tools/golden/p9_hull_white_callable_decisions.R` が第 8 章から読んで、`tests/golden/hw_callable_decisions*.csv` に書く。5 ケース（クーポン 2〜6%、コール価格 100・101、最初のコール 1・2 年、満期 3・5・7 年、a 0.05〜0.2、格子 161・321 点）、10,918 行で、状態・時刻・コール価格は 1e-12 以内、継続価値は 6.3e-13、短期金利は 2.6e-12 の差だった。行使の有無は全行が一致し、継続価値とコール価格が 1e-9 以内で等しい（同値）行はなかった。テストは `crates/riemann/tests/golden_hull_white.rs`、性質のテスト（価格が元の関数と一致、行使は低い金利側に 1 つの境界、コールなしなら空）は `crates/riemann/src/hull_white.rs`、R のテストは `crates/riemann-r/tests/testthat/test-rate-models.R`。
 
 ## 1.1 校正（P11-3）
 
@@ -151,6 +171,7 @@ Hagan らの展開式で、対数正規と正規の両方を返す（`compute_sa
 | European スワップション | QuantLib `JamshidianSwaptionEngine` | 200 | 6.5e-9（下の説明） |
 | Bermudan スワップション | QuantLib `TreeSwaptionEngine`（1000 段） | 20 | 1.0e-5 |
 | コール債、満期一括債 | LagrangeFinance II-8 `compute_callable_bond_LRL` | 20 | 8.4e-13 |
+| コール債の行使判断（全状態） | LagrangeFinance II-8.4.2 `compute_callable_bond_LRL` の `decisions` | 5 ケース、10,918 行 | 短期金利 2.6e-12、継続価値 6.3e-13、行使の有無は全行一致（2026-11-19） |
 | SABR（対数正規） | QuantLib `sabrVolatility` | 400 | 2.3e-14（相対） |
 
 割引債オプションは、Jamshidian の分解を通じて確かめた。単独の QuantLib との比較はしていない。正規の SABR は QuantLib R パッケージから直接呼べないので、自己校正と連続性だけを確かめた。

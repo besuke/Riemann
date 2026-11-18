@@ -33,6 +33,27 @@ test_that("a call lowers a callable bond, and no call changes nothing", {
   expect_lt(abs(y$issuer_call_value), 1e-10)
 })
 
+test_that("the callable bond's decisions: the same value, one boundary per call date, calls at low rates", {
+  time <- (1:10) / 2; principal <- c(rep(0, 9), 100); call <- c(NA, rep(100, 8), NA)
+  d <- compute_hull_white_callable_bond_decisions(time, 1.5, principal, call, 0.15, 0.012, hw_curve())
+  v <- compute_hull_white_callable_bond_value(time, 1.5, principal, call, 0.15, 0.012, hw_curve())
+  expect_equal(d$value, v, tolerance = 1e-14)
+  expect_named(d, c("value", "decisions", "boundary"))
+  expect_named(d$decisions, c("payment_time", "state", "short_rate", "continuation_ex_coupon", "call_price", "exercise_now"))
+  expect_equal(unique(d$decisions$payment_time), seq(1, 4.5, by = 0.5))
+  expect_equal(nrow(d$decisions), 8 * 321)
+  expect_identical(d$decisions$exercise_now, d$decisions$continuation_ex_coupon > d$decisions$call_price)
+  expect_equal(d$boundary$payment_time, seq(1, 4.5, by = 0.5))
+  expect_true(all(d$boundary$share_of_grid_called > 0 & d$boundary$share_of_grid_called < 1))
+  # the highest short rate of a called state lies below the highest rate of the grid
+  expect_true(all(d$boundary$call_below_short_rate < max(d$decisions$short_rate)))
+  # no calls: no decisions and no boundary
+  n <- compute_hull_white_callable_bond_decisions(time, 1.5, principal, rep(NA, 10), 0.15, 0.012, hw_curve())
+  expect_equal(nrow(n$decisions), 0)
+  expect_equal(nrow(n$boundary), 0)
+  expect_lt(abs(n$value$issuer_call_value), 1e-10)
+})
+
 test_that("SABR calibration recovers its own smile", {
   k <- 0.03 * c(0.6, 0.8, 0.9, 1, 1.1, 1.25, 1.5)
   for (kind in c("lognormal", "normal")) {

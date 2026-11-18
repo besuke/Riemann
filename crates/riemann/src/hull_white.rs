@@ -700,15 +700,42 @@ pub struct CallableBondValue {
     pub issuer_call_value: f64,
 }
 
-/// A bond callable by the issuer on its coupon dates, by backward induction (LagrangeFinance II-8.4).
-/// No default, spread or cost is included.
-pub fn compute_callable_bond(
+/// The issuer's choice on one call date, at every state of the grid.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallDecision {
+    pub time: f64,
+    /// The price the issuer pays to call, after the coupon.
+    pub call_price: f64,
+    /// The state of the grid: the short rate less the model's shift at `time`.
+    pub states: Vec<f64>,
+    /// The short rate at each state: the state plus the shift (the instantaneous forward of the
+    /// initial curve and `sigma^2 / (2 a^2) (1 - exp(-a t))^2`).
+    pub short_rates: Vec<f64>,
+    /// The value, at each state, of the payments after this date, without this date's coupon and
+    /// before the issuer's choice. It already contains the later calls.
+    pub continuation: Vec<f64>,
+    /// `continuation > call_price`: the issuer calls where paying `call_price` costs less than
+    /// the payments it would otherwise make.
+    pub exercise: Vec<bool>,
+}
+
+/// The value of a callable bond with the issuer's choice on each call date.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallableBondDecisions {
+    pub value: CallableBondValue,
+    /// One entry per date with a call price, in increasing time.
+    pub decisions: Vec<CallDecision>,
+}
+
+/// The backward induction of a callable bond; the choices are kept only when `record` is set.
+fn callable_induction(
     flows: &[CallableFlow],
     mean_reversion: f64,
     volatility: f64,
     curve: &YieldCurve,
     settings: &GridSettings,
-) -> Result<CallableBondValue, Error> {
+    record: bool,
+) -> Result<(CallableBondValue, Vec<CallDecision>), Error> {
     if flows.len() < 2 {
         return invalid("a callable bond needs at least 2 payments".into());
     }
@@ -719,20 +746,61 @@ pub fn compute_callable_bond(
     let last = flows[flows.len() - 1];
     let mut bullet = vec![last.coupon + last.principal; grid.states.len()];
     let mut callable = bullet.clone();
+    let mut decisions = Vec::new();
     for i in (0..flows.len() - 1).rev() {
         let (now, next_time) = (flows[i], flows[i + 1].time);
         let continuation_bullet = grid.step(&bullet, &grid.states, now.time, next_time)?;
         let continuation = grid.step(&callable, &grid.states, now.time, next_time)?;
+        if let (true, Some(call_price)) = (record, now.call_price) {
+            let a = mean_reversion;
+            let forward = curve.forward_rate_at_time(now.time, Compounding::Continuous)?.rate;
+            let shift = forward
+                + volatility * volatility / (2.0 * a * a) * (1.0 - (-a * now.time).exp()).powi(2);
+            decisions.push(CallDecision {
+                time: now.time,
+                call_price,
+                states: grid.states.clone(),
+                short_rates: grid.states.iter().map(|x| shift + x).collect(),
+                continuation: continuation.clone(),
+                exercise: continuation.iter().map(|&v| v > call_price).collect(),
+            });
+        }
         bullet = continuation_bullet.iter().map(|v| now.coupon + v).collect();
         callable = continuation
             .iter()
             .map(|&v| now.coupon + now.call_price.map_or(v, |c| v.min(c)))
             .collect();
     }
+    decisions.reverse();
     let first = flows[0].time;
     let bullet = grid.step(&bullet, &[0.0], 0.0, first)?[0];
     let callable = grid.step(&callable, &[0.0], 0.0, first)?[0];
-    Ok(CallableBondValue { bullet, callable, issuer_call_value: bullet - callable })
+    Ok((CallableBondValue { bullet, callable, issuer_call_value: bullet - callable }, decisions))
+}
+
+/// A bond callable by the issuer on its coupon dates, by backward induction (LagrangeFinance II-8.4).
+/// No default, spread or cost is included.
+pub fn compute_callable_bond(
+    flows: &[CallableFlow],
+    mean_reversion: f64,
+    volatility: f64,
+    curve: &YieldCurve,
+    settings: &GridSettings,
+) -> Result<CallableBondValue, Error> {
+    callable_induction(flows, mean_reversion, volatility, curve, settings, false).map(|(value, _)| value)
+}
+
+/// The same value as [`compute_callable_bond`], with the issuer's choice at every state of the grid
+/// on each call date (LagrangeFinance II-8.4.2, the `decisions` of `compute_callable_bond_LRL`).
+pub fn compute_callable_bond_decisions(
+    flows: &[CallableFlow],
+    mean_reversion: f64,
+    volatility: f64,
+    curve: &YieldCurve,
+    settings: &GridSettings,
+) -> Result<CallableBondDecisions, Error> {
+    callable_induction(flows, mean_reversion, volatility, curve, settings, true)
+        .map(|(value, decisions)| CallableBondDecisions { value, decisions })
 }
 
 /// A Bermudan swaption, exercisable into the remaining payments on each of `exercise_times`, which
@@ -850,6 +918,68 @@ mod tests {
             .collect();
         let v = compute_callable_bond(&flows, 0.15, 0.012, &curve, &GridSettings::default()).unwrap();
         assert!(v.issuer_call_value > 0.0);
+    }
+
+    fn callable_example() -> (Vec<CallableFlow>, YieldCurve) {
+        let curve = flat(0.02);
+        let flows = (1..=10)
+            .map(|i| CallableFlow {
+                time: i as f64 * 0.5,
+                coupon: 1.5,
+                principal: if i == 10 { 100.0 } else { 0.0 },
+                call_price: if (2..10).contains(&i) { Some(100.0) } else { None },
+            })
+            .collect::<Vec<_>>();
+        (flows, curve)
+    }
+
+    #[test]
+    fn decisions_leave_the_value_unchanged_and_list_the_call_dates() {
+        let (flows, curve) = callable_example();
+        let settings = GridSettings::default();
+        let value = compute_callable_bond(&flows, 0.15, 0.012, &curve, &settings).unwrap();
+        let d = compute_callable_bond_decisions(&flows, 0.15, 0.012, &curve, &settings).unwrap();
+        assert_eq!(d.value, value);
+        // calls on 1.0, 1.5, ..., 4.5: eight dates, in increasing time
+        let times: Vec<f64> = d.decisions.iter().map(|x| x.time).collect();
+        assert_eq!(times, vec![1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]);
+        for x in &d.decisions {
+            assert_eq!(x.states.len(), settings.points);
+            assert_eq!(x.short_rates.len(), settings.points);
+            assert_eq!(x.continuation.len(), settings.points);
+            assert_eq!(x.exercise.len(), settings.points);
+            assert_eq!(x.call_price, 100.0);
+            for k in 0..x.states.len() {
+                assert_eq!(x.exercise[k], x.continuation[k] > x.call_price);
+            }
+        }
+    }
+
+    #[test]
+    fn the_issuer_calls_where_rates_are_low() {
+        // a coupon above the market rate: the continuation value falls as the short rate rises, so the calls
+        // sit at the low end of the grid, and the boundary is one point on the grid
+        let (flows, curve) = callable_example();
+        let d = compute_callable_bond_decisions(&flows, 0.15, 0.012, &curve, &GridSettings::default()).unwrap();
+        for x in &d.decisions {
+            assert!(x.continuation.windows(2).all(|w| w[1] <= w[0] + 1e-12), "decreasing in the state at {}", x.time);
+            let called: Vec<bool> = x.exercise.clone();
+            let switches = called.windows(2).filter(|w| w[0] != w[1]).count();
+            assert!(switches <= 1, "one boundary at {}", x.time);
+            assert!(called[0], "calls at the lowest rate at {}", x.time);
+            assert!(!called[called.len() - 1], "no call at the highest rate at {}", x.time);
+        }
+        // the short rate is the state plus the shift, increasing with the state
+        assert!(d.decisions[0].short_rates.windows(2).all(|w| w[1] > w[0]));
+    }
+
+    #[test]
+    fn without_calls_there_are_no_decisions() {
+        let (mut flows, curve) = callable_example();
+        flows.iter_mut().for_each(|f| f.call_price = None);
+        let d = compute_callable_bond_decisions(&flows, 0.15, 0.012, &curve, &GridSettings::default()).unwrap();
+        assert!(d.decisions.is_empty());
+        assert!((d.value.callable - d.value.bullet).abs() < 1e-10);
     }
 
     fn swaption(payer: bool) -> SwaptionFlows {

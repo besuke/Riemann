@@ -49,6 +49,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 | クライアント | 要望 | 出典 | Riemann の状態 |
 |---|---|---|---|
+| Infrago Quant・Carmine Studio | コール債の行使判断（コール日ごとの継続価値・コール価格・行使の有無、境界） | Carmine `server/R/callable_model.R`（原稿の独自の R 関数で求めていた） | **対応済み（2026-11-19、未公開）**：`compute_hull_white_callable_bond_decisions()`。Coral Book II-8.4.2 の `decisions` と 5 ケース 10,918 行で照合（`docs/spec_hull_white.md` 1.2 節）。両クライアントは使用済み。公開は 0.3.5 |
 | Carmine Studio | OIS スワップを期間（`7Y`）で作る（`MakeOIS` の規則） | `reconciliation/RECONCILIATION.md` 6 章 #1 | **対応済み（2026-11-18、未公開）**：`compute_ois_swap_dates()`。公開は 0.3.5。クライアント側の置き換えは未了（「まず読む」） |
 | Carmine Studio | 照合に使った RiemannFinMath のコミットを固定する | 同 #5 | 0.3.2 は Releases の zip と `RemoteSha` で固定できるようになった。クライアント側の記録は未更新 |
 | Carmine Studio | ブラウザーで直接動かす（WebAssembly 版） | 同 #6 | L1〜L3 は未着手 |
@@ -138,6 +139,8 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 **決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/Riemann")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
 
 検討したが採用しなかった案：ビルド済みの静的ライブラリー `libriemann_r.a`（約 35 MB）を Releases に置き、`configure.win` が `RemoteSha` と SHA-256 の一致を確かめて取得して cargo を飛ばす案。リンクのために Rtools は要るままで、タグごとの添付も要るので、(b) で足りるとしてやめた。必要になったら、版・コミット・SHA-256 が一致するときだけ使い、不一致なら cargo にもどす形にする。
+
+**検討中（2026-11-19、ユーザー）：パッケージ名を `rmql`（Rust Mathematical Quantitative Library）に改める案。** 「リーマン」がリーマン・ブラザーズを連想させ、金融では縁起が悪いかもしれないため。**未決定・未着手**。影響は大きい（R パッケージ名 `RiemannFinMath`、リポジトリ名・crate 名 `riemann`・`riemann-r`、公開 URL `besuke.github.io/Riemann`、3 つのクライアントの `RiemannFinMath::` の呼び出し、配布物、文書）。決める点：新しい名前をどの範囲に付けるか（R パッケージだけか、crate・リポジトリも）、関数名は変えないか、旧名の互換期間を置くか。決めるまで名前は変えない。
 
 ### 完了したもの
 
