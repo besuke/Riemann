@@ -1,6 +1,6 @@
-# Golden values for Riemann P8 (credit default swaps) from the QuantLib R package Version 1.42, called
+# Golden values for rmql P8 (credit default swaps) from the QuantLib R package Version 1.42, called
 # as LagrangeFinance II-5 calls it. All inputs are synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p8_cds.R
+# Usage (from the rmql root): Rscript tools/golden/p8_cds.R
 # Writes tests/golden/cds_{values,hazards}.csv.
 
 suppressMessages(library(QuantLib))

@@ -1,7 +1,7 @@
 # Golden values for the Hull-White calibration (P11-3): QuantLib's CalibratedModel::calibrate on
 # European swaptions, with its own Levenberg-Marquardt, EndCriteria and constraints. All inputs are
 # synthetic; market prices are QuantLib's Black prices of synthetic volatilities.
-# Usage (from the Riemann root): Rscript tools/golden/p11_hull_white_calibration.R
+# Usage (from the rmql root): Rscript tools/golden/p11_hull_white_calibration.R
 # Reads tests/golden/hw_curve.csv. Writes tests/golden/hw_calibration_cases.csv and
 # hw_calibration_instruments.csv.
 

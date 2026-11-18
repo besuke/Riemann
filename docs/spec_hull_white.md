@@ -1,6 +1,6 @@
 # Hull-White モデルと SABR の仕様（P9）
 
-実装は `crates/riemann/src/hull_white.rs`、`crates/riemann/src/sabr.rs`、R の入口は `crates/riemann-r/R/rate_models.R` である。
+実装は `crates/rmql/src/hull_white.rs`、`crates/rmql/src/sabr.rs`、R の入口は `crates/rmql-r/R/rate_models.R` である。
 
 **モデルの価値であることに注意する。** ここでの一致は、実装がモデルどおりであることを示す。パラメーターの妥当性や、市場で成り立つ価格であることは示さない。
 
@@ -38,7 +38,7 @@ R の関数は、さらに各コール日の境界 `boundary`（`call_below_shor
 
 **瞬間フォワード**：`YieldCurve::forward_rate_at_time`（QuantLib の `forwardRate(t, t)`、0.0001 年の金利）を使う。平坦なカーブでは正確で、それ以外では 0.0001 年の幅の近似である。この桁落ちのため、短期金利の照合の差は最大 2.6e-12 である。
 
-**照合**：LagrangeFinance II-8.4.2 の `compute_callable_bond_LRL`（`decisions`）を、`tools/golden/p9_hull_white_callable_decisions.R` が第 8 章から読んで、`tests/golden/hw_callable_decisions*.csv` に書く。5 ケース（クーポン 2〜6%、コール価格 100・101、最初のコール 1・2 年、満期 3・5・7 年、a 0.05〜0.2、格子 161・321 点）、10,918 行で、状態・時刻・コール価格は 1e-12 以内、継続価値は 6.3e-13、短期金利は 2.6e-12 の差だった。行使の有無は全行が一致し、継続価値とコール価格が 1e-9 以内で等しい（同値）行はなかった。テストは `crates/riemann/tests/golden_hull_white.rs`、性質のテスト（価格が元の関数と一致、行使は低い金利側に 1 つの境界、コールなしなら空）は `crates/riemann/src/hull_white.rs`、R のテストは `crates/riemann-r/tests/testthat/test-rate-models.R`。
+**照合**：LagrangeFinance II-8.4.2 の `compute_callable_bond_LRL`（`decisions`）を、`tools/golden/p9_hull_white_callable_decisions.R` が第 8 章から読んで、`tests/golden/hw_callable_decisions*.csv` に書く。5 ケース（クーポン 2〜6%、コール価格 100・101、最初のコール 1・2 年、満期 3・5・7 年、a 0.05〜0.2、格子 161・321 点）、10,918 行で、状態・時刻・コール価格は 1e-12 以内、継続価値は 6.3e-13、短期金利は 2.6e-12 の差だった。行使の有無は全行が一致し、継続価値とコール価格が 1e-9 以内で等しい（同値）行はなかった。テストは `crates/rmql/tests/golden_hull_white.rs`、性質のテスト（価格が元の関数と一致、行使は低い金利側に 1 つの境界、コールなしなら空）は `crates/rmql/src/hull_white.rs`、R のテストは `crates/rmql-r/tests/testthat/test-rate-models.R`。
 
 ## 1.1 校正（P11-3）
 
@@ -67,9 +67,9 @@ R の関数は、さらに各コール日の境界 `boundary`（`call_below_shor
 
 ### 比較元との違い【設計案ではなく実装済みの選択】
 
-次はどれも Riemann 独自の選択であり、QuantLib や LagrangeFinance の写しではない。
+次はどれも rmql 独自の選択であり、QuantLib や LagrangeFinance の写しではない。
 
-| 項目 | QuantLib | LagrangeFinance | Riemann |
+| 項目 | QuantLib | LagrangeFinance | rmql |
 |---|---|---|---|
 | 変数 | `a`、`sigma` そのもの | `a`、`sigma` そのもの | **`ln(a)`、`ln(sigma)`**。`a` の正は変数変換で保つ |
 | 入力データ | ボラティリティの気配を helper が価格にする | 閉形式で作った合成価格 | 呼び出し側が渡す価格の数値 |
@@ -84,24 +84,24 @@ R の関数は、さらに各コール日の境界 `boundary`（`call_below_shor
 
 **下限と対数の動きの制限を入れた理由**：`a` が 0 に向かうと、`ln(a)` についての列も `a` に比例して消える。スケーリングなしでは連立方程式が特異に見え、制限なしでは `ln(a)` の歩幅が際限なく伸びて試行が棄却され続け、`sigma` まで動かなくなった。実際に、最初の実装はこのため目的関数が QuantLib より悪い点で止まった【実行照合済み】。
 
-**割引債オプションの式も QuantLib と変えた**：QuantLib は `c` の 6 個の指数を足し引きし、`a < sqrt(MACHEP)` で `a = 0` の式に切り替える。Riemann は同じ式を因数分解し、`sigma * sqrt(T * phi(2 a T)) * exp(-a (s - T)) * B(s, S)`、`phi(y) = (1 - exp(-y)) / y` として小さい `y` では級数で計算する。`B` も同じ `phi` を使う。切り替えがなくなり、`a = 0` まで値と微分が連続である。`a = 0` でも評価できる。
+**割引債オプションの式も QuantLib と変えた**：QuantLib は `c` の 6 個の指数を足し引きし、`a < sqrt(MACHEP)` で `a = 0` の式に切り替える。rmql は同じ式を因数分解し、`sigma * sqrt(T * phi(2 a T)) * exp(-a (s - T)) * B(s, S)`、`phi(y) = (1 - exp(-y)) / y` として小さい `y` では級数で計算する。`B` も同じ `phi` を使う。切り替えがなくなり、`a = 0` まで値と微分が連続である。`a = 0` でも評価できる。
 
 ### 照合結果【実行照合済み】（2026-11-03）
 
-入力はすべて合成である（`tools/golden/p11_hull_white_calibration.R`、`crates/riemann/tests/golden_hull_white.rs`）。スワップション 4〜8 本の組が 20 組、それぞれ価格誤差、相対誤差、`a` 固定の 3 通りで 60 件である。
+入力はすべて合成である（`tools/golden/p11_hull_white_calibration.R`、`crates/rmql/tests/golden_hull_white.rs`）。スワップション 4〜8 本の組が 20 組、それぞれ価格誤差、相対誤差、`a` 固定の 3 通りで 60 件である。
 
 | 確認 | 件数 | 最大の差（絶対） |
 |---|---|---|
 | QuantLib の `a` が 1e-3 を超える校正の `a` | 11 | 3.8e-5 |
 | 同じく `sigma` | 11 | 3.2e-6 |
 | `a` 固定の `sigma` | 20 | 7.5e-9 |
-| QuantLib のパラメーターでの Riemann と QuantLib の価格（`a > 1e-3`、固定を含む） | 31 | 4.5e-9 |
+| QuantLib のパラメーターでの rmql と QuantLib の価格（`a > 1e-3`、固定を含む） | 31 | 4.5e-9 |
 | 同じ比較（`a <= 1e-3`） | 29 | 4.5e-5（下の所見） |
 
 
 **各自の推定値での目的関数と再評価の一致**：それぞれ自分の価格で評価した値を比べた。
 
-| 区分 | 件数 | `a` の差 | `sigma` の差 | 目的関数の相対差（QuantLib / Riemann - 1） | 商品ごとのモデル価格の最大差 | 判断 |
+| 区分 | 件数 | `a` の差 | `sigma` の差 | 目的関数の相対差（QuantLib / rmql - 1） | 商品ごとのモデル価格の最大差 | 判断 |
 |---|---|---|---|---|---|---|
 | `a` が内部解 | 11 | 3.8e-5 | 3.2e-6 | -2.4e-7〜+1.6e-7 | 1.1e-6 | 一致（最小点は同じ） |
 | `a` 固定 | 20 | （固定） | 7.5e-9 | -2.5e-7〜+7.9e-8 | 3.1e-8 | 一致 |
@@ -109,7 +109,7 @@ R の関数は、さらに各コール日の境界 `boundary`（`call_below_shor
 
 境界の 29 件の不一致は、下の「平均回帰がほぼ 0 になる理由」のとおり、許容 0 の外に最小点があって両者が別の点で止まるためである。
 
-**平均回帰がほぼ 0 になる理由**：29 件で Riemann は下限で止まり、QuantLib は `a` が 9e-6〜3.8e-4 の点で止まった。`a` ごとに `sigma` を合わせ直した目的関数 `J(a)` を調べた。
+**平均回帰がほぼ 0 になる理由**：29 件で rmql は下限で止まり、QuantLib は `a` が 9e-6〜3.8e-4 の点で止まった。`a` ごとに `sigma` を合わせ直した目的関数 `J(a)` を調べた。
 
 - **最適点は境界にある**：29 件すべてで `J(a)` は `a = 0` から増える（傾きが正）。`J(1e-4)`、`J(1e-3)`、`J(0.01)` の `J(0)` からの増加は、それぞれ 0.01〜0.45%、0.14〜4.5%、1.3〜49% である。特定しにくくて止まったのではない。
 - **負の `a` を求めている**：`a = 0` 付近の 2 次式で外挿した最小点は 28 件で負である（残る 1 件は曲率が負で外挿に意味がない）。外挿による推定であり、負の `a` の価格は計算していない【未確認】。
@@ -118,10 +118,10 @@ R の関数は、さらに各コール日の境界 `boundary`（`call_below_shor
 - **下限の影響**：`J(1.49e-8)` は `J(0)` より相対で最大 6.7e-7 大きい。`ln(a)` では 0 に届かないことの差である。厳密に `a = 0` で合わせるなら `a` を固定する。
 - **QuantLib 側**：比較文書の例では、QuantLib の目的関数は `J(0)` より 0.56% 大きく、その `a` だけで説明できる増加（1e-4 で 0.12%）を上回る。`sigma` も最小点に届いていない。丸め誤差と罰則のどちらが原因かは切り分けていない【未確認】。
 
-- **目的関数**：どちらのパラメーターも Riemann の価格で評価すると、60 件すべてで Riemann の目的関数は QuantLib の点以下である（相対差の最大 -6.4e-15）。
+- **目的関数**：どちらのパラメーターも rmql の価格で評価すると、60 件すべてで rmql の目的関数は QuantLib の点以下である（相対差の最大 -6.4e-15）。
 - **局所最小**：60 件すべてで、自由なパラメーターを ±0.1% 動かしても目的関数は下がらない。
 - **自己回復**：自分の価格から `a`、`sigma` を戻せる（`a` 1e-9 以内。スワップションは 3 つの初期値から 1e-8 以内）。
-- QuantLib の許容誤差を 1e-12 まで詰めても、Riemann との差は縮まらなかった（`a` で最大 1.2e-4、golden の `a_tight`）。差分の刻みが小さくなり、QuantLib の `r*` の探索精度 1e-8 に近づくためと考えるが、原因の切り分けはしていない【未確認】。
+- QuantLib の許容誤差を 1e-12 まで詰めても、rmql との差は縮まらなかった（`a` で最大 1.2e-4、golden の `a_tight`）。差分の刻みが小さくなり、QuantLib の `r*` の探索精度 1e-8 に近づくためと考えるが、原因の切り分けはしていない【未確認】。
 
 既存の照合の最大差は、式の変更の後も変わらない（European 6.49e-9、Bermudan 1.03e-5、コール債 8.4e-13）。
 
@@ -180,7 +180,7 @@ Hagan らの展開式で、対数正規と正規の両方を返す（`compute_sa
 
 ## 4. 差の原因
 
-**European スワップションの 6.5e-9**：QuantLib は `r*` を精度 1e-8 で探し、そのまま使う。Riemann は 1e-12 で探して Newton 法でさらに詰める。QuantLib の探索を同じ手順で再現すると（精度 1e-8、Newton なし）、差は 5.4e-15 に下がった【実行照合済み】。差の原因は QuantLib の探索の精度であり、Riemann の値のほうが解に近い。
+**European スワップションの 6.5e-9**：QuantLib は `r*` を精度 1e-8 で探し、そのまま使う。rmql は 1e-12 で探して Newton 法でさらに詰める。QuantLib の探索を同じ手順で再現すると（精度 1e-8、Newton なし）、差は 5.4e-15 に下がった【実行照合済み】。差の原因は QuantLib の探索の精度であり、rmql の値のほうが解に近い。
 
 **Bermudan の 1.0e-5**：QuantLib の木自身が、500 段から 1000 段で最大 1.6e-5 変わる。この比較は木の誤差の範囲での一致である。
 
@@ -188,7 +188,7 @@ Hagan らの展開式で、対数正規と正規の両方を返す（`compute_sa
 
 ## 5. LagrangeFinance に関する所見
 
-LagrangeFinance II-8 と同じ Gauss–Hermite 法（24 点）は、行使の折れ目があるときに精度が落ちる。Riemann の単体テストでは、1 回行使のスワップションで Jamshidian と 1.3e-4 の差が出た（48 点、状態 1201 点）。台形則（幅 0.02）に変えると 1e-5 以内に入った。`compute_hull_white_bermudan_swaption_value` の既定を台形則にしたのは、このためである。コール債の既定は、LagrangeFinance と同じ値を再現するために Gauss–Hermite 24 点のままとする。方法ごとの差は検証 QMD に示す。LagrangeFinance は変更していない。
+LagrangeFinance II-8 と同じ Gauss–Hermite 法（24 点）は、行使の折れ目があるときに精度が落ちる。rmql の単体テストでは、1 回行使のスワップションで Jamshidian と 1.3e-4 の差が出た（48 点、状態 1201 点）。台形則（幅 0.02）に変えると 1e-5 以内に入った。`compute_hull_white_bermudan_swaption_value` の既定を台形則にしたのは、このためである。コール債の既定は、LagrangeFinance と同じ値を再現するために Gauss–Hermite 24 点のままとする。方法ごとの差は検証 QMD に示す。LagrangeFinance は変更していない。
 
 ## 6. 未対応
 

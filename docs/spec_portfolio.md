@@ -3,7 +3,7 @@
 - 作成：2026-11-14（ユーザーの指示「RIEMANにも ガウスのように ポートフォリオアナライザーの機能をつけるべき」に対する設計）。実装と照合：2026-11-15（結果は 6 章）
 - 対象：LagrangeFinance I-8「制約付きポートフォリオ最適化」（`part1_empirical/ch08_constrained_portfolio_optimization.qmd`、コミット `b9ddc2a`）と、I-9 以降で共通に使うリスク尺度（ボラティリティ、VaR、ES、リスク寄与）
 - 比べる相手：GaussQuant（コミット `c08fdb1`、版 2026.6.18.1）の `portfolio_spec_GQL()`・`portfolio_constraint_GQL()`・`portfolio_optimize_GQL()`、quadprog、Rglpk、閉じた式、最適性条件（KKT）。原稿 I-8.8 は `portfolio_frontier_GQL()` の名前を挙げるが、GaussQuant にこの関数はなく、原稿も `target_return` の繰り返しで Frontier を作る
-- 位置づけ：第 I 部のうち、正解を解析解・最適性条件・独立な計算で確かめられる部分を Riemann に入れる（`CLAUDE.md` の決定事項、2026-11-14 に変更）。回帰・ファクターモデル（I-4〜I-5）とイベントスタディ（I-6）、機械学習（I-7）は R の統計関数で足りるので対象外のまま
+- 位置づけ：第 I 部のうち、正解を解析解・最適性条件・独立な計算で確かめられる部分を rmql に入れる（`CLAUDE.md` の決定事項、2026-11-14 に変更）。回帰・ファクターモデル（I-4〜I-5）とイベントスタディ（I-6）、機械学習（I-7）は R の統計関数で足りるので対象外のまま
 
 ## 1. 原稿と GaussQuant の計算【ソース確認】
 
@@ -25,7 +25,7 @@
 | ES | 損失 = −リターン。VaR = `quantile(type = 7)`、ES = VaR 以上の損失の平均 |
 | リスク寄与 | 分散に対する割合 w_i (Σw)_i / w'Σw（合計 1） |
 
-## 2. Riemann に入れるもの【設計案】
+## 2. rmql に入れるもの【設計案】
 
 ### 2.1 R の公開関数（命名は `CLAUDE.md` の方針に従う。`optimize_` は認めた動詞にないので `compute_` にする）
 
@@ -62,7 +62,7 @@ GaussQuant の ES（`quantile(type = 7)` 以上の損失の平均）と、Rockaf
 | 制約が合計だけの最小分散・接点ポートフォリオ・Frontier | 閉じた式（Σ⁻¹1 / 1'Σ⁻¹1、Σ⁻¹(μ − r_f) の正規化、二基金定理） | 1e-12 程度 |
 | 箱つきの全方法 | KKT 条件（勾配、有効な制約、乗数の符号） | 残差 1e-10 程度 |
 | 最小分散・平均分散・最大リターン・目標リターン・Frontier | GaussQuant（quadprog、glpk）、原稿 I-8 と同じ 20 銘柄・上限 20% | ウエイト 1e-8 程度 |
-| 最大シャープ・最小 ES・リスク・バジェット・目標リスク | GaussQuant（Nelder–Mead） | ウエイトは判定しない。Riemann の目的関数の値が GaussQuant の値以上に良いこと（同じ定義で計算） |
+| 最大シャープ・最小 ES・リスク・バジェット・目標リスク | GaussQuant（Nelder–Mead） | ウエイトは判定しない。rmql の目的関数の値が GaussQuant の値以上に良いこと（同じ定義で計算） |
 | 最小 ES | R で独立に組んだ RU の線形計画（`ROI.plugin.glpk`） | 目的関数の値 1e-10 程度 |
 | リスク寄与 | 閉じた式と中心差分 | 相対 1e-8 程度 |
 
@@ -89,17 +89,17 @@ P12 の後、LagrangeFinance 第 I 部の次の章に相当する計算を同じ
 
 ## 6. 実装と照合の結果【実行照合済み】
 
-- 照合日：2026-11-15。R 4.6.0、quadprog 1.5.8、Rglpk 0.6.5.1、GaussQuant 2026.6.18.1、RiemannFinMath 0.3.0（このコミットのソースから導入）
+- 照合日：2026-11-15。R 4.6.0、quadprog 1.5.8、Rglpk 0.6.5.1、GaussQuant 2026.6.18.1、rmql 0.3.0（このコミットのソースから導入）
 - 再実行：`Rscript tools/golden/p12_portfolio.R`（参照値）、`cargo test --release --test golden_portfolio`、`Rscript tools/experiments/p12_portfolio_diffs.R`（下の表の差）
 
 ### 6.1 実装
 
 | ファイル | 内容 |
 |---|---|
-| `crates/riemann/src/math/quadratic.rs` | 狭義凸2次計画の双対有効制約法（Goldfarb–Idnani 1983 の論文から書いた。quadprog と同じ方式で、コードは写していない）。`J = L^-T Q` と `R` を Givens 回転で更新する。停留条件の残差 `max |Gx + a − Σ u_i n_i|` を返す |
-| `crates/riemann/src/math/simplex.rs` | 標準形の線形計画の2段階単体法（密なタブロー、Bland の規則）。最後に基底の連立方程式を元の行列で解き直す（タブローの丸めの蓄積を除く） |
-| `crates/riemann/src/portfolio.rs` | 平均・共分散、制約、8 つの方法、Frontier、リスク尺度とオイラー寄与（自動微分） |
-| `crates/riemann-r/R/portfolio.R` | `create_portfolio_constraints()`、`compute_return_moments()`、`compute_optimal_portfolio()`、`compute_efficient_frontier()`、`compute_portfolio_risk()`。リターンは行列、列ごとの data frame、long 形式（`date`・`asset`・`return`、GaussQuant と同じ列名）のどれでもよい |
+| `crates/rmql/src/math/quadratic.rs` | 狭義凸2次計画の双対有効制約法（Goldfarb–Idnani 1983 の論文から書いた。quadprog と同じ方式で、コードは写していない）。`J = L^-T Q` と `R` を Givens 回転で更新する。停留条件の残差 `max |Gx + a − Σ u_i n_i|` を返す |
+| `crates/rmql/src/math/simplex.rs` | 標準形の線形計画の2段階単体法（密なタブロー、Bland の規則）。最後に基底の連立方程式を元の行列で解き直す（タブローの丸めの蓄積を除く） |
+| `crates/rmql/src/portfolio.rs` | 平均・共分散、制約、8 つの方法、Frontier、リスク尺度とオイラー寄与（自動微分） |
+| `crates/rmql-r/R/portfolio.R` | `create_portfolio_constraints()`、`compute_return_moments()`、`compute_optimal_portfolio()`、`compute_efficient_frontier()`、`compute_portfolio_risk()`。リターンは行列、列ごとの data frame、long 形式（`date`・`asset`・`return`、GaussQuant と同じ列名）のどれでもよい |
 
 ### 6.2 参照値との差
 
@@ -125,7 +125,7 @@ P12 の後、LagrangeFinance 第 I 部の次の章に相当する計算を同じ
 
 同じ入力（59 か月、20 銘柄、ウエイト 0〜0.20、合計 1）で、GaussQuant 自身の目的関数で比べた。
 
-| 方法 | RiemannFinMath | GaussQuant |
+| 方法 | rmql | GaussQuant |
 |---|---|---|
 | 最大シャープ（r_f = 0）のシャープレシオ | 0.491019 | 0.415700 |
 | 最小 ES（95%）：Rockafellar–Uryasev の ES | 0.054963 | 0.068649（GaussQuant のウエイトで計算） |

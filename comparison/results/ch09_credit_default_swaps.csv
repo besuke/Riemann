@@ -1,4 +1,4 @@
-chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+chapter,item,unit,baseline,baseline_value,rmql_value,difference,tolerance,verdict,note
 ch09_credit_default_swaps,Yield curve: discount at maturity,discount factor,Formula of the flat curve,0.9045895513293778,0.9045895513293778,0,NA,REF,NA
 ch09_credit_default_swaps,Survival at maturity,probability,QuantLib C++,0.9785082827917037,0.9785082827917037,0,NA,REF,NA
 ch09_credit_default_swaps,NPV,currency,QuantLib C++,28116.054353518906,28116.05435351892,1.4551915228366852e-11,NA,REF,NA
@@ -24,7 +24,7 @@ ch09_credit_default_swaps,Coupon leg,currency,QuantLib builder via GaussQuant,-4
 ch09_credit_default_swaps,Default leg,currency,QuantLib builder via GaussQuant,146485.3426038429,146485.34260384287,-2.9103830456733704e-11,NA,REF,NA
 ch09_credit_default_swaps,Accrual rebate,currency,QuantLib builder via GaussQuant,16943.864165187468,16943.864165187468,0,NA,REF,NA
 ch09_credit_default_swaps,Fair upfront,percent of notional,QuantLib builder via GaussQuant,-3.349740443409001,-3.349740443409008,-7.105427357601002e-15,NA,REF,NA
-ch09_credit_default_swaps,"Coupon leg, from counting the last day",currency,RiemannFinMath itself,-268.031403437315,-267.697420424318,0.3339830129970096,NA,REF,"One day of coupon, discounted and survived to the last date, against the change"
+ch09_credit_default_swaps,"Coupon leg, from counting the last day",currency,rmql itself,-268.031403437315,-267.697420424318,0.3339830129970096,NA,REF,"One day of coupon, discounted and survived to the last date, against the change"
 ch09_credit_default_swaps,midpoint 1 years,survival probability,QuantLib C++,0.997969427027246,0.997969427027246,0,NA,REF,NA
 ch09_credit_default_swaps,midpoint 2 years,survival probability,QuantLib C++,0.993931461466883,0.993931461466883,0,NA,REF,NA
 ch09_credit_default_swaps,midpoint 3 years,survival probability,QuantLib C++,0.9878844514422576,0.9878844514422576,0,NA,REF,NA

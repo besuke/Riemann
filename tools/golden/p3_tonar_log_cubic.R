@@ -1,10 +1,10 @@
-# Golden values for Riemann P3-3 (TONAR OIS curve, monotonic log-cubic discount factors) from
+# Golden values for rmql P3-3 (TONAR OIS curve, monotonic log-cubic discount factors) from
 # the QuantLib R package Version 1.42. The exact C++ commit of the package is unknown, so these
 # are not results of running C++ v1.42 itself (see docs/spec_ois.md, chapter 1).
 # PiecewiseLogCubicDiscount uses Spline, monotonic, second derivative 0 at both ends, the same
 # settings as C++ MonotonicLogCubic (docs/spec_ois.md 2.7).
 # All quotes are synthetic random numbers; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p3_tonar_log_cubic.R
+# Usage (from the rmql root): Rscript tools/golden/p3_tonar_log_cubic.R
 # Writes tests/golden/ois_tonar_log_cubic_{cases,instruments,nodes,discounts}.csv. Numbers have
 # 17 significant digits; ERROR = QuantLib raised an error.
 

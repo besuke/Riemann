@@ -30,7 +30,7 @@ baseline_options <- pmap_dbl(options_table, \(option_maturity, bond_maturity, st
   legacy$compute_hw_bond_option_price_LRL(option_maturity, bond_maturity, strike, legacy$hw_reference_a, legacy$hw_reference_sigma, legacy$hw_initial_zero_rate)
 })
 option_curve <- flat_curve(curve_date, legacy$hw_initial_zero_rate)
-riemann_options <- RiemannFinMath::compute_hull_white_bond_option_value(
+rmql_options <- rmql::compute_hull_white_bond_option_value(
   "call", options_table$strike, options_table$option_maturity, options_table$bond_maturity,
   legacy$hw_reference_a, legacy$hw_reference_sigma, option_curve
 )
@@ -40,7 +40,7 @@ riemann_options <- RiemannFinMath::compute_hull_white_bond_option_value(
 #| label: option-results
 compare_values(
   sprintf("Option %.1fy on bond %.0fy", options_table$option_maturity, options_table$bond_maturity), "bp of a bond worth 1",
-  1e4 * baseline_options, 1e4 * riemann_options, "R closed form"
+  1e4 * baseline_options, 1e4 * rmql_options, "R closed form"
 ) |>
   show_results()
 ```
@@ -85,17 +85,17 @@ ql_bermudan <- function(steps) {
 }
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: swaption-riemann
+#| label: swaption-rmql
 days <- schedule_serials - as.integer(QuantLib::Date_serialNumber(today))
 times <- days / 365
 payment_times <- times[-1]
 coupons <- swaption$nominal * swaption$fixed_rate * diff(times) # amounts, not rates
-riemann_curve <- flat_curve(swaption$today, swaption$rate)
-riemann_european <- RiemannFinMath::compute_hull_white_swaption_value(TRUE, times[1], payment_times, coupons, swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
-riemann_bermudan <- RiemannFinMath::compute_hull_white_bermudan_swaption_value(TRUE, times[1], payment_times, coupons, head(times, -1), swaption$a, swaption$sigma, riemann_curve, nominal = swaption$nominal)
+rmql_curve <- flat_curve(swaption$today, swaption$rate)
+rmql_european <- rmql::compute_hull_white_swaption_value(TRUE, times[1], payment_times, coupons, swaption$a, swaption$sigma, rmql_curve, nominal = swaption$nominal)
+rmql_bermudan <- rmql::compute_hull_white_bermudan_swaption_value(TRUE, times[1], payment_times, coupons, head(times, -1), swaption$a, swaption$sigma, rmql_curve, nominal = swaption$nominal)
 ```
 
 ```{r}
@@ -103,26 +103,26 @@ riemann_bermudan <- RiemannFinMath::compute_hull_white_bermudan_swaption_value(T
 h <- 1e-6
 tree <- map_dbl(c(500L, 1000L, 2000L), ql_bermudan)
 bind_rows(
-  compare_values("European value", "per 100", ql_european(swaption$a, swaption$sigma), riemann_european$value),
+  compare_values("European value", "per 100", ql_european(swaption$a, swaption$sigma), rmql_european$value),
   compare_values(
     "European, derivative in mean reversion", "per 100, per percent",
     (ql_european(swaption$a + h, swaption$sigma) - ql_european(swaption$a - h, swaption$sigma)) / (2 * h) * 0.01,
-    riemann_european$d_mean_reversion * 0.01, "QuantLib, finite difference"
+    rmql_european$d_mean_reversion * 0.01, "QuantLib, finite difference"
   ),
   compare_values(
     "European, derivative in volatility", "per 100, per percent",
     (ql_european(swaption$a, swaption$sigma + h) - ql_european(swaption$a, swaption$sigma - h)) / (2 * h) * 0.01,
-    riemann_european$d_volatility * 0.01, "QuantLib, finite difference"
+    rmql_european$d_volatility * 0.01, "QuantLib, finite difference"
   ),
-  compare_values("Bermudan value, tree of 1000 steps", "per 100", tree[2], riemann_bermudan),
-  compare_values("Bermudan value, tree of 2000 steps", "per 100", tree[3], riemann_bermudan),
+  compare_values("Bermudan value, tree of 1000 steps", "per 100", tree[2], rmql_bermudan),
+  compare_values("Bermudan value, tree of 2000 steps", "per 100", tree[3], rmql_bermudan),
   not_comparable("Bermudan: the tree from 500 to 1000 steps", "per 100", tree[1], tree[2], "The tree against itself: how far the baseline still moves", "QuantLib tree itself"),
   not_comparable("Bermudan: the tree from 1000 to 2000 steps", "per 100", tree[2], tree[3], "The tree against itself: how far the baseline still moves", "QuantLib tree itself")
 ) |>
   show_results()
 ```
 
-The Bermudan methods are different: QuantLib rolls back on a trinomial tree, and RiemannFinMath takes an exact conditional expectation on a state grid at each step. A difference in these rows is a numerical difference between two methods. The rows on the tree against itself show how much of it is the tree's own convergence error.
+The Bermudan methods are different: QuantLib rolls back on a trinomial tree, and rmql takes an exact conditional expectation on a state grid at each step. A difference in these rows is a numerical difference between two methods. The rows on the tree against itself show how much of it is the tree's own convergence error.
 
 ## Callable bond
 
@@ -152,8 +152,8 @@ baseline_callable <- function(volatility, points = 321L, nodes = 24L) {
   )
 }
 callable_curve <- flat_curve(curve_date, callable$flat_zero_rate)
-riemann_callable <- function(volatility, points = 321L, nodes = 24L) {
-  RiemannFinMath::compute_hull_white_callable_bond_value(
+rmql_callable <- function(volatility, points = 321L, nodes = 24L) {
+  rmql::compute_hull_white_callable_bond_value(
     flows$payment_time, flows$coupon, flows$principal_at_maturity, flows$call_principal,
     0.15, volatility, callable_curve, points = points, limit = 0.13, nodes = nodes
   )
@@ -163,7 +163,7 @@ riemann_callable <- function(volatility, points = 321L, nodes = 24L) {
 ```{r}
 #| label: callable-results
 base_b <- baseline_callable(0.012)
-base_r <- riemann_callable(0.012)
+base_r <- rmql_callable(0.012)
 scenarios <- tibble(volatility = c(0.006, 0.02))
 grids <- tibble(points = c(161L, 641L), nodes = c(16L, 32L))
 bind_rows(
@@ -173,12 +173,12 @@ bind_rows(
   compare_values(
     sprintf("Callable, volatility %.3f", scenarios$volatility), "per 100",
     map_dbl(scenarios$volatility, \(v) baseline_callable(v)$callable_price),
-    map_dbl(scenarios$volatility, \(v) riemann_callable(v)$callable), "Legacy R function"
+    map_dbl(scenarios$volatility, \(v) rmql_callable(v)$callable), "Legacy R function"
   ),
   compare_values(
     sprintf("Callable, grid %d, nodes %d", grids$points, grids$nodes), "per 100",
     map2_dbl(grids$points, grids$nodes, \(p, n) baseline_callable(0.012, p, n)$callable_price),
-    map2_dbl(grids$points, grids$nodes, \(p, n) riemann_callable(0.012, p, n)$callable), "Legacy R function"
+    map2_dbl(grids$points, grids$nodes, \(p, n) rmql_callable(0.012, p, n)$callable), "Legacy R function"
   )
 ) |>
   show_results()
@@ -195,18 +195,18 @@ grid_cases <- tibble(points = c(161L, 321L, 641L), nodes = c(16L, 24L, 32L))
 bind_rows(
   against_lagrange(
     sprintf("Option %.1fy on bond %.0fy", options_table$option_maturity, options_table$bond_maturity), "bp of a bond worth 1",
-    sprintf("hw.option_bp.%g.%g", options_table$option_maturity, options_table$bond_maturity), 1e4 * riemann_options
+    sprintf("hw.option_bp.%g.%g", options_table$option_maturity, options_table$bond_maturity), 1e4 * rmql_options
   ),
   against_lagrange("Bullet", "per 100", "callable.bullet", base_r$bullet),
   against_lagrange("Callable", "per 100", "callable.callable", base_r$callable),
   against_lagrange("Value of the issuer's call", "per 100", "callable.call_value", base_r$issuer_call_value),
   against_lagrange(
     sprintf("Callable, volatility %.3f", volatility_cases), "per 100", sprintf("callable.volatility.%g", volatility_cases),
-    map_dbl(volatility_cases, \(v) riemann_callable(v)$callable)
+    map_dbl(volatility_cases, \(v) rmql_callable(v)$callable)
   ),
   against_lagrange(
     sprintf("Callable, grid %d, nodes %d", grid_cases$points, grid_cases$nodes), "per 100", sprintf("callable.grid.%d", grid_cases$points),
-    map2_dbl(grid_cases$points, grid_cases$nodes, \(p, n) riemann_callable(0.012, p, n)$callable)
+    map2_dbl(grid_cases$points, grid_cases$nodes, \(p, n) rmql_callable(0.012, p, n)$callable)
   )
 ) |>
   show_results()
@@ -219,7 +219,7 @@ bind_rows(
 ```{r}
 #| label: calibration-conditions
 tribble(
-  ~Aspect, ~`QuantLib v1.42 (C++)`, ~`LagrangeFinance II-6.4`, ~RiemannFinMath,
+  ~Aspect, ~`QuantLib v1.42 (C++)`, ~`LagrangeFinance II-6.4`, ~rmql,
   "Instruments", "Calibration helpers, here `SwaptionHelper`", "Options on zero-coupon bonds; 3 fit points, 1 validation point", "Options on zero-coupon bonds and European swaptions",
   "Input data", "Quoted volatilities, turned into prices by the helpers", "Synthetic prices: the closed form at a = 0.08, sigma = 0.012, flat zero rate 0.03", "Prices given by the caller, as numbers",
   "Objective", "Sum of `weight * error^2`; the default error is relative, `|market - model| / market`; also price and implied volatility errors", "`sum((10000 * (model - market))^2)`", "Sum of `weight * (model - market)^2`; `weight = 1 / market^2` gives the relative error, `weight = 1e8` the legacy objective; no implied volatility error",
@@ -237,7 +237,7 @@ tribble(
 
 ### Against LagrangeFinance
 
-The fit uses the same three prices, the same start and the same objective. The legacy optimizer stops at an objective of 0.0348, and RiemannFinMath reaches the parameters behind the prices. Those rows are not comparable. The prices and the objective at the legacy parameters are, and they are judged.
+The fit uses the same three prices, the same start and the same objective. The legacy optimizer stops at an objective of 0.0348, and rmql reaches the parameters behind the prices. Those rows are not comparable. The prices and the objective at the legacy parameters are, and they are judged.
 
 ```{r}
 #| label: calibration-lagrange-calls
@@ -247,11 +247,11 @@ fit_points <- filter(market_table, sample == "fit")
 validation <- filter(market_table, sample == "validation")
 legacy_a <- lagrange_value("hw.calibration.a_pct") / 100
 legacy_sigma <- lagrange_value("hw.calibration.sigma_pct") / 100
-at_legacy <- RiemannFinMath::compute_hull_white_bond_option_value(
+at_legacy <- rmql::compute_hull_white_bond_option_value(
   "call", market_table$strike, market_table$maturity, market_table$bond_maturity, legacy_a, legacy_sigma, option_curve
 )
-fit <- RiemannFinMath::calibrate_hull_white(option_curve, bond_options = select(fit_points, -sample))
-fit_validation <- RiemannFinMath::compute_hull_white_bond_option_value(
+fit <- rmql::calibrate_hull_white(option_curve, bond_options = select(fit_points, -sample))
+fit_validation <- rmql::compute_hull_white_bond_option_value(
   "call", validation$strike, validation$maturity, validation$bond_maturity, fit$mean_reversion, fit$volatility, option_curve
 )
 # The legacy objective and bounds, changing only the step of the differences in the gradient
@@ -358,36 +358,36 @@ ql_calibrate <- function(fix_a, rows = helper_rows) {
 }
 ql_fit <- ql_calibrate(FALSE)
 ql_fixed <- ql_calibrate(TRUE)
-riemann_swaptions <- helper_rows |>
+rmql_swaptions <- helper_rows |>
   transmute(
     payer = shift > 0, maturity = map_dbl(days, \(d) d[1] / 365), payment_times = map(days, \(d) d[-1] / 365),
     coupons = map2(days, strike, \(d, k) k * diff(d) / 365), price = ql_fit$market
   )
-riemann_fit <- RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = riemann_swaptions)
-riemann_fixed <- RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = riemann_swaptions, fix_mean_reversion = TRUE)
+rmql_fit <- rmql::calibrate_hull_white(rmql_curve, swaptions = rmql_swaptions)
+rmql_fixed <- rmql::calibrate_hull_white(rmql_curve, swaptions = rmql_swaptions, fix_mean_reversion = TRUE)
 ```
 
 ```{r}
 #| label: calibration-quantlib-results
 small_a <- c(1e-3, 1e-5, 1e-7)
 bind_rows(
-  compare_values("Fitted mean reversion", "percent", 100 * ql_fit$a, 100 * riemann_fit$mean_reversion),
-  compare_values("Fitted volatility", "percent", 100 * ql_fit$sigma, 100 * riemann_fit$volatility),
-  compare_values("Objective, 1e8 times the sum of squares", "bp squared", 1e8 * sum((ql_fit$market - ql_fit$model)^2), 1e8 * riemann_fit$objective),
-  compare_values(sprintf("Model price, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * ql_fit$model, 1e4 * riemann_fit$repricing[[1]]$model_price),
-  compare_values(sprintf("Repricing error, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * (ql_fit$model - ql_fit$market), 1e4 * riemann_fit$repricing[[1]]$difference),
-  compare_values("Volatility with the mean reversion fixed at 0.05", "percent", 100 * ql_fixed$sigma, 100 * riemann_fixed$volatility),
-  compare_values("Objective with the mean reversion fixed at 0.05", "bp squared", 1e8 * sum((ql_fixed$market - ql_fixed$model)^2), 1e8 * riemann_fixed$objective),
-  compare_values(sprintf("Repricing error with a fixed, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * (ql_fixed$model - ql_fixed$market), 1e4 * riemann_fixed$repricing[[1]]$difference),
+  compare_values("Fitted mean reversion", "percent", 100 * ql_fit$a, 100 * rmql_fit$mean_reversion),
+  compare_values("Fitted volatility", "percent", 100 * ql_fit$sigma, 100 * rmql_fit$volatility),
+  compare_values("Objective, 1e8 times the sum of squares", "bp squared", 1e8 * sum((ql_fit$market - ql_fit$model)^2), 1e8 * rmql_fit$objective),
+  compare_values(sprintf("Model price, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * ql_fit$model, 1e4 * rmql_fit$repricing[[1]]$model_price),
+  compare_values(sprintf("Repricing error, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * (ql_fit$model - ql_fit$market), 1e4 * rmql_fit$repricing[[1]]$difference),
+  compare_values("Volatility with the mean reversion fixed at 0.05", "percent", 100 * ql_fixed$sigma, 100 * rmql_fixed$volatility),
+  compare_values("Objective with the mean reversion fixed at 0.05", "bp squared", 1e8 * sum((ql_fixed$market - ql_fixed$model)^2), 1e8 * rmql_fixed$objective),
+  compare_values(sprintf("Repricing error with a fixed, swaption %d", seq_len(nrow(helper_rows))), "bp of the notional", 1e4 * (ql_fixed$model - ql_fixed$market), 1e4 * rmql_fixed$repricing[[1]]$difference),
   compare_values(
     sprintf("European value at a mean reversion of %g", small_a), "per 100", map_dbl(small_a, \(a) ql_european(a, swaption$sigma)),
-    map_dbl(small_a, \(a) RiemannFinMath::compute_hull_white_swaption_value(TRUE, times[1], payment_times, coupons, a, swaption$sigma, riemann_curve, nominal = swaption$nominal)$value)
+    map_dbl(small_a, \(a) rmql::compute_hull_white_swaption_value(TRUE, times[1], payment_times, coupons, a, swaption$sigma, rmql_curve, nominal = swaption$nominal)$value)
   )
 ) |>
   show_results()
 ```
 
-The last rows are a numerical difference, not a choice of model. `HullWhite::discountBondOption` in QuantLib subtracts exponentials that nearly cancel, so rounding takes over as the mean reversion falls toward its threshold of 1.49e-8. RiemannFinMath factors the same expression and keeps its digits. In a fit whose minimum lies at a mean reversion of zero, QuantLib stops at a small positive value, RiemannFinMath stops at its lower limit and sets `at_lower_limit`, and the two mean reversions then differ for this reason.
+The last rows are a numerical difference, not a choice of model. `HullWhite::discountBondOption` in QuantLib subtracts exponentials that nearly cancel, so rounding takes over as the mean reversion falls toward its threshold of 1.49e-8. rmql factors the same expression and keeps its digits. In a fit whose minimum lies at a mean reversion of zero, QuantLib stops at a small positive value, rmql stops at its lower limit and sets `at_lower_limit`, and the two mean reversions then differ for this reason.
 
 ### A mean reversion near zero
 
@@ -397,11 +397,11 @@ These swaptions have the same dates and strikes, with Black volatilities that ri
 #| label: near-zero-calls
 near_zero_rows <- mutate(helper_rows, volatility = c(0.30, 0.33, 0.36, 0.40, 0.43))
 ql_near_zero <- ql_calibrate(FALSE, near_zero_rows)
-near_zero_swaptions <- mutate(riemann_swaptions, price = ql_near_zero$market)
-riemann_near_zero <- RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = near_zero_swaptions)
-profile_points <- c(0, riemann_near_zero$mean_reversion, 1e-4, 1e-3, 1e-2, 0.05, 0.1)
+near_zero_swaptions <- mutate(rmql_swaptions, price = ql_near_zero$market)
+rmql_near_zero <- rmql::calibrate_hull_white(rmql_curve, swaptions = near_zero_swaptions)
+profile_points <- c(0, rmql_near_zero$mean_reversion, 1e-4, 1e-3, 1e-2, 0.05, 0.1)
 profile <- map(profile_points, \(a) {
-  RiemannFinMath::calibrate_hull_white(riemann_curve, swaptions = near_zero_swaptions, initial_mean_reversion = a, fix_mean_reversion = TRUE)
+  rmql::calibrate_hull_white(rmql_curve, swaptions = near_zero_swaptions, initial_mean_reversion = a, fix_mean_reversion = TRUE)
 })
 tibble(
   mean_reversion = sprintf("%g", profile_points),
@@ -409,21 +409,21 @@ tibble(
   objective_bp_squared = map_dbl(profile, \(f) 1e8 * f$objective),
   rise_from_zero_percent = 100 * (map_dbl(profile, \(f) f$objective) / profile[[1]]$objective - 1)
 ) |>
-  knitr::kable(digits = c(0, 4, 4, 6), caption = "RiemannFinMath: the objective with the volatility refitted at each mean reversion")
+  knitr::kable(digits = c(0, 4, 4, 6), caption = "rmql: the objective with the volatility refitted at each mean reversion")
 ```
 
 ```{r}
 #| label: near-zero-results
 bind_rows(
-  compare_values("Fitted mean reversion", "percent", 100 * ql_near_zero$a, 100 * riemann_near_zero$mean_reversion),
-  compare_values("Fitted volatility", "percent", 100 * ql_near_zero$sigma, 100 * riemann_near_zero$volatility),
-  compare_values("Objective, each with its own prices", "bp squared", 1e8 * sum((ql_near_zero$market - ql_near_zero$model)^2), 1e8 * riemann_near_zero$objective),
-  compare_values(sprintf("Repricing error, swaption %d", seq_len(nrow(near_zero_rows))), "bp of the notional", 1e4 * (ql_near_zero$model - ql_near_zero$market), 1e4 * riemann_near_zero$repricing[[1]]$difference)
+  compare_values("Fitted mean reversion", "percent", 100 * ql_near_zero$a, 100 * rmql_near_zero$mean_reversion),
+  compare_values("Fitted volatility", "percent", 100 * ql_near_zero$sigma, 100 * rmql_near_zero$volatility),
+  compare_values("Objective, each with its own prices", "bp squared", 1e8 * sum((ql_near_zero$market - ql_near_zero$model)^2), 1e8 * rmql_near_zero$objective),
+  compare_values(sprintf("Repricing error, swaption %d", seq_len(nrow(near_zero_rows))), "bp of the notional", 1e4 * (ql_near_zero$model - ql_near_zero$market), 1e4 * rmql_near_zero$repricing[[1]]$difference)
 ) |>
   show_results()
 ```
 
-The objective rises steadily from a mean reversion of zero, so the minimum lies on the boundary of the allowed range and neither library can reach it: QuantLib excludes zero and `ln(a)` cannot represent it. RiemannFinMath stops at its lower limit, 0.000018 percent above the objective at zero. QuantLib stops at a small positive value with a different volatility, so in this case the parameters, the objective and the repricing errors do not agree. Its objective is above the rise that its mean reversion alone explains, which shows that its volatility has not reached the minimum either. Which of its rounding error and its penalty causes that was not separated.
+The objective rises steadily from a mean reversion of zero, so the minimum lies on the boundary of the allowed range and neither library can reach it: QuantLib excludes zero and `ln(a)` cannot represent it. rmql stops at its lower limit, 0.000018 percent above the objective at zero. QuantLib stops at a small positive value with a different volatility, so in this case the parameters, the objective and the repricing errors do not agree. Its objective is above the rise that its mean reversion alone explains, which shows that its volatility has not reached the minimum either. Which of its rounding error and its penalty causes that was not separated.
 
 ## Mortgage-backed securities
 
@@ -444,23 +444,23 @@ show_inputs(c(mbs_terms, list(
 
 ```{r}
 #| label: mbs-calls
-mbs <- do.call(RiemannFinMath::create_mbs_pass_through, mbs_terms)
+mbs <- do.call(rmql::create_mbs_pass_through, mbs_terms)
 refinance_paths <- list(c(rep(0.05, 24), rep(0.035, mbs_months - 24)), rep(0.05, mbs_months), c(rep(0.05, 24), rep(0.065, mbs_months - 24)))
 scenario_values <- map_dfr(refinance_paths, \(f) {
-  fixed <- RiemannFinMath::compute_mbs_path_values(mbs, matrix(0.04, 1, mbs_months), matrix(f, 1))
-  path <- RiemannFinMath::compute_mbs_path_values(mbs, matrix(f - 0.01, 1), matrix(f, 1))
-  flows <- RiemannFinMath::compute_mbs_cashflows(mbs, f)
+  fixed <- rmql::compute_mbs_path_values(mbs, matrix(0.04, 1, mbs_months), matrix(f, 1))
+  path <- rmql::compute_mbs_path_values(mbs, matrix(f - 0.01, 1), matrix(f, 1))
+  flows <- rmql::compute_mbs_cashflows(mbs, f)
   tibble(wal = fixed$weighted_average_life, price_fixed = fixed$price, price_path = path$price,
          principal = sum(flows$scheduled_principal + flows$prepaid_principal))
 })
 legacy_rates <- mbs_legacy$mbs_short_rates
-path_values <- RiemannFinMath::compute_mbs_path_values(mbs, legacy_rates, pmax(legacy_rates + 0.03, 0))
-own_rates <- RiemannFinMath::generate_hull_white_monthly_rates(20000, mbs_months, 0.02, 0.15, 0.012, seed = 48)
-own_values <- RiemannFinMath::compute_mbs_path_values(mbs, own_rates, pmax(own_rates + 0.03, 0))
+path_values <- rmql::compute_mbs_path_values(mbs, legacy_rates, pmax(legacy_rates + 0.03, 0))
+own_rates <- rmql::generate_hull_white_monthly_rates(20000, mbs_months, 0.02, 0.15, 0.012, seed = 48)
+own_values <- rmql::compute_mbs_path_values(mbs, own_rates, pmax(own_rates + 0.03, 0))
 static_cases <- tidyr::crossing(psa_percent = c(0, 50, 100), assumed_price = c(95, 105))
 static_oas <- pmap_dbl(static_cases, \(psa_percent, assumed_price) {
-  pool <- RiemannFinMath::create_mbs_pass_through(100, 0.05, 0.045, psa_multiplier = psa_percent / 100, incentive_sensitivity = 0)
-  1e4 * RiemannFinMath::compute_mbs_oas(pool, assumed_price, matrix(0.04, 1, mbs_months), matrix(0.05, 1, mbs_months))
+  pool <- rmql::create_mbs_pass_through(100, 0.05, 0.045, psa_multiplier = psa_percent / 100, incentive_sensitivity = 0)
+  1e4 * rmql::compute_mbs_oas(pool, assumed_price, matrix(0.04, 1, mbs_months), matrix(0.05, 1, mbs_months))
 })
 ```
 
@@ -488,14 +488,14 @@ The static spreads differ by up to 0.26 bp because the legacy text solves with R
 
 ## Not available
 
-The exercise decisions of the callable bond, HJM, BGM/LMM, and FMM are in the legacy text and not in RiemannFinMath. See @sec-gaps.
+The exercise decisions of the callable bond, HJM, BGM/LMM, and FMM are in the legacy text and not in rmql. See @sec-gaps.
 
 ## Differences of wrapper and core
 
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,        ~QuantLib,                                                ~RiemannFinMath,
+  ~Layer,    ~Aspect,        ~QuantLib,                                                ~rmql,
   "Wrapper", "Swap",         "`Schedule`, an index, a `VanillaSwap`, an exercise, an engine", "Times and coupons as vectors",
   "Wrapper", "Dates",        "Dates through the curve's day counter",                  "Times in years from the curve's date",
   "Wrapper", "Fixed leg",    "A rate and a day counter",                               "Coupon amounts, in the units of the notional",

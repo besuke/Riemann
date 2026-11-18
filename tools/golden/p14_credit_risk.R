@@ -1,6 +1,6 @@
 # Golden values for the one-factor Gaussian credit portfolio (LagrangeFinance I-10; docs/spec_credit_risk.md).
 #
-# Usage (from the Riemann root): Rscript tools/golden/p14_credit_risk.R
+# Usage (from the rmql root): Rscript tools/golden/p14_credit_risk.R
 # Writes tests/golden/credit_risk.csv: case, kind, i, j, value.
 #
 # The manuscript's portfolio (I-10.5): 100 obligors, PD from 0.5% to 5%, EAD 100, LGD 60%, rho 0.20.
@@ -9,7 +9,7 @@
 #   exact loss distribution    given Z = z the defaults are independent: the distribution of the number of loss
 #                              units by recursion over the obligors, integrated over z by the trapezoidal rule on
 #                              [-12, 12] with step 1/1000 (the integrand is smooth and decays like a Gaussian, so the
-#                              rule converges faster than any power of the step). RiemannFinMath uses Gauss-Hermite
+#                              rule converges faster than any power of the step). rmql uses Gauss-Hermite
 #                              quadrature instead: an independent method.
 #   VaR and ES of it           VaR = min{l : P(L <= l) >= alpha}; ES of Rockafellar and Uryasev for a discrete law, and
 #                              E[L | L >= VaR] (the manuscript's tail mean, I-10.11)

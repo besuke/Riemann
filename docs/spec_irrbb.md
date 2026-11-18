@@ -1,6 +1,6 @@
 # IRRBB の金利ショック・シナリオ（SRP31.90〜31.93）
 
-QuantLet の「IRRBB金利シナリオ」のために追加した（2026-11-15）。中核は `crates/riemann/src/irrbb.rs`、R の入口は `crates/riemann-r/R/irrbb.R`。QuantLib のソースは使っていない。
+QuantLet の「IRRBB金利シナリオ」のために追加した（2026-11-15）。中核は `crates/rmql/src/irrbb.rs`、R の入口は `crates/rmql-r/R/irrbb.R`。QuantLib のソースは使っていない。
 
 ## 1. 参照した基準【ソース確認】
 

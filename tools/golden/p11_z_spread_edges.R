@@ -1,6 +1,6 @@
 # Boundary cases of the zero spread solver from the QuantLib R package Version 1.42. All inputs are
 # synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p11_z_spread_edges.R
+# Usage (from the rmql root): Rscript tools/golden/p11_z_spread_edges.R
 # Writes tests/golden/z_spread_edges.csv. status is ok, or the kind of failure. The same search takes
 # the same steps, so a coarse accuracy shows whether the two searches follow the same path.
 

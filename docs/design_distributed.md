@@ -6,13 +6,13 @@
 
 ## 1. 位置づけ
 
-RiemannFinMath は、LagrangeFinance の冒頭と Part III で述べる並列・分散金融計算基盤の**計算コア**である。
+rmql は、LagrangeFinance の冒頭と Part III で述べる並列・分散金融計算基盤の**計算コア**である。
 
 【設計案】将来は Azure 上の Linux マシン群で、次のように動かす。
 
 1. **R（管理側）**：データ、シナリオ、タスクを tibble で作り、検証し、分類して管理する。
 2. **配布**：`furrr::future_map()` と `future.batchtools` で、タスクを Slurm のジョブとして投入する。
-3. **実行（ワーカー）**：各ワーカーの R プロセスが RiemannFinMath を呼び、Rust コアが計算する。
+3. **実行（ワーカー）**：各ワーカーの R プロセスが rmql を呼び、Rust コアが計算する。
 4. **回収**：結果を R に戻し、タスクの識別子で突き合わせる。
 
 ## 2. Linux を本番環境とする利点【設計案】
@@ -49,11 +49,11 @@ RiemannFinMath は、LagrangeFinance の冒頭と Part III で述べる並列・
 
 **CPU 数の取得**：R 側では `parallelly::availableCores()` を使う。Slurm の `SLURM_CPUS_PER_TASK` や cgroup の上限を考慮するためである。その値を Rust の `threads` に明示的に渡す。
 
-**現状**【ソース確認】：`crates/riemann/src/batch.rs` の `map_parallel` は、`threads = 0` のとき Rayon の既定値を使う。Rayon の既定値が cgroup や Slurm の割り当てを反映するかは確かめていない【未確認】。そのため本番では `threads = 0` に頼らず、R から明示的に渡す方針とする。
+**現状**【ソース確認】：`crates/rmql/src/batch.rs` の `map_parallel` は、`threads = 0` のとき Rayon の既定値を使う。Rayon の既定値が cgroup や Slurm の割り当てを反映するかは確かめていない【未確認】。そのため本番では `threads = 0` に頼らず、R から明示的に渡す方針とする。
 
 **メモリー**：Rust の計算で確保する量は、ほぼ入力の大きさで決まる（例：Longstaff–Schwartz はパス数 ×（ステップ数 + 1）の f64 で、上限 20 億値を入力境界で検査している【ソース確認】）。R 側でタスクの大きさを分割し、1 タスクが `--mem` の中に収まるようにする。分割の大きさは、要素あたりのメモリー量の見積もりから決める。
 
-**再現性**：疑似乱数は、パスと次元の番号から計算する方式で、スレッド数や実行順に依存しない【ソース確認】（`crates/riemann/src/math/random.rs`）。この性質を使い、パスの番号の範囲をタスクに分けて配れば、1 台で計算した場合と同じパスになる【設計案】。Sobol 列も、先頭からの点の位置でタスクに分けられる（Longstaff–Schwartz の `Separate` は既に開始位置を指定している）。
+**再現性**：疑似乱数は、パスと次元の番号から計算する方式で、スレッド数や実行順に依存しない【ソース確認】（`crates/rmql/src/math/random.rs`）。この性質を使い、パスの番号の範囲をタスクに分けて配れば、1 台で計算した場合と同じパスになる【設計案】。Sobol 列も、先頭からの点の位置でタスクに分けられる（Longstaff–Schwartz の `Separate` は既に開始位置を指定している）。
 
 **失敗と再投入**：タスクは同じ入力から同じ結果を返すように作り、結果はタスクの識別子で回収する。途中で中断されたノードのタスクは、そのまま再投入できる。
 

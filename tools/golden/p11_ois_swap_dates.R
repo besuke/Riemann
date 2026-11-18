@@ -3,7 +3,7 @@
 # Inputs are synthetic: evaluation dates on every kind of day (business, weekend, holiday, month end),
 # the four indices, tenors from days to 30 years, and settlement days 0 to 3.
 #
-# Usage (from the Riemann root): Rscript tools/golden/p11_ois_swap_dates.R
+# Usage (from the rmql root): Rscript tools/golden/p11_ois_swap_dates.R
 # Writes tests/golden/ois_swap_dates.csv. status is ok, or failed with the reason in the last column.
 suppressMessages(library(QuantLib))
 

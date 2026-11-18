@@ -2,7 +2,7 @@
 # package Version 1.42 (FxSwapRateHelper, ConstNotionalCrossCurrencyBasisSwapRateHelper,
 # MtMCrossCurrencyBasisSwapRateHelper with overnight indices, PiecewiseLogLinearDiscount). All inputs are
 # synthetic; no market data is used. The overnight indices forecast from flat continuous curves.
-# Usage (from the Riemann root): Rscript tools/golden/p12_xccy_curves.R
+# Usage (from the rmql root): Rscript tools/golden/p12_xccy_curves.R
 # Writes tests/golden/xccy_curves.csv: one row per case and node, with the discount factor.
 
 suppressMessages(library(QuantLib))

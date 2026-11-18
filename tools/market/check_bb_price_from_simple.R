@@ -1,4 +1,4 @@
-# Recompute the BB price from the published simple yield with RiemannFinMath, and compare with the published price.
+# Recompute the BB price from the published simple yield with rmql, and compare with the published price.
 #
 #   Rscript tools/market/check_bb_price_from_simple.R
 #
@@ -14,7 +14,7 @@ suppressPackageStartupMessages({
   library(purrr)
   library(tidyr)
   library(readr)
-  library(RiemannFinMath)
+  library(rmql)
 })
 
 in_dir <- file.path("market_data", "bb_price")

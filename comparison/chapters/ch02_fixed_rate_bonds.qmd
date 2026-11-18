@@ -54,33 +54,33 @@ quantlib <- list(
 )
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: riemann-call
-bond <- RiemannFinMath::create_fixed_rate_bond(
+#| label: rmql-call
+bond <- rmql::create_fixed_rate_bond(
   settlement_days = settlement_days, face_amount = face_amount,
   effective_date = issue_date, termination_date = maturity_date, tenor = "6M", calendar = "japan",
   convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
   coupon_rate = coupon_rate, day_count = "thirty_360_bond_basis", payment_convention = "unadjusted",
   redemption = 100, issue_date = issue_date
 )
-settlement <- RiemannFinMath::compute_settlement_date(bond, trade_date)
-riemann <- RiemannFinMath::compute_bond_values(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+settlement <- rmql::compute_settlement_date(bond, trade_date)
+rmql <- rmql::compute_bond_values(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
 ```
 
 The single-measure functions read the same row:
 
 ```{r}
-#| label: riemann-single-measures
+#| label: rmql-single-measures
 single <- list(
-  clean = RiemannFinMath::compute_clean_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  dirty = RiemannFinMath::compute_dirty_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  accrued = RiemannFinMath::compute_accrued_amount(bond, settlement),
-  modified = RiemannFinMath::compute_duration(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement, "modified"),
-  convexity = RiemannFinMath::compute_convexity(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  bpv = RiemannFinMath::compute_basis_point_value(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
-  yvbp = RiemannFinMath::compute_yield_value_basis_point(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+  clean = rmql::compute_clean_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  dirty = rmql::compute_dirty_price(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  accrued = rmql::compute_accrued_amount(bond, settlement),
+  modified = rmql::compute_duration(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement, "modified"),
+  convexity = rmql::compute_convexity(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  bpv = rmql::compute_basis_point_value(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement),
+  yvbp = rmql::compute_yield_value_basis_point(bond, compound_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
 )
 ```
 
@@ -88,20 +88,20 @@ single <- list(
 #| label: results
 bind_rows(
   compare_values("Settlement date", "days", as.numeric(quantlib$settlement), as.numeric(settlement)),
-  compare_values("Clean price", "per 100", quantlib$clean, riemann$clean_price),
+  compare_values("Clean price", "per 100", quantlib$clean, rmql$clean_price),
   compare_values("Clean price, single function", "per 100", quantlib$clean, single$clean),
   compare_values("Dirty price, single function", "per 100", quantlib$clean + quantlib$accrued, single$dirty),
-  compare_values("Accrued amount", "per 100", quantlib$accrued, riemann$accrued_amount),
+  compare_values("Accrued amount", "per 100", quantlib$accrued, rmql$accrued_amount),
   compare_values("Accrued amount, single function", "per 100", quantlib$accrued, single$accrued),
-  compare_values("Simple duration", "years", quantlib$duration_simple, riemann$duration_simple),
-  compare_values("Modified duration", "years", quantlib$duration_modified, riemann$duration_modified),
+  compare_values("Simple duration", "years", quantlib$duration_simple, rmql$duration_simple),
+  compare_values("Modified duration", "years", quantlib$duration_modified, rmql$duration_modified),
   compare_values("Modified duration, single function", "years", quantlib$duration_modified, single$modified),
-  compare_values("Macaulay duration", "years", quantlib$duration_macaulay, riemann$duration_macaulay),
-  compare_values("Convexity", "years squared", quantlib$convexity, riemann$convexity),
+  compare_values("Macaulay duration", "years", quantlib$duration_macaulay, rmql$duration_macaulay),
+  compare_values("Convexity", "years squared", quantlib$convexity, rmql$convexity),
   compare_values("Convexity, single function", "years squared", quantlib$convexity, single$convexity),
-  compare_values("Basis point value", "per 100, per bp", quantlib$bpv, riemann$basis_point_value),
+  compare_values("Basis point value", "per 100, per bp", quantlib$bpv, rmql$basis_point_value),
   compare_values("Basis point value, single function", "per 100, per bp", quantlib$bpv, single$bpv),
-  compare_values("Yield value of a basis point", "bp per 1.00 of price", 1e4 * quantlib$yvbp, 1e4 * riemann$yield_value_basis_point),
+  compare_values("Yield value of a basis point", "bp per 1.00 of price", 1e4 * quantlib$yvbp, 1e4 * rmql$yield_value_basis_point),
   compare_values("Yield value, single function", "bp per 1.00 of price", 1e4 * quantlib$yvbp, 1e4 * single$yvbp)
 ) |>
   show_results()
@@ -120,7 +120,7 @@ show_inputs(list(clean_prices = price_inputs, compounding = "semiannual", day_co
 quantlib_yields <- map_dbl(price_inputs, \(p) {
   QuantLib::BondFunctions_yield(ql_bond, QuantLib::BondPrice(p, "Clean"), ql_day_count, "Compounded", "Semiannual", ql_settlement)
 })
-riemann_yields <- RiemannFinMath::compute_yield_from_price(
+rmql_yields <- rmql::compute_yield_from_price(
   bond, price_inputs, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement
 )
 ```
@@ -129,14 +129,14 @@ riemann_yields <- RiemannFinMath::compute_yield_from_price(
 #| label: yield-results
 compare_values(
   paste0("Yield at price ", format_4(price_inputs)), "percent",
-  100 * quantlib_yields, 100 * riemann_yields, note = "Solver accuracy 1e-10 in both"
+  100 * quantlib_yields, 100 * rmql_yields, note = "Solver accuracy 1e-10 in both"
 ) |>
   show_results()
 ```
 
 ## A yield applied as a flat curve
 
-The legacy text values the bond on a flat curve built from the yield. QuantLib has an instrument and engine for this. RiemannFinMath reads the same number from the yield formula, so this item checks that two routes agree, not that two engines agree.
+The legacy text values the bond on a flat curve built from the yield. QuantLib has an instrument and engine for this. rmql reads the same number from the yield formula, so this item checks that two routes agree, not that two engines agree.
 
 ```{r}
 #| label: flat-calls
@@ -149,17 +149,17 @@ quantlib_flat <- QuantLib::Instrument_NPV(ql_bond)
 
 ```{r}
 #| label: flat-results
-compare_values("Dirty price, flat curve against yield formula", "per 100", quantlib_flat, riemann$dirty_price) |>
+compare_values("Dirty price, flat curve against yield formula", "per 100", quantlib_flat, rmql$dirty_price) |>
   show_results()
 ```
 
 ## Cash flows
 
-QuantLib holds them as a `Leg` of objects on the bond. RiemannFinMath returns a table:
+QuantLib holds them as a `Leg` of objects on the bond. rmql returns a table:
 
 ```{r}
-#| label: cashflows-riemann
-flows <- RiemannFinMath::get_bond_cashflows(bond)
+#| label: cashflows-rmql
+flows <- rmql::get_bond_cashflows(bond)
 flows |>
   slice(1:2, (n() - 1):n()) |>
   knitr::kable(digits = 4, caption = "First and last cash flows")
@@ -167,7 +167,7 @@ flows |>
 
 ## Zero spread
 
-The base is the flat curve at the yield above, from the settlement date, as in the legacy text. RiemannFinMath's curves come from quotes, so `flat_curve` fits quotes to the equivalent continuous rate (@sec-helpers). The spread is 50 bp with semiannual compounding.
+The base is the flat curve at the yield above, from the settlement date, as in the legacy text. rmql's curves come from quotes, so `flat_curve` fits quotes to the equivalent continuous rate (@sec-helpers). The spread is 50 bp with semiannual compounding.
 
 QuantLib:
 
@@ -188,20 +188,20 @@ quantlib_z <- QuantLib::BondFunctions_zSpread(
 )
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: spread-riemann
+#| label: spread-rmql
 flat_on_bond <- flat_curve(settlement, 2 * log1p(compound_yield / 2), "thirty_360_bond_basis")
-riemann_spread <- RiemannFinMath::compute_bond_value_with_zero_spread(bond, flat_on_bond, z_spread_value, "compounded", 2L, trade_date)
-riemann_z <- RiemannFinMath::compute_z_spread_from_price(bond, flat_on_bond, quantlib_spread_npv, "dirty", "compounded", 2L, settlement)
+rmql_spread <- rmql::compute_bond_value_with_zero_spread(bond, flat_on_bond, z_spread_value, "compounded", 2L, trade_date)
+rmql_z <- rmql::compute_z_spread_from_price(bond, flat_on_bond, quantlib_spread_npv, "dirty", "compounded", 2L, settlement)
 ```
 
 ```{r}
 #| label: spread-results
 bind_rows(
-  compare_values("NPV with the spread", "per 100", quantlib_spread_npv, riemann_spread$npv),
-  compare_values("Zero spread of that price", "bp", 1e4 * quantlib_z, 1e4 * riemann_z)
+  compare_values("NPV with the spread", "per 100", quantlib_spread_npv, rmql_spread$npv),
+  compare_values("Zero spread of that price", "bp", 1e4 * quantlib_z, 1e4 * rmql_z)
 ) |>
   show_results()
 ```
@@ -223,20 +223,20 @@ bind_rows(
   against_lagrange_max("Cash flow dates", "days, largest", str_replace(flow_keys, "amount", "date"), as.numeric(flows$payment_date)),
   against_lagrange(
     "NPV with a zero spread of 50 bp", "per 100", "bond.z_spread_npv",
-    RiemannFinMath::compute_bond_value_with_zero_spread(bond, lagrange_flat, lagrange_spread, "compounded", 2L, trade_date)$npv
+    rmql::compute_bond_value_with_zero_spread(bond, lagrange_flat, lagrange_spread, "compounded", 2L, trade_date)$npv
   ),
   against_lagrange(
     "Zero spread of that value", "bp", "bond.z_spread_bp",
-    1e4 * RiemannFinMath::compute_z_spread_from_price(bond, lagrange_flat, lagrange_value("bond.z_spread_npv"), "dirty", "compounded", 2L, settlement)
+    1e4 * rmql::compute_z_spread_from_price(bond, lagrange_flat, lagrange_value("bond.z_spread_npv"), "dirty", "compounded", 2L, settlement)
   ),
   against_lagrange("Settlement date", "days", "bond.settlement", as.numeric(settlement)),
   against_lagrange(
     "Dirty price at the compound yield", "per 100", "bond.flat_dirty_price",
-    RiemannFinMath::compute_dirty_price(bond, lagrange_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
+    rmql::compute_dirty_price(bond, lagrange_yield, "thirty_360_bond_basis", "compounded", 2L, settlement)
   ),
   against_lagrange(
     "Yield from the clean price", "percent", "bond.yield_pct",
-    100 * RiemannFinMath::compute_yield_from_price(bond, lagrange_price, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement)
+    100 * rmql::compute_yield_from_price(bond, lagrange_price, "clean", "thirty_360_bond_basis", "compounded", 2L, settlement)
   )
 ) |>
   show_results()
@@ -247,7 +247,7 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,            ~QuantLib,                                               ~RiemannFinMath,
+  ~Layer,    ~Aspect,            ~QuantLib,                                               ~rmql,
   "Wrapper", "Bond construction", "`Schedule` first, then `FixedRateBond`",               "One call with named arguments",
   "Wrapper", "Conventions",      "Positional strings with defaults from the binding",     "Required named arguments; no defaults",
   "Wrapper", "Many yields",      "One call per measure and per yield",                    "One call returns a table, one row per yield",

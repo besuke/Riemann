@@ -1,5 +1,5 @@
-# Golden values for Riemann P1 (holiday calendars) from the QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p1_calendars.R
+# Golden values for rmql P1 (holiday calendars) from the QuantLib R binding.
+# Usage (from the rmql root): Rscript tools/golden/p1_calendars.R
 # Output: tests/golden/calendar_holidays.csv, tests/golden/calendar_adjustments.csv
 
 suppressMessages(library(QuantLib))

@@ -1,6 +1,6 @@
 # Golden values for credit tranches and CMO waterfalls (LagrangeFinance I-11; docs/spec_tranching.md).
 #
-# Usage (from the Riemann root): Rscript tools/golden/p15_tranching.R
+# Usage (from the rmql root): Rscript tools/golden/p15_tranching.R
 # Writes tests/golden/tranching.csv: case, kind, i, j, value.
 #
 # Credit tranches on I-10's portfolio (100 obligors, PD 0.5% to 5%, EAD 100, LGD 60%, rho 0.20; loss rate
@@ -15,16 +15,16 @@
 #                              one-year PD is the manuscript's); quarterly dates to 5 years, discount exp(-0.01 t);
 #                              premium leg per unit spread sum DF(t) E[outstanding_t] dt, loss leg sum DF(t) E[dL(t)]
 # CMO on a pass-through pool (P11-5: 1000, mortgage 5.5%, pass-through 5%, 360 months, refinancing rate 5.5% so
-# that CPR is the PSA rule), its collateral cash flows from RiemannFinMath::compute_mbs_cashflows():
+# that CPR is the PSA rule), its collateral cash flows from rmql::compute_mbs_cashflows():
 #   sequential A, B, C and Z   balances 400, 300, 200, 100, coupons 5%; Z accrues while A, B or C is outstanding
 #   PAC and support            schedule = the smaller principal of the pool at 100% and 300% PSA each month;
 #                              PAC 700 and support 300 at 5%, run at 50%, 150% and 400% PSA
-# The waterfalls are written here as plain loops, independently of RiemannFinMath's.
+# The waterfalls are written here as plain loops, independently of rmql's.
 
 suppressPackageStartupMessages({
   library(dplyr)
   library(purrr)
-  library(RiemannFinMath)
+  library(rmql)
 })
 
 out <- file.path("tests", "golden", "tranching.csv")
@@ -174,7 +174,7 @@ all_rows <- bind_rows(rows)
 dir.create(dirname(out), recursive = TRUE, showWarnings = FALSE)
 writeLines(c(
   "# Credit tranches and CMO waterfalls: references in R (tools/golden/p15_tranching.R)",
-  sprintf("# R %s, RiemannFinMath %s (collateral cash flows only)", getRversion(), packageVersion("RiemannFinMath")),
+  sprintf("# R %s, rmql %s (collateral cash flows only)", getRversion(), packageVersion("rmql")),
   "case,kind,i,j,value",
   sprintf("%s,%s,%d,%s,%s", all_rows$case, all_rows$kind, all_rows$i, all_rows$j, fmt(all_rows$value))
 ), out)

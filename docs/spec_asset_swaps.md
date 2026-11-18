@@ -1,6 +1,6 @@
 # アセットスワップと国債先物のベーシスの仕様（P7）
 
-実装は `crates/riemann/src/asset_swap.rs`、R の入口は `crates/riemann-r/R/asset_swaps.R` である。定義は GaussQuant の `ois_asset_swap_GQL`、`ois_asset_swap_jpy_from_legs_GQL` と LagrangeFinance II-2.6、II-3.7 に従う。
+実装は `crates/rmql/src/asset_swap.rs`、R の入口は `crates/rmql-r/R/asset_swaps.R` である。定義は GaussQuant の `ois_asset_swap_GQL`、`ois_asset_swap_jpy_from_legs_GQL` と LagrangeFinance II-2.6、II-3.7 に従う。
 
 ## 1. OIS アセットスワップ
 
@@ -37,7 +37,7 @@
 
 ## 4. 照合結果【実行照合済み】（2026-11-01）
 
-入力はすべて合成である（`tools/golden/p7_asset_swaps.R`）。カーブは GaussQuant の節点をそのまま Riemann に渡すので、下の比較にブートストラップの差は含まれない。
+入力はすべて合成である（`tools/golden/p7_asset_swaps.R`）。カーブは GaussQuant の節点をそのまま rmql に渡すので、下の比較にブートストラップの差は含まれない。
 
 | 対象 | 比べた相手 | 件数 | 最大の差（絶対） |
 |---|---|---|---|

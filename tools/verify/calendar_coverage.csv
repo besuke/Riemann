@@ -17,7 +17,7 @@ Hungary,rules,,,
 Iceland,rules,,,
 India,year_tables,2005,2025,2024〜2025 年の Ramzan Id・Bakri Id・Id-E-Milad は推定とソースに記載
 Indonesia,year_tables,2005,2014,
-Israel,year_tables,2000,2050,範囲の両端の日付は QuantLib も Riemann もエラー
+Israel,year_tables,2000,2050,範囲の両端の日付は QuantLib も rmql もエラー
 Italy,rules_and_one_offs,1999,1999,
 Japan,rules_and_one_offs,1959,2021,春分・秋分は近似式
 Mexico,rules,,,

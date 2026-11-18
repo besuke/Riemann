@@ -1,7 +1,7 @@
-# Golden values for Riemann P9: Hull-White from the QuantLib R package, the callable bond of
+# Golden values for rmql P9: Hull-White from the QuantLib R package, the callable bond of
 # LagrangeFinance II-8 (its own R functions, read from the chapter without changing it) and SABR.
 # All inputs are synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p9_hull_white_sabr.R
+# Usage (from the rmql root): Rscript tools/golden/p9_hull_white_sabr.R
 # Writes tests/golden/hw_{curve,bond_option,swaption,bermudan,callable}.csv and sabr_volatility.csv.
 
 suppressMessages(library(QuantLib))
@@ -21,7 +21,7 @@ header <- function(path, columns) {
 }
 add <- function(path, values) write(paste(values, collapse = ","), path, append = TRUE)
 
-# A curve with log-linear discount factors: shared with Riemann through this file
+# A curve with log-linear discount factors: shared with rmql through this file
 node_days <- as.integer(c(0, 365, 730, 1095, 1825, 2555, 3650, 5475, 7300, 10950))
 node_discounts <- exp(-cumsum(c(0, 0.02, 0.022, 0.025, 2 * 0.027, 2 * 0.03, 3 * 0.032, 5 * 0.033, 5 * 0.031, 10 * 0.03)))
 path <- file.path(out_dir, "hw_curve.csv")

@@ -1,5 +1,5 @@
-# Golden values for Riemann P1 (schedule generation) from the QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p1_schedules.R
+# Golden values for rmql P1 (schedule generation) from the QuantLib R binding.
+# Usage (from the rmql root): Rscript tools/golden/p1_schedules.R
 # Output: tests/golden/schedules.csv
 # Inputs are drawn with a fixed seed. dates and is_regular are space-separated
 # (is_regular[i] refers to the period ending at dates[i+1]); ERROR = QuantLib raised an error.

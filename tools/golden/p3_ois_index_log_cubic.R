@@ -1,10 +1,10 @@
-# Golden values for Riemann P3-2 (OIS curves of ESTR, SOFR and SONIA, monotonic log-cubic discount
+# Golden values for rmql P3-2 (OIS curves of ESTR, SOFR and SONIA, monotonic log-cubic discount
 # factors) from the QuantLib R package Version 1.42. The exact C++ commit of the package is
 # unknown, so these are not results of running C++ v1.42 itself (see docs/spec_ois.md, chapter 1).
 # PiecewiseLogCubicDiscount has the settings of C++ MonotonicLogCubic (docs/spec_ois.md 2.7).
 # All quotes are synthetic random numbers; no market data is used. The settlement days, payment
 # lags and frequencies are drawn at random and are not market conventions.
-# Usage (from the Riemann root): Rscript tools/golden/p3_ois_index_log_cubic.R <estr|sofr|sonia>
+# Usage (from the rmql root): Rscript tools/golden/p3_ois_index_log_cubic.R <estr|sofr|sonia>
 # Writes tests/golden/ois_<index>_log_cubic_{cases,instruments,nodes,discounts}.csv.
 
 suppressMessages(library(QuantLib))

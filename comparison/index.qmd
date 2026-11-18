@@ -1,6 +1,6 @@
 # How to read this comparison {.unnumbered}
 
-This document compares RiemannFinMath (Rust, through its R package) with two baselines:
+This document compares rmql (Rust, through its R package) with two baselines:
 
 - **Calendars**: QuantLib C++ v1.42, built from source.
 - **Everything else**: the results of the text *LagrangeFinance*, recorded in `baseline/lagrange_values.csv`. This document does not change or translate that text.
@@ -12,8 +12,8 @@ Only rows against these baselines have a verdict. Each chapter also calls QuantL
 #| echo: false
 source("R/book.R")
 tibble(
-  Component = c("QuantLib R package", "RiemannFinMath", "GaussQuant", "R"),
-  Version = c(as.character(packageVersion("QuantLib")), as.character(packageVersion("RiemannFinMath")), as.character(packageVersion("GaussQuant")), paste(R.version$major, R.version$minor, sep = "."))
+  Component = c("QuantLib R package", "rmql", "GaussQuant", "R"),
+  Version = c(as.character(packageVersion("QuantLib")), as.character(packageVersion("rmql")), as.character(packageVersion("GaussQuant")), paste(R.version$major, R.version$minor, sep = "."))
 ) |>
   knitr::kable()
 ```
@@ -36,7 +36,7 @@ The QuantLib R package does not state its exact C++ commit, so its reference row
 
 ## Baselines
 
-The `Baseline` column says what each RiemannFinMath number is compared with. The first two kinds are the baselines of the verdicts. The others appear in reference rows or in rows without a verdict.
+The `Baseline` column says what each rmql number is compared with. The first two kinds are the baselines of the verdicts. The others appear in reference rows or in rows without a verdict.
 
 | Baseline | Meaning |
 |---|---|
@@ -48,9 +48,9 @@ The `Baseline` column says what each RiemannFinMath number is compared with. The
 | GaussQuant R | An R implementation, used where QuantLib has no counterpart |
 | Legacy R function, R closed form | R code of the legacy text |
 | torch | Automatic differentiation in `torch`, whose engine is C++ |
-| RiemannFinMath itself, The input | A check within RiemannFinMath, and not a comparison between libraries |
+| rmql itself, The input | A check within rmql, and not a comparison between libraries |
 
-No RiemannFinMath call falls back on another library. Where RiemannFinMath lacks a calculation, the item is listed in @sec-gaps and is not approximated.
+No rmql call falls back on another library. Where rmql lacks a calculation, the item is listed in @sec-gaps and is not approximated.
 
 ## Wrapper and core
 

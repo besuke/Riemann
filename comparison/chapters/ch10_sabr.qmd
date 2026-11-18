@@ -45,11 +45,11 @@ ql_fit <- optim(
 parameters <- as.list(ql_fit$par)
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: riemann-volatility
-riemann_volatility <- RiemannFinMath::compute_sabr_volatility(
+#| label: rmql-volatility
+rmql_volatility <- rmql::compute_sabr_volatility(
   "lognormal", market$strike, forward, expiry, parameters$alpha, beta, parameters$nu, parameters$rho
 )
 ```
@@ -58,7 +58,7 @@ riemann_volatility <- RiemannFinMath::compute_sabr_volatility(
 #| label: results-volatility
 compare_values(
   sprintf("Strike %.2f percent", market$strike_pct), "percent of volatility",
-  100 * ql_volatility(market$strike, parameters$alpha, parameters$nu, parameters$rho), 100 * riemann_volatility
+  100 * ql_volatility(market$strike, parameters$alpha, parameters$nu, parameters$rho), 100 * rmql_volatility
 ) |>
   show_results()
 ```
@@ -66,8 +66,8 @@ compare_values(
 ## Calibration
 
 ```{r}
-#| label: riemann-fit
-riemann_fit <- RiemannFinMath::calibrate_sabr("lognormal", market$strike, market$black_volatility, forward, expiry, beta)
+#| label: rmql-fit
+rmql_fit <- rmql::calibrate_sabr("lognormal", market$strike, market$black_volatility, forward, expiry, beta)
 ```
 
 The two fits use different optimizers, starting points and parameter scales: L-BFGS-B on the plain parameters against Levenberg-Marquardt with exact derivatives on transformed ones. So the parameters are not judged. Compare the root mean square errors: the lower one is the better fit of the same quotes.
@@ -76,10 +76,10 @@ The two fits use different optimizers, starting points and parameter scales: L-B
 #| label: results-fit
 reason <- "Different optimizers; not the same calculation"
 bind_rows(
-  not_comparable("alpha", "percent", 100 * parameters$alpha, 100 * riemann_fit$alpha, reason, "R optim on QuantLib"),
-  not_comparable("nu", "percent", 100 * parameters$nu, 100 * riemann_fit$nu, reason, "R optim on QuantLib"),
-  not_comparable("rho", "percent", 100 * parameters$rho, 100 * riemann_fit$rho, reason, "R optim on QuantLib"),
-  not_comparable("Root mean square error", "percent of volatility", 100 * sqrt(ql_fit$value), 100 * riemann_fit$root_mean_square_error, reason, "R optim on QuantLib")
+  not_comparable("alpha", "percent", 100 * parameters$alpha, 100 * rmql_fit$alpha, reason, "R optim on QuantLib"),
+  not_comparable("nu", "percent", 100 * parameters$nu, 100 * rmql_fit$nu, reason, "R optim on QuantLib"),
+  not_comparable("rho", "percent", 100 * parameters$rho, 100 * rmql_fit$rho, reason, "R optim on QuantLib"),
+  not_comparable("Root mean square error", "percent of volatility", 100 * sqrt(ql_fit$value), 100 * rmql_fit$root_mean_square_error, reason, "R optim on QuantLib")
 ) |>
   show_results()
 ```
@@ -91,7 +91,7 @@ bind_rows(
 tibble(strike_pct = market$strike_pct, Quotes = 100 * market$black_volatility) |>
   mutate(
     `R optim on QuantLib` = 100 * ql_volatility(market$strike, parameters$alpha, parameters$nu, parameters$rho),
-    RiemannFinMath = 100 * RiemannFinMath::compute_sabr_volatility("lognormal", market$strike, forward, expiry, riemann_fit$alpha, beta, riemann_fit$nu, riemann_fit$rho)
+    rmql = 100 * rmql::compute_sabr_volatility("lognormal", market$strike, forward, expiry, rmql_fit$alpha, beta, rmql_fit$nu, rmql_fit$rho)
   ) |>
   pivot_longer(-strike_pct, names_to = "Series", values_to = "volatility") |>
   ggplot(aes(strike_pct, volatility, colour = Series)) +
@@ -104,15 +104,15 @@ tibble(strike_pct = market$strike_pct, Quotes = 100 * market$black_volatility) |
 
 ## Normal SABR
 
-The QuantLib R binding has no normal SABR expansion, so nothing on the C++ side can be judged. The item shows only that RiemannFinMath's own fit recovers its own smile.
+The QuantLib R binding has no normal SABR expansion, so nothing on the C++ side can be judged. The item shows only that rmql's own fit recovers its own smile.
 
 ```{r}
 #| label: normal
 normal_inputs <- list(alpha = 0.03, nu = 0.4, rho = -0.3, forward = 0.03, expiry = 2, beta = 0.5)
 show_inputs(normal_inputs)
 strikes <- 0.03 * c(0.6, 0.8, 0.9, 1, 1.1, 1.25, 1.5)
-normal_smile <- RiemannFinMath::compute_sabr_volatility("normal", strikes, 0.03, 2, 0.03, 0.5, 0.4, -0.3)
-normal_fit <- RiemannFinMath::calibrate_sabr("normal", strikes, normal_smile, 0.03, 2, 0.5)
+normal_smile <- rmql::compute_sabr_volatility("normal", strikes, 0.03, 2, 0.03, 0.5, 0.4, -0.3)
+normal_fit <- rmql::calibrate_sabr("normal", strikes, normal_smile, 0.03, 2, 0.5)
 bind_rows(
   compare_values("alpha", "percent", 3, 100 * normal_fit$alpha, "The input"),
   compare_values("nu", "percent", 40, 100 * normal_fit$nu, "The input"),
@@ -134,18 +134,18 @@ bind_rows(
   against_lagrange(
     sprintf("Strike %.2f percent", market$strike_pct), "percent of volatility",
     paste0("sabr.volatility_pct.", market$strike_pct),
-    100 * RiemannFinMath::compute_sabr_volatility("lognormal", market$strike, forward, expiry, lagrange_parameters$alpha, beta, lagrange_parameters$nu, lagrange_parameters$rho)
+    100 * rmql::compute_sabr_volatility("lognormal", market$strike, forward, expiry, lagrange_parameters$alpha, beta, lagrange_parameters$nu, lagrange_parameters$rho)
   ),
-  lagrange_not_comparable("alpha", "decimal", "sabr.alpha", riemann_fit$alpha, optimizers),
-  lagrange_not_comparable("nu", "decimal", "sabr.nu", riemann_fit$nu, optimizers),
-  lagrange_not_comparable("rho", "decimal", "sabr.rho", riemann_fit$rho, optimizers)
+  lagrange_not_comparable("alpha", "decimal", "sabr.alpha", rmql_fit$alpha, optimizers),
+  lagrange_not_comparable("nu", "decimal", "sabr.nu", rmql_fit$nu, optimizers),
+  lagrange_not_comparable("rho", "decimal", "sabr.rho", rmql_fit$rho, optimizers)
 ) |>
   show_results()
 ```
 
 ## Caplets and correlated shocks
 
-The two examples of the legacy text's BGM/LMM section (II-7.4): one caplet from the marginal distribution of its forward rate, and correlated normal shocks. They are building blocks, not a LIBOR market model: neither side drifts several forward rates under a common measure. The random numbers are R's, drawn with the legacy seeds and passed to RiemannFinMath, so that both sides use the same draws. Values are in basis points of the notional.
+The two examples of the legacy text's BGM/LMM section (II-7.4): one caplet from the marginal distribution of its forward rate, and correlated normal shocks. They are building blocks, not a LIBOR market model: neither side drifts several forward rates under a common measure. The random numbers are R's, drawn with the legacy seeds and passed to rmql, so that both sides use the same draws. Values are in basis points of the notional.
 
 ```{r}
 #| label: lmm-inputs
@@ -161,12 +161,12 @@ set.seed(caplet$seed)
 caplet_normals <- stats::rnorm(caplet$paths)
 set.seed(619L)
 independent_shocks <- matrix(stats::rnorm(90000), ncol = 3)
-riemann_black <- RiemannFinMath::compute_caplet_value(caplet$forward, caplet$strike, caplet$volatility, caplet$expiry, caplet$accrual, caplet$discount_factor)
-riemann_simulated <- RiemannFinMath::compute_caplet_from_normals(caplet_normals, caplet$forward, caplet$strike, caplet$volatility, caplet$expiry,
+rmql_black <- rmql::compute_caplet_value(caplet$forward, caplet$strike, caplet$volatility, caplet$expiry, caplet$accrual, caplet$discount_factor)
+rmql_simulated <- rmql::compute_caplet_from_normals(caplet_normals, caplet$forward, caplet$strike, caplet$volatility, caplet$expiry,
                                                                 caplet$accrual, caplet$discount_factor)
-riemann_shocks <- RiemannFinMath::compute_correlated_normals(independent_shocks, target_correlation)
+rmql_shocks <- rmql::compute_correlated_normals(independent_shocks, target_correlation)
 ql_black <- QuantLib::blackFormula("Call", caplet$strike, caplet$forward, caplet$volatility * sqrt(caplet$expiry), caplet$accrual * caplet$discount_factor)
-own_shocks <- RiemannFinMath::generate_correlated_normals(30000, target_correlation, seed = 619)
+own_shocks <- rmql::generate_correlated_normals(30000, target_correlation, seed = 619)
 pairs <- expand.grid(i = 1:3, j = 1:3)
 pair_names <- LETTERS[1:3]
 ```
@@ -174,13 +174,13 @@ pair_names <- LETTERS[1:3]
 ```{r}
 #| label: lmm-results
 bind_rows(
-  compare_values("Caplet, Black formula", "bp of notional", 1e4 * ql_black, 1e4 * riemann_black),
-  compare_max("Correlated shocks, against R's Z %*% chol(C)", "normal variate", independent_shocks %*% chol(target_correlation), riemann_shocks, "R"),
-  against_lagrange("Caplet, Black formula", "bp of notional", "lmm.caplet.black_bp", 1e4 * riemann_black),
-  against_lagrange("Caplet, simulated marginal", "bp of notional", "lmm.caplet.simulated_bp", 1e4 * riemann_simulated$value),
-  against_lagrange("Caplet, standard error", "bp of notional", "lmm.caplet.standard_error_bp", 1e4 * riemann_simulated$standard_error),
+  compare_values("Caplet, Black formula", "bp of notional", 1e4 * ql_black, 1e4 * rmql_black),
+  compare_max("Correlated shocks, against R's Z %*% chol(C)", "normal variate", independent_shocks %*% chol(target_correlation), rmql_shocks, "R"),
+  against_lagrange("Caplet, Black formula", "bp of notional", "lmm.caplet.black_bp", 1e4 * rmql_black),
+  against_lagrange("Caplet, simulated marginal", "bp of notional", "lmm.caplet.simulated_bp", 1e4 * rmql_simulated$value),
+  against_lagrange("Caplet, standard error", "bp of notional", "lmm.caplet.standard_error_bp", 1e4 * rmql_simulated$standard_error),
   against_lagrange(sprintf("Sample correlation %s-%s", pair_names[pairs$i], pair_names[pairs$j]), "correlation",
-                   sprintf("lmm.correlation.%s.%s", pair_names[pairs$i], pair_names[pairs$j]), as.vector(stats::cor(riemann_shocks))),
+                   sprintf("lmm.correlation.%s.%s", pair_names[pairs$i], pair_names[pairs$j]), as.vector(stats::cor(rmql_shocks))),
   lagrange_not_comparable("Sample correlation A-B, this package's numbers", "correlation", "lmm.correlation.B.A", stats::cor(own_shocks)[2, 1],
                           "Different random numbers")
 ) |>
@@ -192,7 +192,7 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,       ~QuantLib,                                  ~RiemannFinMath,
+  ~Layer,    ~Aspect,       ~QuantLib,                                  ~rmql,
   "Wrapper", "Volatility",  "One strike per call",                      "Vectors recycled to a common length",
   "Wrapper", "Calibration", "Written by the caller around `optim`",     "One call, with the iterations in the result",
   "Core",    "Expansion",   "Hagan et al.",                             "Hagan et al.",

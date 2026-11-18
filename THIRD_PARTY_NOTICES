@@ -1,25 +1,25 @@
 THIRD-PARTY NOTICES
 ===================
 
-Riemann contains code derived from QuantLib (commit
+rmql contains code derived from QuantLib (commit
 70f240f29ddb84927ff654502f1d75b3de24ba43). Judging from the source diff, since v1.42 the files
 below changed only
 in ways that do not affect results (ext::optional -> std::optional in schedule.cpp,
 make_shared and the removal of an unused helper in the day counters, coupon_cast and a
 rewritten BPS calculator in cashflows.cpp):
 
-- crates/riemann/src/time/calendar/rules.rs: holiday rules from
+- crates/rmql/src/time/calendar/rules.rs: holiday rules from
   ql/time/calendars/japan.cpp, target.cpp, unitedstates.cpp and unitedkingdom.cpp
-- crates/riemann/src/time/business_day.rs: date adjustment and advance from
+- crates/rmql/src/time/business_day.rs: date adjustment and advance from
   ql/time/calendar.cpp
-- crates/riemann/src/time/schedule.rs: schedule generation from
+- crates/rmql/src/time/schedule.rs: schedule generation from
   ql/time/schedule.cpp
-- crates/riemann/src/time/day_count.rs: day count formulas from
+- crates/rmql/src/time/day_count.rs: day count formulas from
   ql/time/daycounters/ (actual360, actual364, actual36525, actual365fixed, actual366,
   actualactual, thirty360, thirty365, one, simpledaycounter, business252)
-- crates/riemann/src/cashflows.rs: fixed-rate coupons, legs and accrued amounts from
+- crates/rmql/src/cashflows.rs: fixed-rate coupons, legs and accrued amounts from
   ql/cashflows/fixedratecoupon.cpp, ql/cashflows/cashflows.cpp, ql/cashflow.cpp, ql/event.cpp
-- crates/riemann/src/instruments/fixed_rate_bond.rs: fixed-rate bonds from
+- crates/rmql/src/instruments/fixed_rate_bond.rs: fixed-rate bonds from
   ql/instruments/bonds/fixedratebond.cpp, ql/instruments/bond.cpp,
   ql/pricingengines/bond/bondfunctions.cpp
 
@@ -27,32 +27,32 @@ The following files reproduce QuantLib v1.42 (tag v1.42, commit
 41b0e1460f3e4991087917707ca29a9125e200db), because QuantLib changed these calculations
 after v1.42 and v1.42 is the version used for verification:
 
-- crates/riemann/src/interest_rate.rs: ql/interestrate.cpp
+- crates/rmql/src/interest_rate.rs: ql/interestrate.cpp
   (Copyright (C) 2004 Ferdinando Ametrano)
-- crates/riemann/src/math/solver1d.rs: ql/math/solver1d.hpp and
+- crates/rmql/src/math/solver1d.rs: ql/math/solver1d.hpp and
   ql/math/solvers1d/newtonsafe.hpp (Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl),
   ql/math/comparison.hpp (Copyright (C) 2003, 2004, 2005, 2007 StatPro Italia srl)
-- crates/riemann/src/cashflow_analysis.rs: yield-based functions of
+- crates/rmql/src/cashflow_analysis.rs: yield-based functions of
   ql/cashflows/cashflows.cpp (copyright holders listed in the file header)
 
 The following files were written from the QuantLib v1.42 sources (same tag), the version
 used for verification:
 
-- crates/riemann/src/curves.rs: ql/termstructure.cpp,
+- crates/rmql/src/curves.rs: ql/termstructure.cpp,
   ql/termstructures/yieldtermstructure.cpp, ql/termstructures/interpolatedcurve.hpp and
   ql/termstructures/yield/{zeroyieldstructure,flatforward,zerocurve,discountcurve,
   zerospreadedtermstructure,piecewisezerospreadedtermstructure}.hpp,
   ql/math/interpolations/loginterpolation.hpp
-- crates/riemann/src/bond_curve.rs: ql/termstructures/yield/bondhelpers.cpp
-- crates/riemann/src/bootstrap.rs: ql/termstructures/yield/bootstraptraits.hpp and
+- crates/rmql/src/bond_curve.rs: ql/termstructures/yield/bondhelpers.cpp
+- crates/rmql/src/bootstrap.rs: ql/termstructures/yield/bootstraptraits.hpp and
   ql/termstructures/iterativebootstrap.hpp
-- crates/riemann/src/xccy.rs: ql/termstructures/yield/ratehelpers.cpp (FxSwapRateHelper) and
+- crates/rmql/src/xccy.rs: ql/termstructures/yield/ratehelpers.cpp (FxSwapRateHelper) and
   ql/experimental/termstructures/crosscurrencyratehelpers.cpp
-- crates/riemann/src/math/interpolation.rs: ql/math/interpolations/linearinterpolation.hpp,
+- crates/rmql/src/math/interpolation.rs: ql/math/interpolations/linearinterpolation.hpp,
   ql/math/interpolation.hpp
-- crates/riemann/src/cashflow_analysis.rs (npv_on_curve): CashFlows::npv with a yield term
+- crates/rmql/src/cashflow_analysis.rs (npv_on_curve): CashFlows::npv with a yield term
   structure in ql/cashflows/cashflows.cpp
-- crates/riemann/src/ois.rs: ql/termstructures/yield/oisratehelper.cpp,
+- crates/rmql/src/ois.rs: ql/termstructures/yield/oisratehelper.cpp,
   ql/termstructures/yield/ratehelpers.cpp, ql/instruments/makeois.cpp,
   ql/instruments/overnightindexedswap.cpp, ql/instruments/fixedvsfloatingswap.cpp,
   ql/cashflows/overnightindexedcoupon.cpp, ql/cashflows/overnightindexedcouponpricer.cpp,
@@ -61,20 +61,20 @@ used for verification:
   ql/termstructures/iterativebootstrap.hpp, ql/termstructures/yield/bootstraptraits.hpp,
   ql/termstructures/yield/piecewiseyieldcurve.hpp,
   ql/pricingengines/swap/discountingswapengine.cpp
-- crates/riemann/src/time/calendar/rules/ (americas.rs, europe.rs, middle_east_africa.rs,
-  asia_pacific.rs, special.rs, tables.rs) and crates/riemann/src/time/calendar/rules.rs:
+- crates/rmql/src/time/calendar/rules/ (americas.rs, europe.rs, middle_east_africa.rs,
+  asia_pacific.rs, special.rs, tables.rs) and crates/rmql/src/time/calendar/rules.rs:
   the corresponding ql/time/calendars/*.cpp of QuantLib v1.42 (commit 41b0e14), with their
-  copyright holders listed at the top of each Riemann file
-- crates/riemann/src/math/solver1d.rs (brent, brent_with_step): ql/math/solvers1d/brent.hpp and
+  copyright holders listed at the top of each rmql file
+- crates/rmql/src/math/solver1d.rs (brent, brent_with_step): ql/math/solvers1d/brent.hpp and
   ql/math/solver1d.hpp
-- crates/riemann/src/math/solver1d.rs (finite_difference_newton_safe):
+- crates/rmql/src/math/solver1d.rs (finite_difference_newton_safe):
   ql/math/solvers1d/finitedifferencenewtonsafe.hpp
-- crates/riemann/src/math/interpolation.rs (MonotonicCubicSpline):
+- crates/rmql/src/math/interpolation.rs (MonotonicCubicSpline):
   ql/math/interpolations/cubicinterpolation.hpp,
   ql/methods/finitedifferences/tridiagonaloperator.cpp
-- crates/riemann/src/curves.rs (zero_rate, forward_rate):
+- crates/rmql/src/curves.rs (zero_rate, forward_rate):
   ql/termstructures/yieldtermstructure.cpp
-- crates/riemann/src/ois_swap.rs: ql/instruments/makeois.cpp (Copyright (C) 2009, 2014, 2015 Ferdinando
+- crates/rmql/src/ois_swap.rs: ql/instruments/makeois.cpp (Copyright (C) 2009, 2014, 2015 Ferdinando
   Ametrano; (C) 2015 Paolo Mazzocchi; (C) 2017 Joseph Jeisman; (C) 2017 Fabrice Lecuyer),
   ql/instruments/overnightindexedswap.cpp and ql/cashflows/overnightindexedcoupon.cpp (Copyright (C)
   2009 Roland Lichters; (C) 2009 Ferdinando Ametrano; (C) 2014 Peter Caspers; (C) 2017 Joseph Jeisman;
@@ -82,54 +82,54 @@ used for verification:
   Stefano Fondi), ql/instruments/fixedvsfloatingswap.cpp,
   ql/pricingengines/swap/discountingswapengine.cpp (Copyright (C) 2007, 2009 StatPro Italia srl; (C)
   2011 Ferdinando Ametrano)
-- crates/riemann/src/instruments/fixed_rate_bond.rs (z_spread_from_price):
+- crates/rmql/src/instruments/fixed_rate_bond.rs (z_spread_from_price):
   ql/pricingengines/bond/bondfunctions.cpp and ql/cashflows/cashflows.cpp
-- crates/riemann/src/instruments/fixed_rate_bond.rs (value_on_curve):
+- crates/rmql/src/instruments/fixed_rate_bond.rs (value_on_curve):
   ql/pricingengines/bond/discountingbondengine.cpp (Copyright (C) 2007 Giorgio
   Facchinetti; (C) 2009 StatPro Italia srl) and ql/instruments/bond.cpp
-- crates/riemann/src/math/normal.rs: ql/math/errorfunction.cpp and
+- crates/rmql/src/math/normal.rs: ql/math/errorfunction.cpp and
   ql/math/distributions/normaldistribution.{cpp,hpp}. The error function is based on code
   from the GNU C library, originally written by Sun: Copyright (C) 1993 by Sun Microsystems,
   Inc. All rights reserved. Developed at SunPro, a Sun Microsystems, Inc. business.
   Permission to use, copy, modify, and distribute this software is freely granted, provided
   that this notice is preserved.
-- crates/riemann/src/american_approximations.rs: ql/pricingengines/vanilla/baroneadesiwhaleyengine.cpp and
+- crates/rmql/src/american_approximations.rs: ql/pricingengines/vanilla/baroneadesiwhaleyengine.cpp and
   ql/pricingengines/vanilla/bjerksundstenslandengine.cpp
-- crates/riemann/src/options.rs: ql/pricingengines/vanilla/analyticeuropeanengine.cpp,
+- crates/rmql/src/options.rs: ql/pricingengines/vanilla/analyticeuropeanengine.cpp,
   ql/pricingengines/blackcalculator.cpp, ql/pricingengines/blackformula.cpp,
   ql/pricingengines/barrier/analyticbarrierengine.cpp,
   ql/pricingengines/vanilla/binomialengine.hpp, ql/methods/lattices/binomialtree.cpp and
   ql/methods/lattices/bsmlattice.hpp
-- crates/riemann/src/hull_white.rs: ql/models/shortrate/onefactormodels/hullwhite.cpp and
+- crates/rmql/src/hull_white.rs: ql/models/shortrate/onefactormodels/hullwhite.cpp and
   ql/pricingengines/swaption/jamshidianswaptionengine.cpp
   (the calibration in this file is not derived from QuantLib's code, whose results serve only as
   test values)
-- crates/riemann/src/sabr.rs: ql/termstructures/volatility/sabr.cpp
-- crates/riemann/src/math/sobol.rs: ql/math/randomnumbers/sobolrsg.cpp, primitivepolynomials.cpp and
+- crates/rmql/src/sabr.rs: ql/termstructures/volatility/sabr.cpp
+- crates/rmql/src/math/sobol.rs: ql/math/randomnumbers/sobolrsg.cpp, primitivepolynomials.cpp and
   ql/methods/montecarlo/brownianbridge.cpp (Copyright (C) 2003, 2004 Ferdinando Ametrano; (C) 2006
   Richard Gould; (C) 2007 Mark Joshi; (C) 2013 Cheng Li; (C) 2002 Peter Jaeckel; (C) 2006 StatPro Italia srl)
-- crates/riemann/src/longstaff_schwartz.rs: ql/methods/montecarlo/longstaffschwartzpathpricer.hpp
+- crates/rmql/src/longstaff_schwartz.rs: ql/methods/montecarlo/longstaffschwartzpathpricer.hpp
   (Copyright (C) 2006 Klaus Spanderen; (C) 2015 Peter Caspers; (C) 2015 Thema Consulting SA)
-- crates/riemann/src/cds.rs: ql/instruments/creditdefaultswap.cpp,
+- crates/rmql/src/cds.rs: ql/instruments/creditdefaultswap.cpp,
   ql/pricingengines/credit/midpointcdsengine.cpp, ql/pricingengines/credit/isdacdsengine.cpp,
   ql/termstructures/credit/defaultprobabilityhelpers.cpp and
   ql/termstructures/credit/interpolatedsurvivalprobabilitycurve.hpp
-- crates/riemann/src/time/schedule.rs (Cds and Cds2015 rules, cds_maturity):
+- crates/rmql/src/time/schedule.rs (Cds and Cds2015 rules, cds_maturity):
   ql/time/schedule.cpp and ql/instruments/creditdefaultswap.cpp
-- crates/riemann/src/lmm_market.rs (compute_reduced_pseudo_root, create_reduced_correlation):
+- crates/rmql/src/lmm_market.rs (compute_reduced_pseudo_root, create_reduced_correlation):
   ql/math/matrixutilities/pseudosqrt.cpp, rankReducedSqrt and normalizePseudoRoot (Copyright (C) 2003,
   2004, 2007 Ferdinando Ametrano; (C) 2006 Yiping Chen; (C) 2007 Neil Firth)
-- crates/riemann/src/fx_smile.rs: ql/pricingengines/blackdeltacalculator.cpp (Copyright (C) 2010
+- crates/rmql/src/fx_smile.rs: ql/pricingengines/blackdeltacalculator.cpp (Copyright (C) 2010
   Dimitri Reiswich), ql/termstructures/volatility/equityfx/blackvolsurfacedelta.cpp (Copyright (C)
   2019 Quaternion Risk Management Ltd; (C) 2022 Skandinaviska Enskilda Banken AB (publ); (C) 2025
   Paolo D'Elia), ql/termstructures/volatility/equityfx/blackvariancecurve.cpp (Copyright (C) 2002,
   2003, 2004 Ferdinando Ametrano; (C) 2003 StatPro Italia srl; (C) 2026 Paolo D'Elia) and
   ql/termstructures/volatility/interpolatedsmilesection.hpp (Copyright (C) 2006 Ferdinando Ametrano;
   (C) 2006 François du Vignaud; (C) 2015 Peter Caspers)
-- crates/riemann/src/math/interpolation.rs (MonotonicCubicSpline::natural): the same
+- crates/rmql/src/math/interpolation.rs (MonotonicCubicSpline::natural): the same
   ql/math/interpolations/cubicinterpolation.hpp without the monotonicity filter
 
-The copyright holders of those files are listed at the top of each Riemann file.
+The copyright holders of those files are listed at the top of each rmql file.
 QuantLib is distributed under the following license.
 
 ----------------------------------------------------------------------------------

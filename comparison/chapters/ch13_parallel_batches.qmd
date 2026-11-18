@@ -40,12 +40,12 @@ quantlib_time <- system.time(
 )[["elapsed"]]
 ```
 
-RiemannFinMath, one call for all rows:
+rmql, one call for all rows:
 
 ```{r}
-#| label: bond-riemann
+#| label: bond-rmql
 times_by_threads <- map(c(1L, 4L), \(threads) {
-  elapsed <- system.time(result <- RiemannFinMath::compute_bond_values_batch(bonds, threads = threads))[["elapsed"]]
+  elapsed <- system.time(result <- rmql::compute_bond_values_batch(bonds, threads = threads))[["elapsed"]]
   list(result = result, elapsed = elapsed)
 })
 ```
@@ -55,7 +55,7 @@ times_by_threads <- map(c(1L, 4L), \(threads) {
 bind_rows(
   compare_max("Clean price, 1 thread", "per 100, largest", quantlib_prices, times_by_threads[[1]]$result$clean_price),
   compare_max("Clean price, 4 threads", "per 100, largest", quantlib_prices, times_by_threads[[2]]$result$clean_price),
-  compare_max("1 thread against 4 threads", "per 100, largest", times_by_threads[[1]]$result$clean_price, times_by_threads[[2]]$result$clean_price, "RiemannFinMath itself"),
+  compare_max("1 thread against 4 threads", "per 100, largest", times_by_threads[[1]]$result$clean_price, times_by_threads[[2]]$result$clean_price, "rmql itself"),
   not_comparable("Running time, 1 thread", "seconds", quantlib_time, times_by_threads[[1]]$elapsed, "Time on this machine for one run; the batch also builds each bond and computes every measure"),
   not_comparable("Running time, 4 threads", "seconds", quantlib_time, times_by_threads[[2]]$elapsed, "Time on this machine for one run; the batch also builds each bond and computes every measure")
 ) |>
@@ -75,7 +75,7 @@ sofr <- as_quotes(lagrange_object(chapter, "sofr_quotes", trade_date_sofr = "202
 curves <- tibble(
   evaluation_date = c(tona_date, sofr_date), reference_date = c(tona_date, sofr_date), index = c("tonar", "sofr"),
   curve_day_count = c("actual_365_fixed", "actual_360"),
-  instruments = list(RiemannFinMath::create_ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), RiemannFinMath::create_ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L)),
+  instruments = list(rmql::create_ois_instruments(tona$tenor, tona$rate, 2L, 1L, 0L), rmql::create_ois_instruments(sofr$tenor, sofr$rate, 2L, 1L, 0L)),
   dates = list(tona_date + c(30L, 365L, 1000L), sofr_date + c(30L, 365L, 1000L))
 )
 show_inputs(list(curves = "the TONAR and SOFR curves of the OIS chapter", reading_dates = "30, 365 and 1000 days ahead"))
@@ -87,8 +87,8 @@ ql_tona <- ql_ois_curve(tona_date, "tonar", QuantLib::Actual365Fixed(), tona$ten
 quantlib_tona <- ql_discount(ql_tona, curves$dates[[1]])
 ql_sofr <- ql_ois_curve(sofr_date, "sofr", QuantLib::Actual360(), sofr$tenor, sofr$rate, 2L)
 quantlib_sofr <- ql_discount(ql_sofr, curves$dates[[2]])
-batch_one <- RiemannFinMath::compute_curve_values_batch(curves, threads = 1L)
-batch_four <- RiemannFinMath::compute_curve_values_batch(curves, threads = 4L)
+batch_one <- rmql::compute_curve_values_batch(curves, threads = 1L)
+batch_four <- rmql::compute_curve_values_batch(curves, threads = 4L)
 ```
 
 ```{r}
@@ -96,7 +96,7 @@ batch_four <- RiemannFinMath::compute_curve_values_batch(curves, threads = 4L)
 bind_rows(
   compare_max("TONAR discount", "discount factor, largest", quantlib_tona, batch_four |> filter(curve == 1L) |> pull(discount)),
   compare_max("SOFR discount", "discount factor, largest", quantlib_sofr, batch_four |> filter(curve == 2L) |> pull(discount)),
-  compare_max("1 thread against 4 threads", "discount factor, largest", batch_one$discount, batch_four$discount, "RiemannFinMath itself")
+  compare_max("1 thread against 4 threads", "discount factor, largest", batch_one$discount, batch_four$discount, "rmql itself")
 ) |>
   show_results()
 ```
@@ -106,7 +106,7 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,       ~QuantLib,                                               ~RiemannFinMath,
+  ~Layer,    ~Aspect,       ~QuantLib,                                               ~rmql,
   "Wrapper", "Many rows",   "A loop in R, or `furrr` with one R process per worker",  "One call with a table and a thread count",
   "Wrapper", "Failed rows", "An R error stops the loop, unless the caller catches it", "`NA` with a message in the row",
   "Core",    "Threads",     "Global `Settings` and observers limit sharing",          "Immutable values shared across threads; R is not called from them",

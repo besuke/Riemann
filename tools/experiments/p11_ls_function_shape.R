@@ -7,12 +7,12 @@
 # decision, and so the value. Everything that the results depend on is fixed below: inputs, seeds, path
 # counts and the settings of the binomial tree that gives the reference value.
 #
-# Usage, from the Riemann root, with RiemannFinMath installed:
+# Usage, from the rmql root, with rmql installed:
 #   Rscript tools/experiments/p11_ls_function_shape.R
 # Writes tools/experiments/output/p11_ls_*.csv, p11_ls_tables.md and p11_ls_continuation.png.
 
 suppressPackageStartupMessages({
-  library(RiemannFinMath)
+  library(rmql)
   library(dplyr)
   library(purrr)
   library(tibble)

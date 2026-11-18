@@ -20,7 +20,7 @@
 
 ## 2. 実装【設計案から実装済み】
 
-`crates/riemann/src/market_risk.rs`、R は `crates/riemann-r/R/market_risk.R`。
+`crates/rmql/src/market_risk.rs`、R は `crates/rmql-r/R/market_risk.R`。
 
 | R の関数 | 内容 |
 |---|---|
@@ -46,7 +46,7 @@
 
 原稿の主な値（95%）：正規 VaR 0.0648、ヒストリカル VaR 0.0660、ES（原稿の定義）0.0870、Rockafellar–Uryasev の ES 0.0894、超過 4 回（期待 3.55 回）、Kupiec の p 値 0.810。ローリング（窓 36）では 35 か月で超過 4 回、p 値 0.132。
 
-| モンテカルロ | RiemannFinMath | 比べる値 | 標準誤差 |
+| モンテカルロ | rmql | 比べる値 | 標準誤差 |
 |---|---|---|---|
 | 1 変量（原稿と同じ μ・σ）の VaR 95% | 0.064790 | 正規の式 0.064805、原稿の furrr 0.064715 | 0.00031 |
 | I-8 の 20 銘柄・等ウエイトの VaR 95% | 0.060713 | 正規の式 0.060570 | 0.00029 |

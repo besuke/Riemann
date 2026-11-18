@@ -11,10 +11,10 @@
 | 区分 | 意味 |
 |---|---|
 | 【ソース確認】 | QuantLib・finmath-lib のソースを読んで確かめた事実、またはソースを読んでの判断。プログラムを実行してはいない |
-| 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
-| 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
+| 【実行照合済み】 | rmql の実装を実行し、基準値と照合した結果 |
+| 【設計案】 | rmql としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）、休日カレンダー（3.4 節）、営業日調整（4.3 節）、スケジュール生成（5.3 節）、日数計算（6.3 節）である。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点（2026-10-31）で【実行照合済み】の項目は、日付（2.3 節）、休日カレンダー（3.4 節）、営業日調整（4.3 節）、スケジュール生成（5.3 節）、日数計算（6.3 節）である。** それ以外の rmql の動作に関する記述は【設計案】である。
 
 ## 0. 参照した QuantLib
 
@@ -27,7 +27,7 @@
 
 - 差分なし：`calendar.hpp`／`calendar.cpp`、`businessdayconvention.hpp`、`dategenerationrule.hpp`、`calendars/japan.cpp`・`target.cpp`・`unitedstates.cpp`・`unitedkingdom.cpp`・`jointcalendar.cpp`
 - 差分はあるが、読んだ範囲では判定に関わらない変更：
-  - `date.cpp`：今日の日付の取得をスレッド安全にした（Riemann の中核では使わない）、既定の日付の作り方の整理
+  - `date.cpp`：今日の日付の取得をスレッド安全にした（rmql の中核では使わない）、既定の日付の作り方の整理
   - `schedule.hpp`／`schedule.cpp`：`ext::optional` から `std::optional` への置き換え
   - 日数計算の各ファイル：`make_shared` への置き換え。`actualactual.cpp` で削除された `yearFractionGuess` は、v1.42 でも定義があるだけで、`ql/` の中に呼び出しはなかった（`git grep`）
 
@@ -63,9 +63,9 @@
 | 月末を保つ扱い | 日付の加算では行わない。カレンダーの `advance` の `endOfMonth` で行う（4.2） |
 | 補助関数 | `endOfMonth`（暦の月末）、`isEndOfMonth`、`nextWeekday`、`nthWeekday` |
 | 空の日付 | `Date()`（シリアル 0）を「日付なし」として使う |
-| 時刻付きの日付 | `QL_HIGH_RESOLUTION_DATE` の場合だけ。Riemann では扱わない |
+| 時刻付きの日付 | `QL_HIGH_RESOLUTION_DATE` の場合だけ。rmql では扱わない |
 
-### 2.2 Riemann の設計【設計案】（2.3 で照合済み）
+### 2.2 rmql の設計【設計案】（2.3 で照合済み）
 
 - `Date` は、QuantLib と同じシリアル値を持つ値とする（`i32`）。範囲も同じ 1901-01-01〜2199-12-31 とし、範囲外は `Err` を返す。
 - 「日付なし」をシリアル 0 で表さず、`Option<Date>` で表す。
@@ -82,7 +82,7 @@
 
 ### 2.3 QuantLib との照合結果【実行照合済み】
 
-2026-10-31 に、`crates/riemann/src/time/` の実装を、QuantLib R バインディング 1.42 の実行結果（`tools/golden/p1_dates.R` で作成）と照合した（`cargo test --test golden_dates`）。
+2026-10-31 に、`crates/rmql/src/time/` の実装を、QuantLib R バインディング 1.42 の実行結果（`tools/golden/p1_dates.R` で作成）と照合した（`cargo test --test golden_dates`）。
 
 | 対象 | 件数 | 結果 |
 |---|---|---|
@@ -104,7 +104,7 @@
 | 合成 | `JointCalendar`：休日の和（どちらかが休日なら休日）または営業日の和 |
 | その他 | `isHoliday`、`isWeekend`、営業日の月末（`endOfMonth`、`isEndOfMonth`）、休日の一覧、2日間の営業日数（`businessDaysBetween`） |
 
-### 3.2 Riemann の設計【設計案】
+### 3.2 rmql の設計【設計案】
 
 - カレンダーの種類は値とする：`enum Calendar { Japan, Target, UnitedStates(UsMarket), UnitedKingdom(UkMarket), WeekendsOnly, NullCalendar, Joint(Vec<Calendar>, JointRule) }`。
 - 規則による判定は、カレンダーの種類ごとの副作用のない関数（`fn is_business_day_by_rule(cal: &Calendar, d: Date) -> bool`）とする。規則、近似式、一度きりの休日は QuantLib と同じにする（そうしないと照合できない）。日本については 3.3 のとおり、QuantLib 互換の実装とする。
@@ -118,7 +118,7 @@
 
 ### 3.3 日本の休日：QuantLib 互換の実装
 
-Riemann の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql/time/calendars/japan.cpp`）と同じ判定を返す、QuantLib 互換の実装**とする。祝日法（国民の祝日に関する法律）そのものを実装するものではない。
+rmql の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql/time/calendars/japan.cpp`）と同じ判定を返す、QuantLib 互換の実装**とする。祝日法（国民の祝日に関する法律）そのものを実装するものではない。
 
 **QuantLib の書き方【ソース確認】**
 
@@ -139,17 +139,17 @@ Riemann の `Calendar::Japan` は、**QuantLib の `Japan` カレンダー（`ql
 - 上の表は、QuantLib がそう判定するという事実であり、祝日法の規定をそのまま書いたものではない。たとえば、春分の日・秋分の日は法律上、天文学的な観測に基づいて毎年公表される日であるが、QuantLib は近似式で求めている。振替休日も、法律の文言ではなく、祝日ごとの「翌日が月曜なら」という条件で表している。
 - 1月2日・3日と12月31日は、国民の祝日ではなく、金融機関の休業日として休日に含めている。
 - QuantLib の判定と、祝日法・政府の公表・実際の市場の休業日が、すべての年で一致するかは確かめていない（未確認）。
-- Riemann はまず QuantLib との一致を目標とする（照合の基準が QuantLib のため）。実際の休業日と違う日が分かった場合は、規則を変えずに、例外日のデータ（`CalendarAdjustments`）で補う。規則そのものを祝日法に合わせて書き直す場合は、QuantLib 互換とは別の種類（例：`Calendar::JapanStatutory`）として足し、`Calendar::Japan` は QuantLib 互換のまま残す。
+- rmql はまず QuantLib との一致を目標とする（照合の基準が QuantLib のため）。実際の休業日と違う日が分かった場合は、規則を変えずに、例外日のデータ（`CalendarAdjustments`）で補う。規則そのものを祝日法に合わせて書き直す場合は、QuantLib 互換とは別の種類（例：`Calendar::JapanStatutory`）として足し、`Calendar::Japan` は QuantLib 互換のまま残す。
 
 ### 3.4 実装と QuantLib との照合結果【実行照合済み】
 
-**実装（`crates/riemann/src/time/calendar/`）**
+**実装（`crates/rmql/src/time/calendar/`）**
 
 - `Calendar`（規則の種類）：`NullCalendar`、`WeekendsOnly`、`Japan`、`Target`、`UnitedStates(Settlement / GovernmentBond / Sofr)`、`UnitedKingdom(Settlement)`、`Joint(..., JoinHolidays / JoinBusinessDays)`。
 - 規則（`rules.rs`）は QuantLib の条件式を移したもので、ファイルの先頭に移植元・コミット・著作権表示を書き、`THIRD_PARTY_NOTICES` に QuantLib のライセンス全文を置いた。
 - 復活祭（TARGET・米国国債・SOFR・英国の Good Friday と Easter Monday）は、QuantLib のように表を持たず、グレゴリオ暦の計算式（Meeus/Jones/Butcher）で求める。表と一致することは、下の照合で確かめた。
 - 例外日は `HolidayCalendar { calendar, adjustments }` に値として持つ。`with_holiday`・`without_holiday` は QuantLib の `addHoliday`・`removeHoliday` と同じ決まりで、新しい値を返す（元の値は変わらない）。
-- 【設計案】QuantLib の `JointCalendar` は、構成するカレンダーそれぞれの例外日を参照する。Riemann では、例外日は合成したカレンダー全体に付ける形にしている。構成するカレンダーごとの例外日が必要になったら、照合を足して扱いを決める。
+- 【設計案】QuantLib の `JointCalendar` は、構成するカレンダーそれぞれの例外日を参照する。rmql では、例外日は合成したカレンダー全体に付ける形にしている。構成するカレンダーごとの例外日が必要になったら、照合を足して扱いを決める。
 
 **照合結果**（2026-10-31、QuantLib R バインディング 1.42、`tools/golden/p1_calendars.R`、`cargo test --test golden_calendars`）
 
@@ -206,7 +206,7 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 | `joint_japan_moex_holidays` | 5,402 | 0 | 27452 | 0 |
 | `joint_japan_moex_business_days` | 313 | 9 | 13090 | 0 |
 
-**例外になる日付**（QuantLib と Riemann で同じ。Riemann は `Err` を返す）
+**例外になる日付**（QuantLib と rmql で同じ。rmql は `Err` を返す）
 
 | カレンダー | 日付 | 原因 |
 |---|---|---|
@@ -218,7 +218,7 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 
 **対応一覧**
 
-| 地域 | QuantLib のクラス | 市場 | Riemann | 種類 | 年別データ・一度きりの休日 | 注記 | 週末以外の休日 | エラーの日 | C++ との差 | R パッケージ | 実市場 |
+| 地域 | QuantLib のクラス | 市場 | rmql | 種類 | 年別データ・一度きりの休日 | 注記 | 週末以外の休日 | エラーの日 | C++ との差 | R パッケージ | 実市場 |
 |---|---|---|---|---|---|---|---:|---:|---:|---|---|
 | 南北アメリカ | `Argentina` | Merval | `Calendar::Argentina` | 規則のみ | — |  | 2,948 | 0 | 0 | 差 0 | 未検証 |
 | 南北アメリカ | `Brazil` | Settlement | `Calendar::Brazil(BrazilMarket::Settlement)` | 規則のみ | — | 年の条件は規則の変更だけ（例：11/20）。年別の表なし | 3,024 | 0 | 0 | 差 0 | 未検証 |
@@ -266,9 +266,9 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 | 欧州 | `UnitedKingdom` | Exchange | `Calendar::UnitedKingdom(UkMarket::Exchange)` | 規則と一度きりの休日 | 1995〜2023 |  | 2,399 | 0 | 0 | 差 0 | 未検証 |
 | 欧州 | `UnitedKingdom` | Metals | `Calendar::UnitedKingdom(UkMarket::Metals)` | 規則と一度きりの休日 | 1995〜2023 |  | 2,399 | 0 | 0 | 差 0 | 未検証 |
 | 中東・アフリカ | `Botswana` | （区分なし） | `Calendar::Botswana` | 規則のみ | — |  | 2,989 | 0 | 0 | 差 0 | 未検証 |
-| 中東・アフリカ | `Israel` | Settlement | `Calendar::Israel(IsraelMarket::Settlement)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も Riemann もエラー | 679 | 16 | 0 | 差 0 | 未検証 |
-| 中東・アフリカ | `Israel` | TASE | `Calendar::Israel(IsraelMarket::Tase)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も Riemann もエラー | 679 | 16 | 0 | 差 0 | 未検証 |
-| 中東・アフリカ | `Israel` | SHIR | `Calendar::Israel(IsraelMarket::Shir)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も Riemann もエラー | 1,797 | 16 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Israel` | Settlement | `Calendar::Israel(IsraelMarket::Settlement)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も rmql もエラー | 679 | 16 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Israel` | TASE | `Calendar::Israel(IsraelMarket::Tase)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も rmql もエラー | 679 | 16 | 0 | 差 0 | 未検証 |
+| 中東・アフリカ | `Israel` | SHIR | `Calendar::Israel(IsraelMarket::Shir)` | 年別データ | 2000〜2050 | 範囲の両端の日付は QuantLib も rmql もエラー | 1,797 | 16 | 0 | 差 0 | 未検証 |
 | 中東・アフリカ | `SaudiArabia` | Tadawul | `Calendar::SaudiArabia` | 年別データ | 1998〜2029 | 犠牲祭は 2022 年まで、断食明けは 2029 年まで | 6,278 | 0 | 0 | 差 0 | 未検証 |
 | 中東・アフリカ | `SouthAfrica` | （区分なし） | `Calendar::SouthAfrica` | 規則と一度きりの休日 | 2004〜2024 |  | 3,123 | 0 | 0 | 差 0 | 未検証 |
 | 中東・アフリカ | `Turkey` | （区分なし） | `Calendar::Turkey` | 年別データ | 2004〜2034 | 2024 年以降は要検証とソースに記載 | 1,576 | 0 | 0 | 差 0 | 未検証 |
@@ -315,11 +315,11 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 | Weeks | 暦で n 週進めてから調整する |
 | Months・Years | 暦で進め（2.1 の月・年の加算）、月末の扱い（`endOfMonth`）が有効なら、次のどちらかにする。そうでなければ調整する。<br>・規約が Unadjusted で、元の日付が暦の月末なら、進めた先の暦の月末<br>・それ以外で、元の日付が営業日の月末なら、進めた先の営業日の月末 |
 
-【設計案】Riemann では、`adjust(cal, d, bdc) -> Result<Date>` と `advance(cal, d, period, bdc, end_of_month) -> Result<Date>` を、QuantLib と同じ動作の関数として作る。上の 4.1・4.2 の表は【ソース確認】である。`cal` は `HolidayCalendar`（例外日付き）である。
+【設計案】rmql では、`adjust(cal, d, bdc) -> Result<Date>` と `advance(cal, d, period, bdc, end_of_month) -> Result<Date>` を、QuantLib と同じ動作の関数として作る。上の 4.1・4.2 の表は【ソース確認】である。`cal` は `HolidayCalendar`（例外日付き）である。
 
 ### 4.3 実装と QuantLib との照合結果【実行照合済み】
 
-**実装（`crates/riemann/src/time/business_day.rs`）**
+**実装（`crates/rmql/src/time/business_day.rs`）**
 
 - `BusinessDayConvention`：Following、ModifiedFollowing、Preceding、ModifiedPreceding、Unadjusted、HalfMonthModifiedFollowing、Nearest。
 - `HolidayCalendar` の関数として、`adjust`、`advance`、営業日の月末・月初（`end_of_month`・`is_end_of_month`・`start_of_month`・`is_start_of_month`）、`business_days_between` を持つ。例外日も判定に含まれる。
@@ -346,7 +346,7 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 - 月末の扱いは、期間が1か月以上の月・年単位のときだけ有効（`allowsEndOfMonth`）。
 - 端数期間（stub）：first date・next-to-last date を指定でき、各期間が規則どおりかを `isRegular` で返す。
 
-### 5.2 Riemann の設計【設計案】
+### 5.2 rmql の設計【設計案】
 
 - `ScheduleSpec`（上の入力をすべて持つ値）を受け取り、`Schedule { dates, is_regular }` を返す関数 `generate(&ScheduleSpec) -> Result<Schedule>` とする。日付を直接並べて作るスケジュールも受け付ける。
 - 生成規則は段階的に足す：まず Backward・Forward・Zero（債券・OIS に必要）、CDS の段階で Twentieth・IMM・CDS 系。
@@ -354,13 +354,13 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 
 ### 5.3 実装と QuantLib との照合結果【実行照合済み】
 
-**実装（`crates/riemann/src/time/schedule.rs`）**
+**実装（`crates/rmql/src/time/schedule.rs`）**
 
 - `ScheduleSpec`（開始日、終了日、期間、カレンダー、営業日調整、終了日の営業日調整、生成規則、月末の扱い、first date、next-to-last date）を受け取り、`Schedule { dates, is_regular }` を返す関数 `generate`。
 - 生成規則は Backward・Forward・Zero を実装した。ThirdWednesday・Twentieth・IMM・CDS 系は `Error::Unsupported` を返す（CDS の段階で足す）。
 - QuantLib との違い：
-  - 開始日は必須とした。QuantLib は、開始日がなく Backward の場合に、グローバルな評価日から仮の開始日を作るが、Riemann はグローバル状態を持たない。
-  - QuantLib の最後の安全確認には、日付が 2 つのときに `isRegular_[1]` を書き換える箇所がある（配列の範囲外）。Riemann は、その要素があるときだけ書き換える。
+  - 開始日は必須とした。QuantLib は、開始日がなく Backward の場合に、グローバルな評価日から仮の開始日を作るが、rmql はグローバル状態を持たない。
+  - QuantLib の最後の安全確認には、日付が 2 つのときに `isRegular_[1]` を書き換える箇所がある（配列の範囲外）。rmql は、その要素があるときだけ書き換える。
 - 処理は `ql/time/schedule.cpp` から移したものとして扱い、ファイルの先頭に移植元と著作権表示を書いた（`THIRD_PARTY_NOTICES` にも記載）。
 
 **照合結果**（2026-10-31、QuantLib R バインディング 1.42、`tools/golden/p1_schedules.R`、`cargo test --test golden_schedules`）
@@ -370,7 +370,7 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 | 対象 | 件数 | 結果 |
 |---|---|---|
 | スケジュールが作られた組み合わせ（日付と `isRegular` を比較） | 2,003 件（first date あり 668 件、next-to-last date あり 646 件、月末の扱いあり 912 件、規則どおりでない期間を含むもの 1,441 件） | すべて一致 |
-| QuantLib がエラーにした組み合わせ | 1,997 件 | Riemann もすべてエラーを返した。エラーの理由までは比べていない |
+| QuantLib がエラーにした組み合わせ | 1,997 件 | rmql もすべてエラーを返した。エラーの理由までは比べていない |
 
 エラーの大半は、Zero の規則に端数期間を指定した場合と、範囲外の端数期間を意図的に指定した場合である。
 
@@ -387,7 +387,7 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 | 30/360 | USA、BondBasis、European、EurobondBasis、Italian、German、ISMA、ISDA、NASD（German・ISDA は終了日が要る） |
 | 30/365、Business/252（カレンダーが要る）、One、Simple | — |
 
-### 6.2 Riemann の設計【設計案】
+### 6.2 rmql の設計【設計案】
 
 - `enum DayCount` に、QuantLib の種類と変種を値として持たせる（例：`Thirty360(Thirty360Kind::BondBasis)`、`ActualActual(ActActKind::Isma { reference })`）。
 - `day_count(dc, d1, d2) -> i32` と `year_fraction(dc, d1, d2, ref_start, ref_end) -> Result<f64>` を関数として作る。参照期間やスケジュールが要る種類で、それが与えられていなければ `Err` を返す。
@@ -395,7 +395,7 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 
 ### 6.3 実装と QuantLib との照合結果【実行照合済み】
 
-**実装（`crates/riemann/src/time/day_count.rs`）**
+**実装（`crates/rmql/src/time/day_count.rs`）**
 
 - `DayCount`：Actual/360（最終日を含むかどうか）、Actual/364、Actual/365.25（同）、Actual/365 Fixed（Standard・Canadian・NoLeap）、Actual/366（同）、Actual/Actual（ISDA・ISMA・AFB）、30/360（USA・BondBasis・European・Italian・ISDA（終了日つき）・NASD）、30/365、1/1、Simple、Business/252（カレンダーつき）。QuantLib の別名（Bond = ISMA、Historical・Actual365 = ISDA、Euro = AFB、EurobondBasis = European、ISMA = BondBasis、German = ISDA）は同じ値に対応させた。
 - `day_count(d1, d2)` と `year_fraction(d1, d2, ref_start, ref_end)`。参照期間が必要な種類で不正な参照期間を渡すと `Err` を返す。
@@ -412,7 +412,7 @@ QuantLib C++ v1.42 にある全カレンダーと全市場区分を実装した�
 |---|---|---|
 | 日数（`dayCount`） | 70,660 件 | すべて完全一致 |
 | 年数割合（`yearFraction`）が求まった組 | 67,747 件 | すべて完全一致（浮動小数の最後の桁まで。7.3 の許容誤差を使う必要はなかった） |
-| QuantLib がエラーにした組 | 2,913 件（Actual/365 Canadian 1,221、Actual/Actual ISMA・Bond 各 797、AFB・Euro 各 46、ISDA・Historical・Actual365 各 2） | Riemann もすべてエラーを返した。エラーの理由までは比べていない |
+| QuantLib がエラーにした組 | 2,913 件（Actual/365 Canadian 1,221、Actual/Actual ISMA・Bond 各 797、AFB・Euro 各 46、ISDA・Historical・Actual365 各 2） | rmql もすべてエラーを返した。エラーの理由までは比べていない |
 
 ISDA の 2 件は、2199 年に始まる期間で、QuantLib が翌年 1 月 1 日（2200 年）を作れずにエラーにするものである。
 

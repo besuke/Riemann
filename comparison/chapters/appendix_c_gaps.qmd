@@ -2,7 +2,7 @@
 
 Nothing below is approximated with another library. "Legacy section" is the section of the legacy text that has the calculation.
 
-## Missing from the public API of RiemannFinMath
+## Missing from the public API of rmql
 
 | Legacy section | Calculation | State |
 |---|---|---|
@@ -46,7 +46,7 @@ These appear as reference rows, without a verdict.
 
 ## Missing from the QuantLib R binding
 
-| Calculation in RiemannFinMath | State |
+| Calculation in rmql | State |
 |---|---|
 | Sensitivities of bonds, curves, CDS and asset swaps | No automatic differentiation in the binding. Finite differences are the baseline |
 | Normal SABR | Not in the binding |

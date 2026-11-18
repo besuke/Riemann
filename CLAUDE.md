@@ -1,8 +1,8 @@
-# RiemannFinMath（リポジトリ名・crate 名は Riemann）
+# rmql（リポジトリ名・crate 名は rmql）
 
 Rust の金融計算ライブラリー。利用の主体は R（extendr）で、TypeScript の Node 版（napi-rs）とブラウザー版（wasm-bindgen）は開発目標である。ユーザーとのやり取りは日本語。
 
-**Riemann は計算サーバー（計算エンジン）である**（2026-11-18 のユーザーの指示）。クライアントのリポジトリは金融計算を自分で実装せず、RiemannFinMath を呼ぶ。足りない計算はここに足す。作業の会話は Riemann のフォルダーで始め（リポジトリ直下の `Riemann-Claude.bat`）、クライアントもここから扱う。全リポジトリ共通のきまりはこのファイルにまとめた（親の `../CLAUDE.md` は置かない）。
+**rmql は計算サーバー（計算エンジン）である**（2026-11-18 のユーザーの指示）。クライアントのリポジトリは金融計算を自分で実装せず、rmql を呼ぶ。足りない計算はここに足す。作業の会話は rmql のフォルダーで始め（リポジトリ直下の `rmql-Claude.bat`）、クライアントもここから扱う。全リポジトリ共通のきまりはこのファイルにまとめた（親の `../CLAUDE.md` は置かない）。
 
 仕様の本体は `docs/` にある。ここには、次の会話で作業を判断するための決定事項・状態・手順だけを書く。
 
@@ -18,26 +18,26 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | `QuantLib_tidy`、`LeanStudy`、`TypeScriptStudy` | 学習・試作 | | |
 
 - クライアントを扱う前に、そのリポジトリの `CLAUDE.md` を読む（自動では読まれない）。
-- **クライアントが RiemannFinMath を入れる・更新する・呼ぶ方法は `docs/client_guide.md`**。クライアントの `CLAUDE.md` や README からここを指す。
+- **クライアントが rmql を入れる・更新する・呼ぶ方法は `docs/client_guide.md`**。クライアントの `CLAUDE.md` や README からここを指す。
 - 別の会話が同じリポジトリで作業中のことがある。未コミットの変更があるリポジトリの共有ファイルは、頼まれない限り編集しない（2026-11-18、Infrago Quant に 34 件の未コミットの変更があった）。
-- RiemannFinMath を入れ直す前に、その DLL を使っている R API（Infrago Quant、Carmine Studio）を止める。
+- rmql を入れ直す前に、その DLL を使っている R API（Infrago Quant、Carmine Studio）を止める。
 
 ### 引継ぎの所在（入口はこの表。正本は各リポジトリに 1 つだけ）
 
-内容は重ねて書かない。このファイルの「状態と引継ぎ」は **Riemann の作業**の正本で、クライアントの状態はそれぞれの正本を読む（2026-11-18 に整理）。
+内容は重ねて書かない。このファイルの「状態と引継ぎ」は **rmql の作業**の正本で、クライアントの状態はそれぞれの正本を読む（2026-11-18 に整理）。
 
 | 対象 | 正本 | 備考 |
 |---|---|---|
-| Riemann（計算サーバー）と全体 | このファイルの「状態と引継ぎ」 | |
+| rmql（計算サーバー）と全体 | このファイルの「状態と引継ぎ」 | |
 | Infrago Quant | `../InfragoQuant/HANDOVER.md` | 状態・未了・新しい PC での準備はすべてここ。`CLAUDE.md` と README は指すだけ。ブランチ `rename-infrago-quant-and-analytics`（PR #1）が未マージで、別の会話の未コミットの変更がある |
 | Crimson Proof | `../crimson-proof/CLAUDE.md` の「現在の状態と次の作業（引継ぎ）」 | **古い（2026-11-10）**。章の進み具合は、旧名 LagrangeAcademy の会話の記憶（`~/.claude/projects/C--AnalyticFin-Projects-LagrangeAcademy/memory/project-book-status.md`、2026-11-14）と食い違う。Crimson Proof の会話で、リポジトリの状態（`git log`、`_quarto.yml`）を確かめてから、`CLAUDE.md` の節を書き直す |
-| Carmine Studio | `../carmine-studio/README.md` と `reconciliation/RECONCILIATION.md` | 専用の引継ぎ節はない。Riemann への要望は上の「要望と未対応」の表 |
+| Carmine Studio | `../carmine-studio/README.md` と `reconciliation/RECONCILIATION.md` | 専用の引継ぎ節はない。rmql への要望は上の「要望と未対応」の表 |
 
-**デスクトップの起動用ファイル**（`C:\Users\besuk\OneDrive\デスクトップ`）：`Riemann-Claude.bat`（旧パス固定の複製。リポジトリのものを使う）、`InfragoClaude.bat`、`CrimsonProof.bat`、`resume_claude_CarmineStudio.bat`、`CoralBook_Rontgen.bat`。各プロジェクトの会話を開くものなので、残す。Riemann から全体を扱う方針（この会話）では、`Riemann-Claude.bat` だけで足りる。
+**デスクトップの起動用ファイル**（`C:\Users\besuk\OneDrive\デスクトップ`）：`rmql-Claude.bat`（旧パス固定の複製。リポジトリのものを使う）、`InfragoClaude.bat`、`CrimsonProof.bat`、`resume_claude_CarmineStudio.bat`、`CoralBook_Rontgen.bat`。各プロジェクトの会話を開くものなので、残す。rmql から全体を扱う方針（この会話）では、`rmql-Claude.bat` だけで足りる。
 
 ### クライアントのニーズ（2026-11-18 に各リポジトリを読んで整理）
 
-**使っている関数**（`RiemannFinMath::` の呼び出し）：
+**使っている関数**（`rmql::` の呼び出し）：
 
 - Carmine Studio は 73 関数を使う。カーブ・債券・日本式利回り・OIS・ASW・国債先物・CDS・オプション・Hull-White・SABR・LMM・LS・MBS・PRDC・バッチと、ほぼ全域にわたる。
 - Infrago Quant は 50 関数を使う。債券・日本式利回り・OIS・ASW・CDS・TRS・IRRBB。
@@ -47,11 +47,11 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 **要望と未対応**：
 
-| クライアント | 要望 | 出典 | Riemann の状態 |
+| クライアント | 要望 | 出典 | rmql の状態 |
 |---|---|---|---|
 | Infrago Quant・Carmine Studio | コール債の行使判断（コール日ごとの継続価値・コール価格・行使の有無、境界） | Carmine `server/R/callable_model.R`（原稿の独自の R 関数で求めていた） | **対応済み（2026-11-19、未公開）**：`compute_hull_white_callable_bond_decisions()`。Coral Book II-8.4.2 の `decisions` と 5 ケース 10,918 行で照合（`docs/spec_hull_white.md` 1.2 節）。両クライアントは使用済み。公開は 0.3.5 |
 | Carmine Studio | OIS スワップを期間（`7Y`）で作る（`MakeOIS` の規則） | `reconciliation/RECONCILIATION.md` 6 章 #1 | **対応済み（2026-11-18、未公開）**：`compute_ois_swap_dates()`。公開は 0.3.5。クライアント側の置き換えは未了（「まず読む」） |
-| Carmine Studio | 照合に使った RiemannFinMath のコミットを固定する | 同 #5 | 0.3.2 は Releases の zip と `RemoteSha` で固定できるようになった。クライアント側の記録は未更新 |
+| Carmine Studio | 照合に使った rmql のコミットを固定する | 同 #5 | 0.3.2 は Releases の zip と `RemoteSha` で固定できるようになった。クライアント側の記録は未更新 |
 | Carmine Studio | ブラウザーで直接動かす（WebAssembly 版） | 同 #6 | L1〜L3 は未着手 |
 | Carmine Studio | 元本リセット型 CCS、FX スワップによる受渡日の調整、CCS の期間構造の校正 | `README.md` の円換算 ASW の「未対応」 | 一部の部品（`create_xccy_instruments` の `resetting`、`bootstrap_xccy_curve`）はある。クライアントから使える形かは未確認 |
 | Infrago Quant | 他の PC で動かすための TRS・IRRBB の公開 | `CLAUDE.md` の状態（2026-11-16） | 解消。`main` に入り、0.3.2 の zip に含まれる |
@@ -59,7 +59,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ## 共通の作業のきまり（全リポジトリ）
 
-- コミットと push は頼まれたときだけ（Riemann の例外は「作業のきまり」）。
+- コミットと push は頼まれたときだけ（rmql の例外は「作業のきまり」）。
 - 確かめていないことを断定しない。推定は「未確認の推定」と書く。照合日・確認日は実行ログの実際の日付を書く。数値例が合うことは「この例で成り立つ」ことで、命題の証明ではない。
 - 市場の気配値（Bloomberg のデータ）を表や出力に出さない・保存しない。例の入力は合成の値と明記する。
 - 安全の仕組み（Smart App Control、サイトのボット対策、認証）を回避しない。止められたら「not run」として記録し、ユーザーに伝える。
@@ -99,7 +99,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 - **日付・カレンダー・規約**：QuantLib に従う。日本のカレンダーは「QuantLib 互換の実装」であり、祝日法の説明とは区別する。新興国カレンダーは当面、債券の受渡日と利払日の判定だけに使う。OIS は TONAR・€STR・SOFR・SONIA の 4 指標に限る。
 - **日本式債券計算**：`docs/spec_bonds.md` 5.1 節の規則で、GaussQuant の `R/bond_yen_GQL.R`（`4ff081c`）と照合する。計算規則を直接説明し、VBA を根拠にしない（「VBA 互換」と書かない）。二次情報の「市場慣行」だけで規則を変えない。2 月 29 日の応当日が平年なら 2 月 28 日とし、その期間を 1 年とする。この規則は日本式債券計算だけのもの。
 - **自動微分**：finmath-lib の方式（アリーナのグラフ、グローバルな ID カウンターなし）。2 階微分は逆伝播の記録、気配の微分は解いたカーブでの陰関数定理。
-- **正式名称**：RiemannFinMath（R パッケージ名も同じ）。リポジトリ名、crate 名（`riemann`、`riemann-r`）、API 名は変えない。CRAN への公開申請はしていない。
+- **正式名称**：rmql（R パッケージ名も同じ）。リポジトリ名、crate 名（`rmql`、`rmql-r`）、API 名は変えない。CRAN への公開申請はしていない。
 - **著作権とライセンス**：著作権者は Eiichi Horigome、MIT と Apache-2.0 の併用。QuantLib から移したコードは、著作権表示をソースから写し（記憶で書かない）、ファイルの先頭と `THIRD_PARTY_NOTICES` に載せる。配布は社内のみの想定。リポジトリは公開で、非公開化は保留。
 - **関連リポジトリの改名（2026-11-15）**：実行時に読むパス（`tools/golden/p9`・`p11`・`p12`・`p13`、`comparison/R/book.R`）は新しい名前に直した。仕様書と照合記録の旧名は当時の名前として残す。
 
@@ -111,7 +111,7 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 ## 作業のきまり
 
 - 文書の記述は【ソース確認】【実行照合済み】【設計案】を分ける。エラーの一致は、件数だけでなく原因も確かめる。
-- GaussQuant・Coral Book・Curie は、Riemann の作業では変更しない。
+- GaussQuant・Coral Book・Curie は、rmql の作業では変更しない。
 - 段階ごとの手順：照合用 R スクリプト → Rust の実装 → 照合テスト → 仕様書と `THIRD_PARTY_NOTICES` の更新 → 全テストと clippy → 報告。
 - 機能の拡充は、段階ごとにテストと clippy が通ったら確認なしで commit と push をしてよい（2026-11-01 の指示）。それ以外のコミットと push は頼まれたときだけ。
 - 回帰テストの許容誤差は変えない。
@@ -125,22 +125,22 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 | 層 | 状態 |
 |---|---|
-| Rust の中核 `riemann::ois::compute_ois_swap_dates` | **完了**。QuantLib 1.42 `MakeOIS` と 13,520 件で照合し、成功 13,514 件は完全一致、失敗 6 件も同じ（`docs/spec_ois_swap.md` 7 章）。コミット済み（`d8c5ba7`） |
-| R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L, on_error)` | **実装とテストは完了、コミット済み（2026-11-18）**。ラッパーは `crates/riemann-r/src/rust/src/lib.rs`、R 関数は `R/ois_swaps.R`、ヘルプは `man/compute_ois_swap_dates.Rd`、テストは `tests/testthat/test-ois-swap-dates.R`。R のテスト全体は 156 件成功、Rust は 278 件成功、`cargo clippy --all-targets` は通る |
+| Rust の中核 `rmql::ois::compute_ois_swap_dates` | **完了**。QuantLib 1.42 `MakeOIS` と 13,520 件で照合し、成功 13,514 件は完全一致、失敗 6 件も同じ（`docs/spec_ois_swap.md` 7 章）。コミット済み（`d8c5ba7`） |
+| R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L, on_error)` | **実装とテストは完了、コミット済み（2026-11-18）**。ラッパーは `crates/rmql-r/src/rust/src/lib.rs`、R 関数は `R/ois_swaps.R`、ヘルプは `man/compute_ois_swap_dates.Rd`、テストは `tests/testthat/test-ois-swap-dates.R`。R のテスト全体は 156 件成功、Rust は 278 件成功、`cargo clippy --all-targets` は通る |
 | Carmine Studio の置き換え | **未了**。`../carmine-studio/server/R/tona_ois_model.R` の `TONA_SWAP_DATES` を `compute_ois_swap_dates("tonar", evaluation_date, "7Y")` に置き換える。結果は同じ日付（開始 2026-09-14、満期 2033-09-14）のはず。置き換えたら `reconciliation/RECONCILIATION.md` 6 章 #1 を「解消」に更新する（クライアントの会話で、頼まれたときだけコミット） |
-| 版と公開 | **未了**。`DESCRIPTION` を 0.3.5 にして、下の「配布」の手順で公開する。公開してから、Carmine Studio は `stopifnot(packageVersion("RiemannFinMath") >= "0.3.5")` を足す |
+| 版と公開 | **未了**。`DESCRIPTION` を 0.3.5 にして、下の「配布」の手順で公開する。公開してから、Carmine Studio は `stopifnot(packageVersion("rmql") >= "0.3.5")` を足す |
 
 **注意**：
 
-- 既定のライブラリーの `RiemannFinMath` は 0.3.2 のまま（別の R が DLL を使っている）。新しい関数を試すには、`R CMD INSTALL -l <別ライブラリー> crates/riemann-r` に入れる（今回は `C:/rfmdev/lib`）。
-- `crates/riemann-r`（ワークスペースの外）の `cargo clippy` は、もとから 13 件のエラーが出る（引数の多さ、不要な型変換など）。今回の追加分ではない。プロジェクトの検査は、ルートの `cargo clippy --all-targets -- -D warnings`。
+- 既定のライブラリーの `rmql` は 0.3.2 のまま（別の R が DLL を使っている）。新しい関数を試すには、`R CMD INSTALL -l <別ライブラリー> crates/rmql-r` に入れる（今回は `C:/rfmdev/lib`）。
+- `crates/rmql-r`（ワークスペースの外）の `cargo clippy` は、もとから 13 件のエラーが出る（引数の多さ、不要な型変換など）。今回の追加分ではない。プロジェクトの検査は、ルートの `cargo clippy --all-targets -- -D warnings`。
 - 1 日の OIS が QuantLib で縮退して失敗するケース（年末年始）は、`compute_ois_swap_dates` は日付を返し、`create_ois_swap` が同じく失敗する（テストで確認済み）。
 
-**決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/Riemann")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
+**決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/rmql")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
 
-検討したが採用しなかった案：ビルド済みの静的ライブラリー `libriemann_r.a`（約 35 MB）を Releases に置き、`configure.win` が `RemoteSha` と SHA-256 の一致を確かめて取得して cargo を飛ばす案。リンクのために Rtools は要るままで、タグごとの添付も要るので、(b) で足りるとしてやめた。必要になったら、版・コミット・SHA-256 が一致するときだけ使い、不一致なら cargo にもどす形にする。
+検討したが採用しなかった案：ビルド済みの静的ライブラリー `librmql_r.a`（約 35 MB）を Releases に置き、`configure.win` が `RemoteSha` と SHA-256 の一致を確かめて取得して cargo を飛ばす案。リンクのために Rtools は要るままで、タグごとの添付も要るので、(b) で足りるとしてやめた。必要になったら、版・コミット・SHA-256 が一致するときだけ使い、不一致なら cargo にもどす形にする。
 
-**検討中（2026-11-19、ユーザー）：パッケージ名を `rmql`（Rust Mathematical Quantitative Library）に改める案。** 「リーマン」がリーマン・ブラザーズを連想させ、金融では縁起が悪いかもしれないため。**未決定・未着手**。影響は大きい（R パッケージ名 `RiemannFinMath`、リポジトリ名・crate 名 `riemann`・`riemann-r`、公開 URL `besuke.github.io/Riemann`、3 つのクライアントの `RiemannFinMath::` の呼び出し、配布物、文書）。決める点：新しい名前をどの範囲に付けるか（R パッケージだけか、crate・リポジトリも）、関数名は変えないか、旧名の互換期間を置くか。決めるまで名前は変えない。
+**検討中（2026-11-19、ユーザー）：パッケージ名を `rmql`（Rust Mathematical Quantitative Library）に改める案。** 「rmql」がrmql・ブラザーズを連想させ、金融では縁起が悪いかもしれないため。**未決定・未着手**。影響は大きい（R パッケージ名 `rmql`、リポジトリ名・crate 名 `rmql`・`rmql-r`、公開 URL `besuke.github.io/rmql`、3 つのクライアントの `rmql::` の呼び出し、配布物、文書）。決める点：新しい名前をどの範囲に付けるか（R パッケージだけか、crate・リポジトリも）、関数名は変えないか、旧名の互換期間を置くか。決めるまで名前は変えない。
 
 ### 完了したもの
 
@@ -153,19 +153,19 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
   - P10：スマイルの下での経路依存の条項、相関の推定、FX と金利の同時校正は未対応（`spec_prdc.md`）。
   - P14：DRC は関係を整理しただけで、基準本文の確認と実装は未了。
   - P1：一致は QuantLib とのもので、実際の市場休日は検証していない。
-- QuantLib Guide と公式 Examples：`quantlib_guide_inventory.md` 4 章の優先順位 1〜6 は実装済み。残りは「後回し」の項目、公式 Examples のサンプル追加、比較資料の全体の再描画。サンプルは `crates/riemann-r/inst/examples/quantlib_guide/` と `quantlib_examples/`。
+- QuantLib Guide と公式 Examples：`quantlib_guide_inventory.md` 4 章の優先順位 1〜6 は実装済み。残りは「後回し」の項目、公式 Examples のサンプル追加、比較資料の全体の再描画。サンプルは `crates/rmql-r/inst/examples/quantlib_guide/` と `quantlib_examples/`。
 - L1〜L3（TypeScript の Node 版、ブラウザー版、Excel）は未着手。
 
 **配布（`docs/spec_r.md` 8 章）**：
 
 - 最新は 0.3.4（2026-11-18）。
-  - **Windows の入れ方（Rust なし）**：`install.packages("RiemannFinMath", repos = c("https://besuke.github.io/Riemann", "https://cloud.r-project.org"))`。公開した URL から、Rust を外した PATH で導入と smoke test 34 項目を確認済み（`dist/smoke_from_pages_0.3.4.log`）。
-  - `remotes::install_github("besuke/Riemann", subdir = "crates/riemann-r")` は、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust と Rtools が要る。2026-11-18 に今の `main` で再確認済み（34 項目成功）。`subdir` なしは 404。Rust がなければ `configure.win` が上の入れ方を示して止まる。
+  - **Windows の入れ方（Rust なし）**：`install.packages("rmql", repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org"))`。公開した URL から、Rust を外した PATH で導入と smoke test 34 項目を確認済み（`dist/smoke_from_pages_0.3.4.log`）。
+  - `remotes::install_github("besuke/rmql", subdir = "crates/rmql-r")` は、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust と Rtools が要る。2026-11-18 に今の `main` で再確認済み（34 項目成功）。`subdir` なしは 404。Rust がなければ `configure.win` が上の入れ方を示して止まる。
   - Windows zip と tar.gz は GitHub Releases の `v0.3.4` にもある。
-- **`gh-pages` ブランチ**は R リポジトリ（zip、tar.gz、`PACKAGES` 索引）だけを持つ配布専用で、`main` とは別。GitHub Pages が https://besuke.github.io/Riemann/ で公開する。Riemann の作業フォルダーには取り込まず、一時フォルダーから push する。
+- **`gh-pages` ブランチ**は R リポジトリ（zip、tar.gz、`PACKAGES` 索引）だけを持つ配布専用で、`main` とは別。GitHub Pages が https://besuke.github.io/rmql/ で公開する。rmql の作業フォルダーには取り込まず、一時フォルダーから push する。
   - **版を上げるとき**：(1) `DESCRIPTION` の版を変える。(2) zip を `R CMD INSTALL --build -l <別ライブラリー>`、tar.gz を `tools/package/build_source_package.R` で作る。(3) `Rscript tools/package/build_binary_repo.R <zip> <tar.gz> <フォルダー>` で索引を更新する（古い版は残り、`install.packages` は新しい版を選ぶ）。(4) そのフォルダーを `gh-pages` に push する（Pages の設定は済み）。(5) 公開 URL から導入して smoke test を実行する。(6) Releases に `vX.Y.Z` を作る。
   - zip と tar.gz は同じ版にする。そろわないと Windows が新しいソースをビルドしようとする。ソースを置かないと、Windows の R は「このパッケージはない」と判断して失敗する。
-  - 既定のライブラリーに別の R（Positron など）が `RiemannFinMath.dll` を使っていると、`R CMD INSTALL --build` が失敗する。別のライブラリーに作り、その R は終了させない。
+  - 既定のライブラリーに別の R（Positron など）が `rmql.dll` を使っていると、`R CMD INSTALL --build` が失敗する。別のライブラリーに作り、その R は終了させない。
 - tar.gz の `R CMD check` とソース導入は 0.3.0 以降、アプリ制御に止められて未完了。Windows 以外は未確認。
 - 配布ファイルの記録は `dist/MANIFEST.txt`（`dist/` は git に入れない）。クライアント向けの手順は `docs/client_guide.md`。
 
@@ -184,15 +184,15 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 
 ### 別の PC でダウンロードして続ける
 
-1. 取得：`git clone https://github.com/besuke/Riemann.git`（または `git pull`）。RStudio では `Riemann.Rproj` を開く。
+1. 取得：`git clone https://github.com/besuke/rmql.git`（または `git pull`）。RStudio では `rmql.Rproj` を開く。
 2. 準備：R 4.6、Rtools 4.5、Rust（`rustup target add x86_64-pc-windows-gnu`）、Claude Code。R パッケージだけ使うなら、上の `install.packages(...)` の 1 行で足りる。
-3. 起動：`Riemann-Claude.bat`（または `Riemann-Claude.ps1`）を実行する。この PC に会話の履歴があれば続きから、なければ新しい会話で始まる。新しい会話では、**このファイル（CLAUDE.md）の「まず読む」から続ける**。
+3. 起動：`rmql-Claude.bat`（または `rmql-Claude.ps1`）を実行する。この PC に会話の履歴があれば続きから、なければ新しい会話で始まる。新しい会話では、**このファイル（CLAUDE.md）の「まず読む」から続ける**。
 4. 会話の履歴と記憶は PC ごとにあり、git には入らない。引継ぎはこのファイルが担う。作業を切るときは、ここを更新してコミットする。
 5. クライアント（`../carmine-studio`、`../InfragoQuant`、`../crimson-proof`）と参照元（`../coral-book`、`../GaussQuant`）は、同じ親フォルダーに clone する。
 
 ## QuantLib との比較資料（`comparison/`）
 
-Coral Book の入力と計算例で、RiemannFinMath を基準と比べる英語の資料（文書に日本語を入れない）。
+Coral Book の入力と計算例で、rmql を基準と比べる英語の資料（文書に日本語を入れない）。
 
 - **基準**：カレンダーは QuantLib C++ v1.42（`tests/golden/calendar_all_*.csv`）、それ以外は Coral Book の計算結果（`comparison/baseline/lagrange_values.csv`、作り直しは `comparison/baseline/README.md`）。QuantLib R パッケージなどを直接呼ぶ行は参考（REF）で判定しない。同じ計算でないものは N/C。
 - **判定**：絶対誤差 1e-4、表示は小数 4 桁、判定は丸める前、単位を明記。この資料だけの基準。
@@ -204,9 +204,9 @@ Coral Book の入力と計算例で、RiemannFinMath を基準と比べる英語
 
 - **R** は PATH にない：`"C:/Program Files/R/R-4.6.0/bin/Rscript.exe"`。R の中のパスは `C:/...`（`/c/...` は使えない）。`Rscript -e` は引用符で失敗しやすいので、スクリプトファイルに書いて実行する。
 - パッケージの導入は `R CMD INSTALL`（`devtools::install` は pak の DLL がアプリ制御で止められる）。
-- **RiemannFinMath の入れ方**：
-  - 開発中：ルートで `R CMD INSTALL crates/riemann-r`。Rust の `x86_64-pc-windows-gnu` と Rtools が必要。
-  - 配布版：GitHub Releases の Windows zip（Rust 不要）、または `remotes::install_github("besuke/Riemann", subdir = "crates/riemann-r")`（`docs/spec_r.md` 8.7 節）。
+- **rmql の入れ方**：
+  - 開発中：ルートで `R CMD INSTALL crates/rmql-r`。Rust の `x86_64-pc-windows-gnu` と Rtools が必要。
+  - 配布版：GitHub Releases の Windows zip（Rust 不要）、または `remotes::install_github("besuke/rmql", subdir = "crates/rmql-r")`（`docs/spec_r.md` 8.7 節）。
   - パスが長いとビルドが `LNK1104` で失敗する。短いパスで行う。
 - **Smart App Control** が、新しくビルドした未署名の実行ファイルを止めることがある。
   - 症状：`os error 4551`、`Permission denied`。
@@ -220,18 +220,18 @@ Coral Book の入力と計算例で、RiemannFinMath を基準と比べる英語
     2. 終了コードと、最後の進捗行（章名と直前のチャンク名）を記録する。
     3. その章だけを `quarto render <章>.qmd --log-level debug` で描画する。
     4. そのうえで全体を再実行する。
-- 会話の再開：リポジトリ直下の `Riemann-Claude.bat`（または `.ps1`）が、そのフォルダーで `claude --continue` を起動する（会話がなければ新しい会話）。デスクトップの `Riemann-Claude.bat` は旧パス固定の複製で、リポジトリのものを使う。
+- 会話の再開：リポジトリ直下の `rmql-Claude.bat`（または `.ps1`）が、そのフォルダーで `claude --continue` を起動する（会話がなければ新しい会話）。デスクトップの `rmql-Claude.bat` は旧パス固定の複製で、リポジトリのものを使う。
 
-## Riemann 固有の環境
+## rmql 固有の環境
 
 - テスト：`cargo test --release`。clippy：`cargo clippy --all-targets -- -D warnings`。新しいテストの実行ファイルで LNK1104 が一時的に出ることがある。もう一度実行すれば通る。
 - `cargo fmt --check` は既存のコードで差が出る。新しいファイルと変更した箇所だけ整形する。`rustfmt` にファイルを渡すと `mod` 先まで整形するので、`--config skip_children=true` を付ける。
 - 照合用の値は、ルートから `tools/golden/*.R` を実行して `tests/golden/` に書き出す。仕様が変わらなければ作り直さない。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。
 - カレンダーの規則は `tools/golden/port_calendars.R` が生成する（`rules/` の `special.rs` 以外）。生成後に rustfmt をかける。C++ のビルドは Rtools の g++ を PATH に入れて、bash から実行する。
-- 検証レポート：`tools/verify/verify_riemann.qmd`。アプリ制御で止まった例だけ、環境変数 `RIEMANN_VERIFY_SKIP_EXAMPLES`（例：`verify_bonds`）で飛ばす。その経路は「not run」と表示される。
-- R パッケージ：テストは `crates/riemann-r/tests/testthat`。このビルド（windows-gnu）は MSVC の `cargo test` と数学ライブラリーが違い、最下位ビットの差が出る（`docs/spec_ois.md` 10.6 節）。
+- 検証レポート：`tools/verify/verify_rmql.qmd`。アプリ制御で止まった例だけ、環境変数 `RMQL_VERIFY_SKIP_EXAMPLES`（例：`verify_bonds`）で飛ばす。その経路は「not run」と表示される。
+- R パッケージ：テストは `crates/rmql-r/tests/testthat`。このビルド（windows-gnu）は MSVC の `cargo test` と数学ライブラリーが違い、最下位ビットの差が出る（`docs/spec_ois.md` 10.6 節）。
 - 配布ファイル：
   - ソースパッケージ：`tools/package/build_source_package.R`
-  - zip：`R CMD INSTALL --build crates/riemann-r`
+  - zip：`R CMD INSTALL --build crates/rmql-r`
   - 導入の確認：`tools/package/smoke_test.R <版> <ライブラリー>`。`env -i` で環境変数を全部消すと終了時に落ちるが、`tibble` 側の問題（8.4 節）。PATH から Rust を外すだけで確かめる。
 - QuantLib のソース（v1.42 の確認用）は手元にない。必要なら一時フォルダーに clone し直す。

@@ -1,4 +1,4 @@
-chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+chapter,item,unit,baseline,baseline_value,rmql_value,difference,tolerance,verdict,note
 ch04_ois_curves,"Discount factor, ON",discount factor,QuantLib C++,1.0000007397265747,1.0000007397265747,0,NA,REF,NA
 ch04_ois_curves,"Discount factor, 1W",discount factor,QuantLib C++,1.0000034317200381,1.0000034317200381,0,NA,REF,NA
 ch04_ois_curves,"Discount factor, 2W",discount factor,QuantLib C++,1.0000066479133711,1.0000066479133711,0,NA,REF,NA
@@ -51,7 +51,7 @@ ch04_ois_curves,GBP reprices its quotes,"percent, largest",The input quotes,NA,N
 ch04_ois_curves,GBP effect of ModifiedFollowing on discount,"discount factor, largest",QuantLib C++,NA,NA,0,NA,REF,Different payment conventions: the difference is the effect of the missing argument
 ch04_ois_curves,"TONAR discount factors, curve table","discount factor, largest",LagrangeFinance II-3.2.2,NA,NA,4.962564912891487e-6,1e-4,PASS,NA
 ch04_ois_curves,"TONAR zero rates, curve table","percent, largest",LagrangeFinance II-3.2.2,NA,NA,5.958568680008991e-5,1e-4,PASS,NA
-ch04_ois_curves,TONAR zero rate on the curve's date,percent,LagrangeFinance II-3.2.2,0,-0.009000003338676324,-0.009000003338676324,NA,N/C,"Different definitions at time 0: the legacy table sets 0, and RiemannFinMath uses a short period, as QuantLib does"
+ch04_ois_curves,TONAR zero rate on the curve's date,percent,LagrangeFinance II-3.2.2,0,-0.009000003338676324,-0.009000003338676324,NA,N/C,"Different definitions at time 0: the legacy table sets 0, and rmql uses a short period, as QuantLib does"
 ch04_ois_curves,TONAR fair rate of the short swap,percent,LagrangeFinance II-3.2.4,-0.01260998846787198,-0.012609988467871985,-5.204170427930421e-18,1e-4,PASS,NA
 ch04_ois_curves,EUR largest quote error,bp,LagrangeFinance II-3.7.2,1.046463263265629e-7,1.046463263265629e-7,0,1e-4,PASS,NA
 ch04_ois_curves,USD largest quote error,bp,LagrangeFinance II-3.7.2,2.809810023540749e-7,2.8098100235407486e-7,-5.293955920339377e-23,1e-4,PASS,NA

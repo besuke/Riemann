@@ -1,5 +1,5 @@
-# Golden values for Riemann P1 (day count conventions) from the QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p1_day_counts.R
+# Golden values for rmql P1 (day count conventions) from the QuantLib R binding.
+# Usage (from the rmql root): Rscript tools/golden/p1_day_counts.R
 # Output: tests/golden/day_counts.csv
 # ref_start/ref_end = 0 means no reference period; year_fraction is printed with 17 significant
 # digits; ERROR = QuantLib raised an error.

@@ -86,7 +86,7 @@
 
 | 新名 | 根拠 |
 |---|---|
-| `bootstrap_ois_curve` | 実際にブートストラップする（`crates/riemann/src/ois.rs`） |
+| `bootstrap_ois_curve` | 実際にブートストラップする（`crates/rmql/src/ois.rs`） |
 | `compute_ois_swap_cashflows` | 翌日物レグの額をカーブと Fixing から新たに算出する |
 | `get_bond_cashflows` | 債券を作ったときに持つキャッシュフローを返す。市場の入力を使わない |
 | `get_discount_nodes`、`get_quote_repricing` | カーブを作ったときの節点と再現結果を返す |

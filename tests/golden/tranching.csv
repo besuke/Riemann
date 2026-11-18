@@ -1,5 +1,5 @@
 # Credit tranches and CMO waterfalls: references in R (tools/golden/p15_tranching.R)
-# R 4.6.0, RiemannFinMath 0.3.0 (collateral cash flows only)
+# R 4.6.0, rmql 0.3.0 (collateral cash flows only)
 case,kind,i,j,value
 tranches,attachment,0,equity,0
 tranches,attachment,1,mezzanine,0.029999999999999999

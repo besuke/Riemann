@@ -1,4 +1,4 @@
-chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+chapter,item,unit,baseline,baseline_value,rmql_value,difference,tolerance,verdict,note
 ch03_japanese_bond_yields,Remaining years,years,GaussQuant R,40,40,0,NA,REF,NA
 ch03_japanese_bond_yields,Price from simple rate,per 100,GaussQuant R,110.926,110.926,0,NA,REF,NA
 ch03_japanese_bond_yields,Simple rate from price,percent,GaussQuant R,6.515019,6.515019,0,NA,REF,NA

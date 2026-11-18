@@ -1,5 +1,5 @@
-# Golden values for Riemann P2-2 (bond prices, yields and yield risk) from the QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p2_bond_yields.R
+# Golden values for rmql P2-2 (bond prices, yields and yield risk) from the QuantLib R binding.
+# Usage (from the rmql root): Rscript tools/golden/p2_bond_yields.R
 # Reads tests/golden/bond_cases.csv (P2-1) and writes tests/golden/bond_yields.csv.
 # Numbers are printed with 17 significant digits; ERROR = QuantLib raised an error.
 

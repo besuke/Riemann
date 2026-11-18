@@ -2,7 +2,7 @@
 
 > **関数名について**：公開関数の名前は 2026-11-03 に変更した（`docs/naming_migration.md`、方針は `docs/specification.md` 4.4 節）。この文書の使い方と API の説明は新名である。照合結果の節は当時の記録なので、旧名のまま残している場合がある。旧名は対応表で読み替える。Rust のメソッド（`bond.clean_price(...)` など）は改名していない。
 
-自動微分は **finmath-lib の方式を参考にする**。特に、確率変数（`RandomVariable`）、AAD の計算グラフと逆伝播、モンテカルロの条件付き期待値の扱いを調べ、Riemann の関数型の設計にどう取り込むかを示す。
+自動微分は **finmath-lib の方式を参考にする**。特に、確率変数（`RandomVariable`）、AAD の計算グラフと逆伝播、モンテカルロの条件付き期待値の扱いを調べ、rmql の関数型の設計にどう取り込むかを示す。
 
 参照したソース：finmath-lib `9bd054ff694026760e46371ef61b96a4dbd7b8b0`（2026-08-29、6.1.10-SNAPSHOT）。以下のパスは `src/main/java/net/finmath/` からの相対パスである。
 
@@ -13,10 +13,10 @@
 | 区分 | 意味 |
 |---|---|
 | 【ソース確認】 | QuantLib・finmath-lib のソースを読んで確かめた事実、またはソースを読んでの判断。プログラムを実行してはいない |
-| 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
-| 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
+| 【実行照合済み】 | rmql の実装を実行し、基準値と照合した結果 |
+| 【設計案】 | rmql としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**自動微分そのものの結果は 5 章にある。** このほか、**現時点（2026-10-31）で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、4.3、5.3、6.3 節）と、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**自動微分そのものの結果は 5 章にある。** このほか、**現時点（2026-10-31）で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、4.3、5.3、6.3 節）と、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）だけである。** それ以外の rmql の動作に関する記述は【設計案】である。
 
 ## 1. finmath-lib の方式【ソース確認】
 
@@ -60,9 +60,9 @@ finmath-lib は、確率的な AAD（Fries の論文 SSRN 2995695、3000822、32
 - 実装の `montecarlo/conditionalexpectation/MonteCarloConditionalExpectationRegression.java` は、基底関数（`RegressionBasisFunctions`）への回帰で推定する。推定用と予測用で別のパスの基底関数を使うこともできる。正規方程式の行列 XᵀX を特異値分解（Apache Commons Math の `SingularValueDecomposition`）して解く。
 - バミューダン・オプション（`montecarlo/assetderivativevaluation/products/BermudanOption.java`）は、この推定量で継続価値を求め、行使判断に使う。
 
-## 2. Riemann に取り込むうえでの見直し点（左の2列は【ソース確認】、右の列は【設計案】）
+## 2. rmql に取り込むうえでの見直し点（左の2列は【ソース確認】、右の列は【設計案】）
 
-| finmath-lib の作り | 問題 | Riemann での見直し |
+| finmath-lib の作り | 問題 | rmql での見直し |
 |---|---|---|
 | ノードの ID を全体共有のカウンターで振る | グローバル状態（R8 に反する）。並列に記録すると、ID の並びがスレッドの実行順で変わる | ID は、一つの計算グラフの中での位置（配列の添え字）とする。グラフは計算ごとに持ち、全体で共有しない |
 | ノードどうしを参照でつなぎ、逆伝播のときに `TreeMap` で並べ直す | 並べ直しの手間がかかる | ノードを記録した順に配列（アリーナ）へ積む。配列の順がそのまま依存関係の順なので、逆伝播は配列を後ろから1回たどるだけで済む |
@@ -71,7 +71,7 @@ finmath-lib は、確率的な AAD（Fries の論文 SSRN 2995695、3000822、32
 | 確率変数はパス方向のベクトルで、演算は新しい値を返す | — | そのまま取り入れる（R1 の値と合う） |
 | 確定値はスカラーとして持つ | — | そのまま取り入れる（無駄な配列を作らない） |
 
-## 3. Riemann の設計
+## 3. rmql の設計
 
 3.1、3.3 の条件付き期待値と指示関数の近似、3.5 の未実施の項目は【設計案】である。実装したものは 5 章に書く。
 
@@ -106,7 +106,7 @@ pub fn gradient(tape: &Tape, output: NodeId, wrt: &[NodeId]) -> Vec<Rv>;
 
 ### 3.3 確率的な演算
 
-| 演算 | Riemann での扱い |
+| 演算 | rmql での扱い |
 |---|---|
 | 期待値 | 随伴をパス方向に平均する（finmath と同じ） |
 | 条件付き期待値 | `Regression`（基底関数の作り方と、当てはめた係数）を書き換えない値として演算に持たせる。順方向と逆伝播の両方で、同じ `Regression` を当てる |
@@ -159,7 +159,7 @@ torch はコードで精度を指定していないので、単精度で動い�
 
 ## 5. P5 の実装と結果
 
-実装は `crates/riemann/src/autodiff.rs`、`crates/riemann/src/risk.rs`、`OisCurve::quote_jacobian`（`ois.rs`）、R の入口は `crates/riemann-r/R/sensitivities.R` である。
+実装は `crates/rmql/src/autodiff.rs`、`crates/rmql/src/risk.rs`、`OisCurve::quote_jacobian`（`ois.rs`）、R の入口は `crates/rmql-r/R/sensitivities.R` である。
 
 ### 5.1 実装の決定
 

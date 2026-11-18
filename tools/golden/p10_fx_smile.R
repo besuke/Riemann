@@ -5,7 +5,7 @@
 # time asked, and the smile interpolated linearly in strike) for each delta type and ATM type, and a PRDC
 # note on each surface by static replication (the coupons' call spreads by blackFormula at the surface's
 # volatilities; kinds prdc_rate, with the coupon time and accrual, and prdc_npv). All inputs are synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p10_fx_smile.R
+# Usage (from the rmql root): Rscript tools/golden/p10_fx_smile.R
 # Writes tests/golden/fx_delta.csv (option, delta_type, spot, domestic_discount, foreign_discount,
 # std_dev, kind, input, value) and tests/golden/fx_smile.csv (case, kind, i, j, value; the kind
 # "setting" holds the case's conventions in i as text).

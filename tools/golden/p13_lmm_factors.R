@@ -9,7 +9,7 @@
 # with componentRetainedPercentage = 1 every component is retained up to maxRank = m; the pseudo-root is
 # eigenvectors[, 1:m] * sqrt(eigenvalues[1:m]), each row rescaled to the length sqrt(matrix[i, i])
 # (normalizePseudoRoot). All inputs are synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p13_lmm_factors.R
+# Usage (from the rmql root): Rscript tools/golden/p13_lmm_factors.R
 # Writes tests/golden/lmm_factors.csv: case, factors, kind, i, j, value. Kinds: time, forward, volatility,
 # beta (inputs, factors 0), eigenvalue (factors 0), correlation (the reduced one), drift_plain and
 # drift_reduced (i = alive, j = rate).

@@ -1,6 +1,6 @@
 # Golden values for the American option approximations (Barone-Adesi-Whaley, Bjerksund-Stensland) from
 # the QuantLib R package Version 1.42. All inputs are synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p11_american_approximations.R
+# Usage (from the rmql root): Rscript tools/golden/p11_american_approximations.R
 # Writes tests/golden/american_approximations.csv. A case QuantLib refuses with an error has the value NA;
 # a case where it returns NaN has NaN.
 

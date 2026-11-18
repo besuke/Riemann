@@ -1,6 +1,6 @@
-# Golden values for Riemann P2-1 (fixed-rate bond cash flows and accrued interest)
+# Golden values for rmql P2-1 (fixed-rate bond cash flows and accrued interest)
 # from the QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p2_fixed_rate_bonds.R
+# Usage (from the rmql root): Rscript tools/golden/p2_fixed_rate_bonds.R
 # Output: tests/golden/bond_cases.csv, bond_cashflows.csv, bond_accrued.csv
 # Inputs are drawn with a fixed seed; amounts are printed with 17 significant digits.
 

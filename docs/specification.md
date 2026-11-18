@@ -1,14 +1,14 @@
-# RiemannFinMath 設計仕様書（草案 v0.9）
+# rmql 設計仕様書（草案 v0.9）
 
 従来のクオンツ計算ライブラリーには、C++を計算基盤とし、各言語からラッパーを介して利用する構成が多い。テンプレートや継承による抽象化は、C++内では高い表現力を持つ一方、その型体系やオブジェクトの管理方式を他言語へ直接共有することは難しい。このため、多言語への展開には接続層の実装・保守が必要となる。また、可変な共有状態や暗黙の実行コンテキストへの依存は、並列実行時の安全性と数値計算の再現性を確保するうえで制約となる。
 
-RiemannFinMathは、Rustを中核とする金融計算ライブラリーである。副作用の局所化と参照透過性を重視し、評価日・市場データ・計算規約を明示的な引数として与える関数型の設計を採用する。金融上の選択肢は実行時のデータとして表現し、利用言語に特定の型構成や継承関係を要求しない。内部の数値計算では、自動微分などに必要なジェネリクスとトレイトによる抽象化を用いる。
+rmqlは、Rustを中核とする金融計算ライブラリーである。副作用の局所化と参照透過性を重視し、評価日・市場データ・計算規約を明示的な引数として与える関数型の設計を採用する。金融上の選択肢は実行時のデータとして表現し、利用言語に特定の型構成や継承関係を要求しない。内部の数値計算では、自動微分などに必要なジェネリクスとトレイトによる抽象化を用いる。
 
-Rustは、Send・Syncトレイトを通じて、スレッド間でのデータ移送と共有の安全性を型体系に組み込んでいる。RiemannFinMathは、この言語レベルの並列処理モデルと副作用を抑制した関数型設計を基盤とし、データ競合を防止しながら金融計算を並列実行する。計算の正当性および浮動小数点演算の再現性は、言語による安全性の保証とは区別し、数値照合と並列実行テストによって検証する。
+Rustは、Send・Syncトレイトを通じて、スレッド間でのデータ移送と共有の安全性を型体系に組み込んでいる。rmqlは、この言語レベルの並列処理モデルと副作用を抑制した関数型設計を基盤とし、データ競合を防止しながら金融計算を並列実行する。計算の正当性および浮動小数点演算の再現性は、言語による安全性の保証とは区別し、数値照合と並列実行テストによって検証する。
 
 計算機能は利用言語から独立したRustの中核に集約し、RおよびTypeScriptを主要な利用言語とする。言語間の型変換と入出力は薄い接続層に限定し、金融計算そのものの重複実装を避ける。さらに、WebAssemblyを介したブラウザーおよびExcelのOfficeアドインへの展開を目指す。この構成により、分析・検証から業務利用まで共通の計算基盤を適用し、数値計算の一貫性と検証可能性を確保するとともに、配布・保守・機能拡張の効率化を図る。
 
-RiemannFinMathは、並列実行による評価計算の高速化に加え、自動微分によるリスク感応度計算を設計の柱とする。市場変数ごとに入力を変えて評価を繰り返す数値差分に対し、自動微分では評価計算の演算過程に連鎖律を適用し、価格と感応度を一体的に算出する。特に逆モード自動微分は、少数の評価値に対する多数の市場変数の感応度を求める場合に有効である。
+rmqlは、並列実行による評価計算の高速化に加え、自動微分によるリスク感応度計算を設計の柱とする。市場変数ごとに入力を変えて評価を繰り返す数値差分に対し、自動微分では評価計算の演算過程に連鎖律を適用し、価格と感応度を一体的に算出する。特に逆モード自動微分は、少数の評価値に対する多数の市場変数の感応度を求める場合に有効である。
 
 モンテカルロ評価においては、各パスの評価計算に自動微分を適用し、数値差分のための反復評価を削減する。行使判定や条件付き期待値などの扱いを検証しながら、並列処理と自動微分を組み合わせ、大規模なポートフォリオ評価と多変量のリスク感応度計算を共通の計算基盤上で実現することを目指す。
 
@@ -16,7 +16,7 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 
 ### 1.1 名称
 
-正式名称は RiemannFinMath とする。リポジトリ名、Rust の crate 名（`riemann`、`riemann-r`）、API 名、および本書と関連文書の「Riemann」は、これを指す。
+正式名称は rmql とする。リポジトリ名、Rust の crate 名（`rmql`、`rmql-r`）、API 名、および本書と関連文書の「rmql」は、これを指す。
 
 ### 1.2 開発の目的と判断基準
 
@@ -26,8 +26,8 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 |---|---|
 | 利用の主体 | R |
 | LagrangeFinance との関係 | 計算範囲の基準として参照し、LagrangeFinance 自体は変更しない。ライブラリーの完成後に、別のプロジェクトで QMD を作る。GaussQuant と LagrangeFinance の関係と同じである |
-| 当面の QMD | 動作確認用の `tools/verify/verify_riemann.qmd` だけとする |
-| 第 III 部に相当する自動微分 | torch ではなく、RiemannFinMath 自身で行う |
+| 当面の QMD | 動作確認用の `tools/verify/verify_rmql.qmd` だけとする |
+| 第 III 部に相当する自動微分 | torch ではなく、rmql 自身で行う |
 | 第 I 部に相当する計算 | 制約付きポートフォリオ最適化（I-8）、市場VaR（I-9）、信用VaR（I-10）、トランチング（I-11）を対象にする（2026-11-14 に変更。設計は `docs/spec_portfolio.md`）。回帰・ファクターモデルなど（I-1〜I-7）は対象外 |
 | 対象の判断基準 | 市場価格の再現、解析解、無裁定の関係、最適性条件で検証できる計算 |
 | 検証の区別 | 実装がモデルどおりかの検証と、モデルの妥当性を分ける。エキゾチック商品のモデル価格は、市場で直接は確かめられない |
@@ -60,10 +60,10 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 | 区分 | 意味 |
 |---|---|
 | 【ソース確認】 | QuantLib・finmath-lib のソースを読んで確かめた事実、またはソースを読んでの判断。プログラムを実行してはいない |
-| 【実行照合済み】 | Riemann の実装を実行し、基準値と照合した結果 |
-| 【設計案】 | Riemann としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
+| 【実行照合済み】 | rmql の実装を実行し、基準値と照合した結果 |
+| 【設計案】 | rmql としてそうする、という設計。未実装・未検証であり、照合で確かめるまでは目標にとどまる |
 
-**現時点で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、3.5、4.3、5.3、6.3 節）、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）、P3 の OIS カーブ（[spec_ois.md](spec_ois.md) の 8〜10 章）、P4 の R の入口と並列バッチ（[spec_r.md](spec_r.md) の 5 章・6 章）、P5 の自動微分（[spec_autodiff.md](spec_autodiff.md) の 5 章）、P6 のオプション（[spec_options.md](spec_options.md) の 4 章・5 章）、P7 のアセットスワップ（[spec_asset_swaps.md](spec_asset_swaps.md) の 4 章）、P9 の Hull-White と SABR（[spec_hull_white.md](spec_hull_white.md) の 3 章・4 章）、P8 の CDS（[spec_cds.md](spec_cds.md) の 2 章）、P10 の PRDC（[spec_prdc.md](spec_prdc.md) の 3 章）だけである。** それ以外の Riemann の動作に関する記述は【設計案】である。
+**現時点で【実行照合済み】の項目は、P1 の日付・休日カレンダー・営業日調整・スケジュール生成・日数計算（[spec_dates_calendars.md](spec_dates_calendars.md) の 2.3、3.4、3.5、4.3、5.3、6.3 節）、P2-1〜P2-4 の固定利付債のキャッシュフロー・経過利子・利回りと価格・割引カーブによる評価・日本式の利回り（[spec_bonds.md](spec_bonds.md) の 2.2 節・3.3 節・4.3 節・5.3 節）、P3 の OIS カーブ（[spec_ois.md](spec_ois.md) の 8〜10 章）、P4 の R の入口と並列バッチ（[spec_r.md](spec_r.md) の 5 章・6 章）、P5 の自動微分（[spec_autodiff.md](spec_autodiff.md) の 5 章）、P6 のオプション（[spec_options.md](spec_options.md) の 4 章・5 章）、P7 のアセットスワップ（[spec_asset_swaps.md](spec_asset_swaps.md) の 4 章）、P9 の Hull-White と SABR（[spec_hull_white.md](spec_hull_white.md) の 3 章・4 章）、P8 の CDS（[spec_cds.md](spec_cds.md) の 2 章）、P10 の PRDC（[spec_prdc.md](spec_prdc.md) の 3 章）だけである。** それ以外の rmql の動作に関する記述は【設計案】である。
 
 ## 2. 設計の考え方
 
@@ -105,7 +105,7 @@ RiemannFinMathは、並列実行による評価計算の高速化に加え、自
 
 ### 2.3 置き換えの対応表
 
-| 既存の仕組み | Riemann での置き換え |
+| 既存の仕組み | rmql での置き換え |
 |---|---|
 | `Instrument` の派生クラス（QuantLib）、商品インターフェースの実装（finmath） | `enum Instrument { FixedRateBond(..), OvernightIndexedSwap(..), .. }` |
 | 商品に付け替える `PricingEngine` | 評価関数の引数として渡す値 `enum Method { Discounting, .. }` |
@@ -201,11 +201,11 @@ Azure 上の Linux マシン群と Slurm による分散実行、R のプロセ�
 
 ```
             ┌──────────────────────────────────────────┐
-            │ riemann（中核）                           │
+            │ rmql（中核）                           │
             │ 値と関数、Send + Sync、unsafe なし          │
             └──────────────┬───────────────────────────┘
        ┌─────────────┬─────┴───────┬──────────────────┐
-  riemann-r      riemann-node         riemann-wasm          riemann-py
+  rmql-r      rmql-node         rmql-wasm          rmql-py
   R（extendr）   TypeScript／Node.js   TypeScript／ブラウザー  Python（PyO3）
   【主】          （napi-rs）【主】     （wasm-bindgen）【主】  （必要になったら）
 ```
@@ -227,7 +227,7 @@ Azure 上の Linux マシン群と Slurm による分散実行、R のプロセ�
 
 当面の利用の主体は R である（1.2）。
 
-- 最初の入口は R とする（`riemann-r`、extendr）。GaussQuant・LagrangeFinance と同じ環境で照合できるためである。
+- 最初の入口は R とする（`rmql-r`、extendr）。GaussQuant・LagrangeFinance と同じ環境で照合できるためである。
 - 入口は「データを渡してデータを返す」形にする。気配や規約は data.frame とリストで受け取り、結果は data.frame で返す。選択肢の `enum` は、全言語共通の文字列名で受け取る。
 - 並列の計算は中核の中で行い、R の API を呼ぶのは計算の前後だけにする。
 - カーブなど大きな結果は、必要になったら R の外部ポインターで持つ。中身は書き換えない値なので、何度使っても安全である。
@@ -338,7 +338,7 @@ P1〜P8 と P10 は完了した（P4 の配布整備を除く）。P9 は主要�
 | P1 | 日付、カレンダー（東京・TARGET・米国 SOFR・英国。その後、QuantLib の全カレンダー・全市場区分に拡張。spec_dates_calendars.md 3.5 節）、日数計算、営業日調整、スケジュール生成 | QuantLib の R バインディングで、同じ規約の日付列と年数を出す。日付は完全一致、年数は 5.1 の基準で照合する。**2026-10-31 に完了**（【実行照合済み】。結果は spec_dates_calendars.md） |
 | P2 | 固定利付債のキャッシュフロー、割引、価格と利回り（複利、日本式の単利） | GaussQuant の `fixed_rate_bond_GQL`、`bond_*_YEN_GQL`、LagrangeFinance II-1。**完了**（【実行照合済み】）：P2-1（キャッシュフローと経過利子）、P2-2（利回りと価格、デュレーション、コンベクシティ、BPV）、P2-3（割引カーブによる評価）は 2026-10-31 に QuantLib と、P2-4（日本式の単利・複利利回り）は同日に GaussQuant と照合済み（[spec_bonds.md](spec_bonds.md)） |
 | P3 | OIS のブートストラップ（対数線形・対数3次）、O/N 預金、日次複利のクーポン、4通貨の規約 | QuantLib R バインディング 1.42（合成の気配。仕様は [spec_ois.md](spec_ois.md)）、GaussQuant の `ir_build_ois_curve_GQH` と回帰テストの基準値、LagrangeFinance II-3.2・II-3.4、EONIA ベンチマーク |
-| P4 | R からの入口（`riemann-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、5.2 の逐次と並列の一致テストを置く。仕様と結果は [spec_r.md](spec_r.md) | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる（GaussQuant との比較は未実施） |
+| P4 | R からの入口（`rmql-r`、extendr）。多数の評価を並列で行う関数も一つ入れ、5.2 の逐次と並列の一致テストを置く。仕様と結果は [spec_r.md](spec_r.md) | P1〜P3 を R から呼び、testthat で GaussQuant と直接比べる（GaussQuant との比較は未実施） |
 | P5 | 自動微分の基礎：`Operand` trait、確定値の計算グラフと逆伝播、2 階微分の設計の確認。債券とカーブのバケット感応度 | 数値差分、解析解。LagrangeFinance III-6 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_autodiff.md](spec_autodiff.md) 5 章） |
 | P6 | パス方向のベクトルの計算グラフ。Black・Bachelier、MC のグリークス | QuantLib R パッケージ、Black–Scholes の解析解、数値差分。LagrangeFinance II-4、III-4、III-5 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_options.md](spec_options.md)）。Sobol 列と Longstaff–Schwartz 法は P9 で扱う |
 | P7 | OIS の ASW と円ベーシス込み ASW、国債先物と CTD | GaussQuant の `ois_asset_swap_GQL`。LagrangeFinance II-2.6、II-2.7、II-3.7 に相当。**2026-11-01 に完了**（【実行照合済み】。[spec_asset_swaps.md](spec_asset_swaps.md)） |
@@ -352,25 +352,25 @@ P1〜P8 と P10 は完了した（P4 の配布整備を除く）。P9 は主要�
 
 | 段階 | 作るもの | 確かめること |
 |---|---|---|
-| L1 | TypeScript の Node.js 版の入口（`riemann-node`、napi-rs） | R と同じ基準値で、5.1 の「言語間・ネイティブ同士」の基準を満たすこと |
-| L2 | TypeScript のブラウザー版の入口（`riemann-wasm`、wasm-bindgen） | 同じ基準値で、5.1 の「ネイティブと WebAssembly」の基準を満たすこと |
+| L1 | TypeScript の Node.js 版の入口（`rmql-node`、napi-rs） | R と同じ基準値で、5.1 の「言語間・ネイティブ同士」の基準を満たすこと |
+| L2 | TypeScript のブラウザー版の入口（`rmql-wasm`、wasm-bindgen） | 同じ基準値で、5.1 の「ネイティブと WebAssembly」の基準を満たすこと |
 | L3 | Excel の Office アドイン（L2 と同じ WebAssembly の入口を使う） | 未定 |
 
-Python の入口（`riemann-py`：PyO3）は、必要になった時点で同じ決まり（4.2）で足す。
+Python の入口（`rmql-py`：PyO3）は、必要になった時点で同じ決まり（4.2）で足す。
 
 ## 8. リポジトリの構成
 
 計画中のものを含む。
 
 ```
-Riemann/
+rmql/
 ├── Cargo.toml              # ワークスペース
 ├── crates/
-│   ├── riemann/            # 中核（言語に依存しない、unsafe なし、Send + Sync）
-│   ├── riemann-r/          # R の入口（P4）
-│   ├── riemann-node/       # TypeScript／Node.js の入口（L1、napi-rs）
-│   ├── riemann-wasm/       # TypeScript／ブラウザーの入口（L2、wasm-bindgen）
-│   └── riemann-py/         # Python の入口（必要になったら）
+│   ├── rmql/            # 中核（言語に依存しない、unsafe なし、Send + Sync）
+│   ├── rmql-r/          # R の入口（P4）
+│   ├── rmql-node/       # TypeScript／Node.js の入口（L1、napi-rs）
+│   ├── rmql-wasm/       # TypeScript／ブラウザーの入口（L2、wasm-bindgen）
+│   └── rmql-py/         # Python の入口（必要になったら）
 ├── benches/                # 性能測定（criterion）
 ├── tools/golden/           # 基準値を作る R スクリプト
 ├── tests/golden/           # 基準値の CSV（市場データの気配は含めない）
@@ -379,8 +379,8 @@ Riemann/
 
 ## 9. ライセンス
 
-- RiemannFinMath の著作権者は Eiichi Horigome である。QuantLib から派生した部分の著作権は、`THIRD_PARTY_NOTICES` と各ファイルの先頭に記載した著作権者にある。
-- Riemann は MIT と Apache-2.0 の併用とする（`LICENSE-MIT`、`LICENSE-APACHE`）。
+- rmql の著作権者は Eiichi Horigome である。QuantLib から派生した部分の著作権は、`THIRD_PARTY_NOTICES` と各ファイルの先頭に記載した著作権者にある。
+- rmql は MIT と Apache-2.0 の併用とする（`LICENSE-MIT`、`LICENSE-APACHE`）。
 - QuantLib（修正 BSD）と finmath-lib（Apache-2.0）を、数式・仕様・規約の参考にする。
 - QuantLib のコードを読んで同じ計算を作る部分（休日の規則、ブートストラップなど）は、QuantLib から派生したものとして扱い、該当ファイルに元のファイル・コミット・著作権表示と条件を書く。リポジトリには `THIRD_PARTY_NOTICES` を置く（[spec_dates_calendars.md](spec_dates_calendars.md) の 8 章）。
 - やむを得ず移植するときは、ファイルの先頭に元のファイル・コミット・ライセンスを書く。QuantLib は著作権表示と条件を残し、finmath-lib は `NOTICE.txt` の帰属表示を引き継いで変更した旨を書く。

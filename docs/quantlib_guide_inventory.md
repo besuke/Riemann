@@ -1,11 +1,11 @@
 # QuantLib Guide と公式 Examples の棚卸し（2026-11-04）
 
-QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04 に取得）と、QuantLib v1.42 の公式 Examples（`Examples/` の 20 例）を読み、各例が使う機能と計算条件を RiemannFinMath の現在の機能（R の公開関数 81 個）と突き合わせた。Guide は特定の QuantLib の版を宣言していない（本文中に 1.32〜1.42 の記述がある）。
+QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04 に取得）と、QuantLib v1.42 の公式 Examples（`Examples/` の 20 例）を読み、各例が使う機能と計算条件を rmql の現在の機能（R の公開関数 81 個）と突き合わせた。Guide は特定の QuantLib の版を宣言していない（本文中に 1.32〜1.42 の記述がある）。
 
 **判定**：対応済み／一部対応（不足を明記）／未対応／設計上対象外。「設計上対象外」は次の二つである。
 
 - **IBOR の予測カーブと IBOR 商品**（Euribor、USD LIBOR、FRA、IBOR スワップ、IBOR 変動利付債）：金利は OIS に限る方針（`CLAUDE.md`）。
-- **Observer、Handle、Relinkable、freeze、グローバルな評価日**：RiemannFinMath は値と日付を引数で明示して渡す設計で、通知の仕組みを持たない。同じ計算は、引数を変えて呼び直すことで得られる。
+- **Observer、Handle、Relinkable、freeze、グローバルな評価日**：rmql は値と日付を引数で明示して渡す設計で、通知の仕組みを持たない。同じ計算は、引数を変えて呼び直すことで得られる。
 
 この文書は棚卸しであり、未対応の項目をすべて実装する計画ではない。
 
@@ -26,7 +26,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 
 ## 1. 横断的な機能
 
-| 機能 | Guide・Examples での使われ方 | RiemannFinMath | 判定 | 不足 |
+| 機能 | Guide・Examples での使われ方 | rmql | 判定 | 不足 |
 |---|---|---|---|---|
 | 日付と期間の演算 | `Date + Period`、月末の扱い、Period の比較 | Rust の内部にある。R では R の日付を使う | 一部対応 | 期間の演算を R に公開していない |
 | カレンダー | `isHoliday`、`isBusinessDay`、`adjust`、`advance`、`endOfMonth`、`addHoliday`、`JointCalendar`、`BespokeCalendar` | `is_business_day`、`generate_holidays`、`compute_adjusted_date`、`compute_advanced_date`、`compute_end_of_month`（約 70 のカレンダー） | 一部対応 | 休日の追加、結合カレンダー、自作カレンダー |
@@ -68,12 +68,12 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | 22 | Dangerous day-count conventions | 30/360 の分割、Act/Act ISMA の参照期間 | 一部対応 | スケジュール全体を渡す Act/Act ISMA。それ以外は再現した（`dates.R`） |
 | 23 | Vanilla bonds | 固定利付債の価格・利回り・デュレーション・コンベクシティ、評価日の変更、ステップアップ、アモチ、割引債、IBOR 変動利付債、キャップ・フロア、OIS 変動利付債 | 一部対応 | 割引債、OIS 変動利付債。IBOR は対象外。それ以外は再現した（`bonds.R`。SimpleThenCompounded の利回りは QuantLib 1.42 と一致し、Guide とは版の差で 1.1e-6） |
 | 24 | Different kinds of swaps | SOFR OIS（fair rate、BPS、varying notional、spread、payment lag、lookback・lockout）、IBOR スワップ、ベーシス | 一部対応 | 想定元本の変化、lookback・lockout・観測シフト、R のゼロカーブ。IBOR は対象外 |
-| 25 | Asset swaps | Euribor の par・market アセットスワップ | 設計上対象外 | Riemann は OIS のアセットスワップ（別の規約） |
-| 26 | Cross-currency swaps | 一定元本と MtM のクロスカレンシースワップ | 未対応 | Riemann の円建てアセットスワップは別の商品 |
+| 25 | Asset swaps | Euribor の par・market アセットスワップ | 設計上対象外 | rmql は OIS のアセットスワップ（別の規約） |
+| 26 | Cross-currency swaps | 一定元本と MtM のクロスカレンシースワップ | 未対応 | rmql の円建てアセットスワップは別の商品 |
 | 27 | Coupons with multiple resets | 複数回のリセットを持つクーポン | 未対応 | |
 | 28 | Payment-in-kind bonds | 元本に組み入れるクーポン | 未対応 | |
 | 29 | Spread calculations | i スプレッド、Z スプレッド（SOFR ブートストラップ）、利率の換算、コール債の OAS | 一部対応 | 利率の換算、OAS（Hull–White 木のコール債）。i スプレッドと Z スプレッドは再現した（`spreads.R`） |
-| 31 | Numerical Greeks | バリアの数値 Greeks、European の差分 | 対応済み | Riemann は自動微分で Greeks を返す。数値差分の比較は可能 |
+| 31 | Numerical Greeks | バリアの数値 Greeks、European の差分 | 対応済み | rmql は自動微分で Greeks を返す。数値差分の比較は可能 |
 | 32 | Approaches to numerical Theta | IBOR カーブの Theta の 3 方式 | 設計上対象外 | IBOR。方式の比較自体は OIS で行える |
 | 33 | Pricing over a range of days | 日ごとの再評価、過去・将来の fixing | 一部対応 | R のゼロカーブ、OIS 変動利付債。IBOR は対象外 |
 | 34 | Assessing duration risk | 債券ヘルパーで米国債カーブ、平行・ツイスト・ストレス | 対応済み | 再現した（`duration_risk.R`。108 個の値がすべて QuantLib 1.42 と 7.1e-14 以内。Guide の 6 桁表示とは丸めの範囲内、ただし利回り +1bp の 18 行は版の差で最大 1.3e-5） |
@@ -96,8 +96,8 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 | FRA | Euribor の FRA | 対象外 | IBOR |
 | FittedBondCurve | 当てはめカーブ 6 方式 | 未対応 | 当てはめカーブ |
 | MulticurveBootstrapping | OIS 割引と Euribor 予測 | 一部再現 | OIS 部分のみ。IBOR は対象外 |
-| BermudanSwaption | G2、Hull–White、Black–Karasinski の木・有限差分、校正 | 一部再現 | G2、Black–Karasinski、木・有限差分のエンジン（Riemann は状態格子） |
-| CallableBonds | Hull–White の木でコール債 | 一部再現 | QuantLib の木と Riemann の状態格子は方式が違う。債券の規約からの変換 |
+| BermudanSwaption | G2、Hull–White、Black–Karasinski の木・有限差分、校正 | 一部再現 | G2、Black–Karasinski、木・有限差分のエンジン（rmql は状態格子） |
+| CallableBonds | Hull–White の木でコール債 | 一部再現 | QuantLib の木と rmql の状態格子は方式が違う。債券の規約からの変換 |
 | Repo | 債券のフォワード | 未対応 | 債券フォワード |
 | ConvertibleBonds | 転換社債 | 未対応 | |
 | AsianOption | アジア型 | 未対応 | |
@@ -124,7 +124,7 @@ QuantLib Guide（https://www.quantlibguide.com/ 、全 39 ページ、2026-11-04
 
 ## 6. 作ったサンプル
 
-R パッケージの `inst/examples/quantlib_guide/` にある。一覧と主要な結果は同じフォルダーの `README.md`、実行方法は各スクリプトの冒頭にある。インストールしたパッケージからは `source(system.file("examples", "quantlib_guide", "<名前>.R", package = "RiemannFinMath"))` で実行できる。テストは `tests/testthat/test-quantlib-guide-examples.R`。
+R パッケージの `inst/examples/quantlib_guide/` にある。一覧と主要な結果は同じフォルダーの `README.md`、実行方法は各スクリプトの冒頭にある。インストールしたパッケージからは `source(system.file("examples", "quantlib_guide", "<名前>.R", package = "rmql"))` で実行できる。テストは `tests/testthat/test-quantlib-guide-examples.R`。
 
 公式 Examples のサンプルは `inst/examples/quantlib_examples/` にある（2026-11-04 時点で `equity_option.R`）。テストは `tests/testthat/test-quantlib-examples.R`。
 

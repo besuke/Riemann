@@ -1,9 +1,9 @@
-# Compares Riemann bond prices, yields and yield risk with the QuantLib R package Version 1.42
+# Compares rmql bond prices, yields and yield risk with the QuantLib R package Version 1.42
 # on synthetic inputs. The exact C++ commit of the package is unknown, so this is not a
 # comparison with running QuantLib C++ v1.42 itself.
 #
-# Riemann is called directly through its R package RiemannFinMath (crates/riemann-r). The example program
-# crates/riemann/examples/verify_bonds.rs stays as a second path, to compare the two.
+# rmql is called directly through its R package rmql (crates/rmql-r). The example program
+# crates/rmql/examples/verify_bonds.rs stays as a second path, to compare the two.
 #
 # Usage from an R session started anywhere in the repository:
 #   source("tools/verify/verify_common.R"); source("tools/verify/verify_bonds.R")
@@ -137,15 +137,15 @@ quantlib_bond_values <- function(inputs) {
     list_rbind()
 }
 
-# ---- Riemann ----------------------------------------------------------------------------
+# ---- rmql ----------------------------------------------------------------------------
 
 snake_name <- function(x) tolower(gsub("([a-z])([A-Z])", "\\1_\\2", x))
 
-riemann_bond_row <- function(input) {
+rmql_bond_row <- function(input) {
   failed <- tibble(row = input$row, settlement_date = NA_integer_, clean_price = NA_real_, dirty_price = NA_real_, accrued = NA_real_,
                    duration_modified = NA_real_, convexity = NA_real_, bpv = NA_real_, yield = NA_real_)
   bond <- tryCatch(
-    RiemannFinMath::create_fixed_rate_bond(
+    rmql::create_fixed_rate_bond(
       settlement_days = input$settlement_days, face_amount = input$face_amount,
       effective_date = serial_to_date(input$effective), termination_date = serial_to_date(input$termination),
       tenor = paste0(input$tenor_n, "M"), calendar = input$calendar, convention = snake_name(input$convention),
@@ -157,28 +157,28 @@ riemann_bond_row <- function(input) {
     error = function(e) NULL
   )
   if (is.null(bond)) return(failed)
-  settlement <- tryCatch(RiemannFinMath::compute_settlement_date(bond, serial_to_date(input$evaluation_date)), error = function(e) NULL)
+  settlement <- tryCatch(rmql::compute_settlement_date(bond, serial_to_date(input$evaluation_date)), error = function(e) NULL)
   if (is.null(settlement)) return(failed)
   compounding <- tolower(input$compounding)
-  values <- RiemannFinMath::compute_bond_values(bond, input$rate, input$yield_day_counter, compounding, input$frequency, settlement, on_error = "na")
+  values <- rmql::compute_bond_values(bond, input$rate, input$yield_day_counter, compounding, input$frequency, settlement, on_error = "na")
   tibble(
     row = input$row, settlement_date = date_to_serial(settlement), clean_price = values$clean_price, dirty_price = values$dirty_price,
     accrued = values$accrued_amount, duration_modified = values$duration_modified, convexity = values$convexity,
     bpv = values$basis_point_value,
-    yield = suppressWarnings(RiemannFinMath::compute_yield_from_price(bond, input$price, tolower(input$price_type), input$yield_day_counter,
+    yield = suppressWarnings(rmql::compute_yield_from_price(bond, input$price, tolower(input$price_type), input$yield_day_counter,
                                                        compounding, input$frequency, settlement, on_error = "na"))
   )
 }
 
-riemann_bond_values <- function(inputs) {
-  require_riemann_package()
+rmql_bond_values <- function(inputs) {
+  require_rmql_package()
   inputs |>
     split(seq_len(nrow(inputs))) |>
-    map(riemann_bond_row) |>
+    map(rmql_bond_row) |>
     list_rbind()
 }
 
-riemann_bond_values_csv <- function(inputs, root = find_riemann_root()) {
+rmql_bond_values_csv <- function(inputs, root = find_rmql_root()) {
   input_path <- tempfile(fileext = ".csv")
   output_path <- tempfile(fileext = ".csv")
   on.exit(unlink(c(input_path, output_path)), add = TRUE)
@@ -189,7 +189,7 @@ riemann_bond_values_csv <- function(inputs, root = find_riemann_root()) {
            settlement_days, face_amount, issue_date, built, evaluation_date, rate, yield_day_counter, compounding,
            frequency, price, price_type, row) |>
     write_csv(input_path)
-  run_riemann_example("verify_bonds", input_path, output_path, root)
+  run_rmql_example("verify_bonds", input_path, output_path, root)
   read_csv(output_path, col_types = cols(.default = col_character())) |>
     mutate(across(everything(), to_number)) |>
     mutate(row = as.integer(row), settlement_date = as.integer(settlement_date))
@@ -197,28 +197,28 @@ riemann_bond_values_csv <- function(inputs, root = find_riemann_root()) {
 
 # ---- comparison -------------------------------------------------------------------------
 
-compare_bond_values <- function(inputs, quantlib, riemann) {
+compare_bond_values <- function(inputs, quantlib, rmql) {
   to_long <- function(values, name) {
     values |>
       select(-settlement_date) |>
       pivot_longer(-row, names_to = "measure", values_to = name)
   }
   settlement_mismatches <- quantlib |>
-    inner_join(riemann, by = "row", suffix = c("_q", "_r")) |>
+    inner_join(rmql, by = "row", suffix = c("_q", "_r")) |>
     filter(settlement_date_q != settlement_date_r)
 
   comparison <- to_long(quantlib, "quantlib") |>
-    inner_join(to_long(riemann, "riemann"), by = c("row", "measure")) |>
+    inner_join(to_long(rmql, "rmql"), by = c("row", "measure")) |>
     left_join(select(inputs, row, compounding), by = "row") |>
     left_join(bond_tolerances(), by = "measure") |>
     mutate(
       tolerance = tolerance_of(measure, compounding),
-      abs_diff = abs(riemann - quantlib),
+      abs_diff = abs(rmql - quantlib),
       rel_diff = if_else(quantlib != 0, abs_diff / abs(quantlib), abs_diff),
       measured_diff = if_else(kind == "absolute", abs_diff, rel_diff),
       status = case_when(
-        is.na(quantlib) & is.na(riemann) ~ "both error",
-        is.na(quantlib) | is.na(riemann) ~ "one-sided error",
+        is.na(quantlib) & is.na(rmql) ~ "both error",
+        is.na(quantlib) | is.na(rmql) ~ "one-sided error",
         .default = "value"
       ),
       pass = case_when(
@@ -246,22 +246,22 @@ summarise_verification <- function(results) {
     mutate(result = if_else(failed == 0, "PASS", "FAIL"))
 }
 
-verify_bonds <- function(n_bonds = 60L, scenarios_per_bond = 3L, seed = 20261110L, root = find_riemann_root()) {
+verify_bonds <- function(n_bonds = 60L, scenarios_per_bond = 3L, seed = 20261110L, root = find_rmql_root()) {
   message("Building synthetic bond inputs ...")
   inputs <- make_bond_inputs(n_bonds, scenarios_per_bond, seed)
   message("Valuing ", nrow(inputs), " scenarios with QuantLib R package ",
           as.character(packageVersion("QuantLib")), " (exact C++ commit unknown) ...")
   quantlib <- quantlib_bond_values(inputs)
-  message("Valuing the same scenarios with Riemann, called directly ...")
-  riemann <- riemann_bond_values(inputs)
+  message("Valuing the same scenarios with rmql, called directly ...")
+  rmql <- rmql_bond_values(inputs)
   message("Comparing the direct call with the CSV path ...")
   long <- function(values) pivot_longer(select(values, -settlement_date), -row, names_to = "measure", values_to = "value")
   via_csv <- if (example_is_skipped("verify_bonds")) {
     csv_path_not_run()
   } else {
-    compare_direct_with_csv(long(riemann), long(riemann_bond_values_csv(inputs, root)), c("row", "measure"))
+    compare_direct_with_csv(long(rmql), long(rmql_bond_values_csv(inputs, root)), c("row", "measure"))
   }
-  results <- c(list(inputs = inputs, quantlib = quantlib, riemann = riemann, direct_vs_csv = via_csv), compare_bond_values(inputs, quantlib, riemann))
+  results <- c(list(inputs = inputs, quantlib = quantlib, rmql = rmql, direct_vs_csv = via_csv), compare_bond_values(inputs, quantlib, rmql))
   summary <- summarise_verification(results)
   walk(seq_len(nrow(summary)), \(i) {
     with(summary[i, ], message(sprintf("%-18s %s  compared %d  failed %d  max diff %.2e  tolerance %.0e",

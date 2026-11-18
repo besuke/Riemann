@@ -1,6 +1,6 @@
 # Golden values for constrained portfolio optimization and risk contributions (docs/spec_portfolio.md).
 #
-# Usage (from the Riemann root): Rscript tools/golden/p12_portfolio.R
+# Usage (from the rmql root): Rscript tools/golden/p12_portfolio.R
 # Writes tests/golden/portfolio.csv: case, kind, i, j, value.
 #
 # Cases
@@ -8,7 +8,7 @@
 #           (anonymized public data, read from ../coral-book, formerly LagrangeFinance), weights 0 to 0.20 summing to 1.
 #   syn_1.. synthetic returns (set.seed below): without bounds (closed forms) and with bounds.
 #
-# References, all computed here in R, independently of RiemannFinMath:
+# References, all computed here in R, independently of rmql:
 #   quadprog::solve.QP     minimum variance, mean-variance, target return, maximum Sharpe (on the problem
 #                          in y = kappa w), target volatility (bisection on the target return)
 #   Rglpk                  maximum return, minimum ES (Rockafellar-Uryasev linear program)

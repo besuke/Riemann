@@ -1,6 +1,6 @@
 # Golden values for credit default swaps made with QuantLib's MakeCreditDefaultSwap, which LagrangeFinance
 # II-5 uses, from the QuantLib R package Version 1.42. All inputs are synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p8_cds_builder.R
+# Usage (from the rmql root): Rscript tools/golden/p8_cds_builder.R
 # Writes tests/golden/cds_builder.csv. The builder's settings (ql/instruments/makecds.hpp at v1.42):
 # Actual/360 with the last period on Actual/360 including its last day, 3 cash settlement days,
 # Following, WeekendsOnly, protection from the trade date for the CDS rules, an upfront rate of 0.

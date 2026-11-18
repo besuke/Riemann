@@ -1,4 +1,4 @@
-# Shared by every chapter of the QuantLib and RiemannFinMath comparison.
+# Shared by every chapter of the QuantLib and rmql comparison.
 # Both libraries are always called through their namespaces, so each result names its source.
 # Nothing here falls back from one library to the other.
 
@@ -23,10 +23,10 @@ add_rows <- function(rows) {
 }
 
 # Judges the unrounded values against a baseline. A row stays FAIL when it fails: the cause goes in the text.
-judge_values <- function(item, unit, baseline_value, riemann, baseline, note = NA_character_) {
-  tibble(item = item, unit = unit, baseline = baseline, baseline_value = baseline_value, riemann_value = riemann) |>
+judge_values <- function(item, unit, baseline_value, rmql, baseline, note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = baseline, baseline_value = baseline_value, rmql_value = rmql) |>
     mutate(
-      difference = riemann_value - baseline_value,
+      difference = rmql_value - baseline_value,
       tolerance = comparison_tolerance,
       verdict = if_else(abs(difference) <= tolerance, "PASS", "FAIL"),
       note = note
@@ -45,15 +45,15 @@ lagrange_value <- function(key) {
 
 lagrange_label <- function(key) paste("LagrangeFinance", lagrange_values$section[match(key, lagrange_values$key)])
 
-against_lagrange <- function(item, unit, key, riemann, note = NA_character_) {
-  judge_values(item, unit, lagrange_value(key), riemann, lagrange_label(key), note)
+against_lagrange <- function(item, unit, key, rmql, note = NA_character_) {
+  judge_values(item, unit, lagrange_value(key), rmql, lagrange_label(key), note)
 }
 
 # The largest absolute difference over many keys of one section.
-against_lagrange_max <- function(item, unit, key, riemann, note = NA_character_) {
-  tibble(item = item, unit = unit, baseline = lagrange_label(key)[1], baseline_value = NA_real_, riemann_value = NA_real_) |>
+against_lagrange_max <- function(item, unit, key, rmql, note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = lagrange_label(key)[1], baseline_value = NA_real_, rmql_value = NA_real_) |>
     mutate(
-      difference = max(abs(riemann - lagrange_value(key))),
+      difference = max(abs(rmql - lagrange_value(key))),
       tolerance = comparison_tolerance,
       verdict = if_else(difference <= tolerance, "PASS", "FAIL"),
       note = note
@@ -62,28 +62,28 @@ against_lagrange_max <- function(item, unit, key, riemann, note = NA_character_)
 }
 
 # A LagrangeFinance value that is not the same calculation: shown, and not judged.
-lagrange_not_comparable <- function(item, unit, key, riemann, reason) {
-  not_comparable(item, unit, lagrange_value(key), riemann, reason, lagrange_label(key))
+lagrange_not_comparable <- function(item, unit, key, rmql, reason) {
+  not_comparable(item, unit, lagrange_value(key), rmql, reason, lagrange_label(key))
 }
 
 # ---- reference rows: QuantLib and others called directly, without a verdict ---------------------
-compare_values <- function(item, unit, quantlib, riemann, baseline = "QuantLib C++", note = NA_character_) {
-  tibble(item = item, unit = unit, baseline = baseline, baseline_value = quantlib, riemann_value = riemann) |>
-    mutate(difference = riemann_value - baseline_value, tolerance = NA_real_, verdict = "REF", note = note) |>
+compare_values <- function(item, unit, quantlib, rmql, baseline = "QuantLib C++", note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = baseline, baseline_value = quantlib, rmql_value = rmql) |>
+    mutate(difference = rmql_value - baseline_value, tolerance = NA_real_, verdict = "REF", note = note) |>
     add_rows()
 }
 
 # The largest absolute difference over a vector, without showing the values themselves.
-compare_max <- function(item, unit, quantlib, riemann, baseline = "QuantLib C++", note = NA_character_) {
-  tibble(item = item, unit = unit, baseline = baseline, baseline_value = NA_real_, riemann_value = NA_real_) |>
-    mutate(difference = max(abs(riemann - quantlib)), tolerance = NA_real_, verdict = "REF", note = note) |>
+compare_max <- function(item, unit, quantlib, rmql, baseline = "QuantLib C++", note = NA_character_) {
+  tibble(item = item, unit = unit, baseline = baseline, baseline_value = NA_real_, rmql_value = NA_real_) |>
+    mutate(difference = max(abs(rmql - quantlib)), tolerance = NA_real_, verdict = "REF", note = note) |>
     add_rows()
 }
 
 # Two numbers that are not the same quantity under the same rules: shown, and not judged.
-not_comparable <- function(item, unit, quantlib, riemann, reason, baseline = "QuantLib C++") {
-  tibble(item = item, unit = unit, baseline = baseline, baseline_value = quantlib, riemann_value = riemann) |>
-    mutate(difference = riemann_value - baseline_value, tolerance = NA_real_, verdict = "N/C", note = reason) |>
+not_comparable <- function(item, unit, quantlib, rmql, reason, baseline = "QuantLib C++") {
+  tibble(item = item, unit = unit, baseline = baseline, baseline_value = quantlib, rmql_value = rmql) |>
+    mutate(difference = rmql_value - baseline_value, tolerance = NA_real_, verdict = "N/C", note = reason) |>
     add_rows()
 }
 
@@ -97,7 +97,7 @@ show_results <- function(rows, caption = "Results (shown to 4 decimals; judged b
   shown <- rows |>
     transmute(
       Item = item, Unit = unit, Baseline = baseline,
-      `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value),
+      `Baseline value` = format_4(baseline_value), rmql = format_4(rmql_value),
       Difference = format_4(difference), Tolerance = format_4(tolerance), Verdict = verdict, Note = note
     )
   if (all(is.na(shown$Note))) shown <- select(shown, -Note)
@@ -150,8 +150,8 @@ lagrange_objects <- function(chapter_file, names, ...) {
 # given continuous zero rate at each node. A constant rate makes the curve flat between nodes as well.
 fitted_curve <- function(date, zero, tenors, curve_day_count = "actual_365_fixed", index = "tonar", iterations = 12L) {
   build <- function(quotes) {
-    RiemannFinMath::bootstrap_ois_curve(
-      date, date, index, curve_day_count, RiemannFinMath::create_ois_instruments(tenors, quotes, 0L, 1L, 0L),
+    rmql::bootstrap_ois_curve(
+      date, date, index, curve_day_count, rmql::create_ois_instruments(tenors, quotes, 0L, 1L, 0L),
       interpolation = "log_linear", accuracy = 1e-15
     )
   }
@@ -159,8 +159,8 @@ fitted_curve <- function(date, zero, tenors, curve_day_count = "actual_365_fixed
   # so the error is scaled by the time and the discount factor over the annuity of a flat curve.
   step <- function(quotes) {
     curve <- build(quotes)
-    nodes <- RiemannFinMath::get_discount_nodes(curve) |> slice(-1)
-    error <- RiemannFinMath::compute_zero_rate(curve, nodes$date, curve_day_count, "continuous") - zero
+    nodes <- rmql::get_discount_nodes(curve) |> slice(-1)
+    error <- rmql::compute_zero_rate(curve, nodes$date, curve_day_count, "continuous") - zero
     time <- as.numeric(nodes$date - as.Date(date)) / 365
     scale <- if_else(abs(zero) < 1e-10, 1, time * exp(-zero * time) * expm1(zero) / -expm1(-zero * time))
     quotes - error * scale

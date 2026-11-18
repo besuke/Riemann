@@ -2,7 +2,7 @@
 key,region,class,market,name,weekend
 null_calendar,common,NullCalendar,,Null,
 weekends_only,common,WeekendsOnly,,weekends only,1 7
-bespoke_wednesday_thursday,common,BespokeCalendar,,Riemann test,4 5
+bespoke_wednesday_thursday,common,BespokeCalendar,,rmql test,4 5
 joint_three_holidays,common,JointCalendar,JoinHolidays,JoinHolidays(Japan; Xetra; BOVESPA),1 7
 joint_three_business_days,common,JointCalendar,JoinBusinessDays,JoinBusinessDays(Japan; Xetra; BOVESPA),1 7
 joint_japan_moex_holidays,common,JointCalendar,JoinHolidays,JoinHolidays(Japan; Moscow exchange),1 7

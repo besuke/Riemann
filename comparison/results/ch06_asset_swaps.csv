@@ -1,4 +1,4 @@
-chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+chapter,item,unit,baseline,baseline_value,rmql_value,difference,tolerance,verdict,note
 ch06_asset_swaps,EUR accrued,per 100,GaussQuant R on QuantLib curve,0.07777777777777661,0.07777777777777661,0,NA,REF,NA
 ch06_asset_swaps,EUR fair spread,bp,GaussQuant R on QuantLib curve,20.00553894448812,20.00553894448812,0,NA,REF,NA
 ch06_asset_swaps,EUR spread annuity,"per 100, per unit of spread",GaussQuant R on QuantLib curve,859.2328809967528,859.2328809967529,1.1368683772161603e-13,NA,REF,NA

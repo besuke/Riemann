@@ -54,15 +54,15 @@ baseline$compound_price <- GaussQuant::bond_price_from_compound_yield_YEN_GQL(
 )
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: riemann-call
-t <- RiemannFinMath::compute_remaining_years(start_date, end_date)
-price <- RiemannFinMath::compute_price_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption)
-simple <- RiemannFinMath::compute_simple_rate_from_price(t, coupon_rate_pct, price, redemption)
-compound <- RiemannFinMath::compute_compound_yield_from_price(t, coupon_rate_pct, price, redemption)
-compound_price <- RiemannFinMath::compute_price_from_compound_yield(t, coupon_rate_pct, compound, redemption)
+#| label: rmql-call
+t <- rmql::compute_remaining_years(start_date, end_date)
+price <- rmql::compute_price_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption)
+simple <- rmql::compute_simple_rate_from_price(t, coupon_rate_pct, price, redemption)
+compound <- rmql::compute_compound_yield_from_price(t, coupon_rate_pct, price, redemption)
+compound_price <- rmql::compute_price_from_compound_yield(t, coupon_rate_pct, compound, redemption)
 ```
 
 ```{r}
@@ -92,9 +92,9 @@ baseline_risk <- list(
     start_date, end_date, coupon_rate_pct, simple_rate_pct, redemption, accrued_interest = 0
   )
 )
-riemann_risk <- list(
-  compound = RiemannFinMath::compute_risk_from_compound_yield(t, coupon_rate_pct, compound, redemption, 0),
-  simple = RiemannFinMath::compute_risk_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption, 0)
+rmql_risk <- list(
+  compound = rmql::compute_risk_from_compound_yield(t, coupon_rate_pct, compound, redemption, 0),
+  simple = rmql::compute_risk_from_simple_rate(t, coupon_rate_pct, simple_rate_pct, redemption, 0)
 )
 ```
 
@@ -108,8 +108,8 @@ risk_rows <- function(label, q, r) {
   )
 }
 bind_rows(
-  risk_rows("Compound:", baseline_risk$compound, riemann_risk$compound),
-  risk_rows("Simple:", baseline_risk$simple, riemann_risk$simple)
+  risk_rows("Compound:", baseline_risk$compound, rmql_risk$compound),
+  risk_rows("Simple:", baseline_risk$simple, rmql_risk$simple)
 ) |>
   show_results()
 ```
@@ -128,9 +128,9 @@ leap_dates <- tribble(
 leap_dates |>
   mutate(
     baseline = map2_dbl(start, end, GaussQuant::bond_year_fraction_YEN_GQL),
-    riemann = map2_dbl(start, end, RiemannFinMath::compute_remaining_years)
+    rmql = map2_dbl(start, end, rmql::compute_remaining_years)
   ) |>
-  (\(x) compare_values(paste(x$start, "to", x$end), "years", x$baseline, x$riemann, "GaussQuant R"))() |>
+  (\(x) compare_values(paste(x$start, "to", x$end), "years", x$baseline, x$rmql, "GaussQuant R"))() |>
   show_results()
 ```
 
@@ -167,9 +167,9 @@ bind_rows(
   against_lagrange("Simple rate from price", "percent", "yen.simple_rate_pct", simple),
   against_lagrange("Compound yield from price", "percent", "yen.compound_yield_pct", compound),
   against_lagrange("Price from compound yield", "per 100", "yen.compound_price", compound_price),
-  against_lagrange("BPV", "yen per 100, per bp", "yen.bpv_yen", riemann_risk$compound$bpv_yen),
-  against_lagrange("Modified duration", "years", "yen.modified_duration", riemann_risk$compound$modified_duration),
-  against_lagrange("Convexity", "years squared", "yen.convexity", riemann_risk$compound$convexity)
+  against_lagrange("BPV", "yen per 100, per bp", "yen.bpv_yen", rmql_risk$compound$bpv_yen),
+  against_lagrange("Modified duration", "years", "yen.modified_duration", rmql_risk$compound$modified_duration),
+  against_lagrange("Convexity", "years squared", "yen.convexity", rmql_risk$compound$convexity)
 ) |>
   show_results()
 ```
@@ -179,7 +179,7 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,          ~`GaussQuant (R)`,                                  ~RiemannFinMath,
+  ~Layer,    ~Aspect,          ~`GaussQuant (R)`,                                  ~rmql,
   "Wrapper", "Time argument",  "Start and end dates in every call",                "Remaining years, computed once by `remaining_years`",
   "Wrapper", "Vectors",        "One bond per call",                                "Vectors recycled to one length",
   "Core",    "Implementation", "R arithmetic and a solver in R",                   "Rust pure functions, with an explicit digit and iteration count",

@@ -1,9 +1,9 @@
-# Golden values for Riemann P6 (equity options and options on a forward) from the QuantLib R package
+# Golden values for rmql P6 (equity options and options on a forward) from the QuantLib R package
 # Version 1.42. All inputs are synthetic random numbers; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p6_options.R
+# Usage (from the rmql root): Rscript tools/golden/p6_options.R
 # Writes tests/golden/option_{european,barrier,tree,forward,implied}.csv. Numbers have 17 significant
 # digits; time is days / 365 and the rates are continuous, so QuantLib's flat curves reduce to the
-# numeric inputs of Riemann.
+# numeric inputs of rmql.
 
 suppressMessages(library(QuantLib))
 
@@ -108,7 +108,7 @@ for (i in seq_len(n)) {
   append(path, c(model, kind, fmt(c(forward, strike, volatility, time, discount, value))))
 }
 
-# Implied volatility: the same search range and accuracy as Riemann's test
+# Implied volatility: the same search range and accuracy as rmql's test
 path <- file.path(out_dir, "option_implied.csv")
 header(path, c("kind", "spot", "strike", "rate", "dividend", "true_volatility", "days", "price", "implied"))
 inputs <- draw_inputs(100)

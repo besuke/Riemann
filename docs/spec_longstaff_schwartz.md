@@ -1,10 +1,10 @@
 # Longstaff–Schwartz 法と Sobol 列の仕様（P11-4）
 
-実装は `crates/riemann/src/longstaff_schwartz.rs` と `crates/riemann/src/math/sobol.rs`、照合は `tools/golden/p11_longstaff_schwartz.R` と `crates/riemann/tests/golden_longstaff_schwartz.rs` である。LagrangeFinance II-4.6.2 は再現した（6 章）。継続価値の関数を変える比較は 7 章にある。R の入口は `crates/riemann-r/R/longstaff_schwartz.R`、比較文書は `comparison/chapters/ch08_options.qmd` の「Sobol paths and Longstaff-Schwartz」節である（LagrangeFinance の判定 26 行はすべて PASS、QuantLib との照合は REF）。
+実装は `crates/rmql/src/longstaff_schwartz.rs` と `crates/rmql/src/math/sobol.rs`、照合は `tools/golden/p11_longstaff_schwartz.R` と `crates/rmql/tests/golden_longstaff_schwartz.rs` である。LagrangeFinance II-4.6.2 は再現した（6 章）。継続価値の関数を変える比較は 7 章にある。R の入口は `crates/rmql-r/R/longstaff_schwartz.R`、比較文書は `comparison/chapters/ch08_options.qmd` の「Sobol paths and Longstaff-Schwartz」節である（LagrangeFinance の判定 26 行はすべて PASS、QuantLib との照合は REF）。
 
 ## 1. 比較条件【ソース確認】
 
-| 項目 | QuantLib v1.42 `MCLDAmericanEngine` | LagrangeFinance II-4.6（GaussQuant） | Riemann |
+| 項目 | QuantLib v1.42 `MCLDAmericanEngine` | LagrangeFinance II-4.6（GaussQuant） | rmql |
 |---|---|---|---|
 | 一様点 | `SobolRsg`、方向数 Jaeckel、Gray code | QuantLib の `UniformLowDiscrepancySequenceGenerator(12, 1)` | QuantLib と同じ表（32 次元まで） |
 | 次元と時点 | 1 次元が 1 ステップ（次元数 = ステップ数） | 同じ（12 次元） | 同じ。32 次元を超えるとエラー |
@@ -29,7 +29,7 @@
 | QuantLib `SobolRsg(dimension, seed)` | 任意 | 表にない次元（Jaeckel では 33 次元以上）の方向数を乱数で決めるときだけ使う。開始位置やスキップ数ではない | — | — |
 | QuantLib `MCLDAmericanEngine` | `seed`（照合では 0） | 評価用の `SobolRsg` に渡す。回帰用の seed は、指定がなければ `seed + 1768237423`（seed が 0 なら 0） | 列の先頭（添字 1）、スキップ 0、次元 = ステップ数、Jaeckel | 同じ |
 | LagrangeFinance | `seed = 1` | 12 次元なので値に影響しない | 先頭、スキップ 0、12 次元、Jaeckel | 回帰用と同じパス |
-| Riemann | なし | Sobol には seed がない | 先頭、スキップ 0、次元 = ステップ数、Jaeckel | `Overlapping` は先頭、`Separate(n)` は n 点スキップ |
+| rmql | なし | Sobol には seed がない | 先頭、スキップ 0、次元 = ステップ数、Jaeckel | `Overlapping` は先頭、`Separate(n)` は n 点スキップ |
 
 実行で確かめたこと：
 
@@ -75,7 +75,7 @@ QuantLib R パッケージ 1.42（SWIG）の `MCLDAmericanEngine` について�
 
 条件は LagrangeFinance と同じにした：S = K = 100、r = 0.05、q = 0、σ = 0.2、367 日、12 ステップ、Sobol 2,048 本（ブリッジなし）、基底 1, S, S²（payoff なし）、`InSample`、回帰パス不足の日は行使しない。
 
-| 項目 | LagrangeFinance | Riemann |
+| 項目 | LagrangeFinance | rmql |
 |---|---|---|
 | 価格 | 6.2924853437827819 | 6.29248534378277924 |
 | 単純な標準誤差 | 0.16653057537317539 | 0.16653057537317534 |
@@ -206,7 +206,7 @@ Put の行使判断を見る図なので、対象は ITM の領域 S < K（60 �
 Rscript tools/experiments/p11_ls_function_shape.R
 ```
 
-RiemannFinMath がインストールされている必要がある。出力は `tools/experiments/output/` で、`p11_ls_tables.md`（7 章の表のもと）、`p11_ls_basis.csv`、`p11_ls_sharing.csv`、`p11_ls_paths.csv`、`p11_ls_crossings.csv`、`p11_ls_continuation.png` である。2026-11-04 に実行し、7.2〜7.4 節の値と一致することを確かめた【実行確認】。
+rmql がインストールされている必要がある。出力は `tools/experiments/output/` で、`p11_ls_tables.md`（7 章の表のもと）、`p11_ls_basis.csv`、`p11_ls_sharing.csv`、`p11_ls_paths.csv`、`p11_ls_crossings.csv`、`p11_ls_continuation.png` である。2026-11-04 に実行し、7.2〜7.4 節の値と一致することを確かめた【実行確認】。
 
 ## 8. 未対応・未作成
 

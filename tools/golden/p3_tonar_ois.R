@@ -1,8 +1,8 @@
-# Golden values for Riemann P3-1 (TONAR OIS curve, log-linear discount factors) from the
+# Golden values for rmql P3-1 (TONAR OIS curve, log-linear discount factors) from the
 # QuantLib R package Version 1.42. The exact C++ commit of the package is unknown, so these
 # are not results of running C++ v1.42 itself (see docs/spec_ois.md, chapter 1).
 # All quotes are synthetic random numbers; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p3_tonar_ois.R
+# Usage (from the rmql root): Rscript tools/golden/p3_tonar_ois.R
 # Writes tests/golden/ois_tonar_cases.csv, ois_tonar_instruments.csv, ois_tonar_nodes.csv and
 # ois_tonar_discounts.csv. Numbers have 17 significant digits; ERROR = QuantLib raised an error.
 

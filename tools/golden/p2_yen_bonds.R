@@ -1,10 +1,10 @@
-# Golden values for Riemann P2-4 (Japanese simple yield, Japanese compound yield and their
+# Golden values for rmql P2-4 (Japanese simple yield, Japanese compound yield and their
 # risk measures) from GaussQuant's bond_*_YEN_GQL functions.
-# Usage (from the Riemann root): Rscript tools/golden/p2_yen_bonds.R
+# Usage (from the rmql root): Rscript tools/golden/p2_yen_bonds.R
 # Writes tests/golden/yen_bonds.csv. Numbers have 17 significant digits; ERROR = GaussQuant
 # raised an error.
 #
-# Remaining years: GaussQuant (the definition that Riemann adopts) switches to
+# Remaining years: GaussQuant (the definition that rmql adopts) switches to
 # the anniversary rule (leap days not counted) when the calendar years differ by more than
 # one. yf_market is a second-hand description of market practice that switches when the
 # remaining period is one year or more; it is kept only for reference, and rule_differs = 1

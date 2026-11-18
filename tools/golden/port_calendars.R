@@ -1,7 +1,7 @@
 # Translates QuantLib C++ calendars to Rust, so that the conditions are not retyped by hand.
 #
-# Usage (from the Riemann root): Rscript tools/golden/port_calendars.R <quantlib-v1.42>
-# Writes crates/riemann/src/time/calendar/rules/{americas,europe,middle_east_africa,asia_pacific,tables}.rs.
+# Usage (from the rmql root): Rscript tools/golden/port_calendars.R <quantlib-v1.42>
+# Writes crates/rmql/src/time/calendar/rules/{americas,europe,middle_east_africa,asia_pacific,tables}.rs.
 # Israel, Saudi Arabia, Russia and China's interbank market are written by hand in special.rs,
 # because they use date arithmetic, switches or sets; their date tables are generated here.
 # The result is checked against QuantLib C++ on every valid date by tests/golden_all_calendars.rs.
@@ -9,7 +9,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) == 1)
 source_dir <- file.path(args[1], "ql", "time", "calendars")
-out_dir <- file.path("crates", "riemann", "src", "time", "calendar", "rules")
+out_dir <- file.path("crates", "rmql", "src", "time", "calendar", "rules")
 dir.create(out_dir, showWarnings = FALSE)
 
 regions <- list(

@@ -1,11 +1,11 @@
 # A swap of LagrangeFinance II-3.3.2 after the evaluation date moves, from the QuantLib R package Version 1.42.
-# Usage (from the Riemann root): Rscript tools/golden/p11_ois_swap_moved_date.R
+# Usage (from the rmql root): Rscript tools/golden/p11_ois_swap_moved_date.R
 # Writes tests/golden/ois_swap_moved_date.csv.
 #
 # The curve has a fixed reference date and date-relative helpers. When the evaluation date moves, the helpers'
 # dates move and the curve solves again, but it keeps its node dates, because IterativeBootstrap::calculate only
 # initializes again for a moving curve (ql/termstructures/iterativebootstrap.hpp, v1.42). This writes those nodes,
-# so that a test can give Riemann the same curve and compare the swap alone. The quotes are the legacy text's.
+# so that a test can give rmql the same curve and compare the swap alone. The quotes are the legacy text's.
 
 suppressMessages(library(QuantLib))
 fmt <- function(x) sprintf("%.17g", x)

@@ -5,7 +5,7 @@
 # discount ratios (LMMCurveState). QuantLib's LiborForwardModel and the
 # market-model evolvers are not exposed by the R binding, so the paths themselves are not compared.
 # All inputs are synthetic; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p13_lmm_market.R
+# Usage (from the rmql root): Rscript tools/golden/p13_lmm_market.R
 # Writes tests/golden/lmm_market.csv: case, kind, i, j, value. Kinds: time, forward, volatility, beta
 # (inputs), correlation, drift and drift_terminal (i = alive, j = rate), swap_rate (i = start, j = end), discount_ratio.
 #

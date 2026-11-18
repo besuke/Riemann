@@ -1,6 +1,6 @@
 # OIS スワップ本体の仕様（P11-2）
 
-実装は `crates/riemann/src/ois_swap.rs`、R の入口は `crates/riemann-r/R/ois_swaps.R` である。LagrangeFinance II-3.2〜II-3.4 の計算を対象にする。
+実装は `crates/rmql/src/ois_swap.rs`、R の入口は `crates/rmql-r/R/ois_swaps.R` である。LagrangeFinance II-3.2〜II-3.4 の計算を対象にする。
 
 ## 1. LagrangeFinance の計算【ソース確認】
 
@@ -34,7 +34,7 @@ GaussQuant の `trade_ois_swap_py_GQH` を通して、QuantLib の `MakeOIS` で
 
 **QuantLib との違い**
 
-| 項目 | QuantLib | Riemann |
+| 項目 | QuantLib | rmql |
 |---|---|---|
 | 評価日、Fixing | グローバル（`Settings`、指標名ごとの保管場所） | 引数 |
 | 評価日を動かしたときのカーブ | 上のとおり解き直される | 値なので変わらない |
@@ -56,7 +56,7 @@ GaussQuant の `trade_ois_swap_py_GQH` を通して、QuantLib の `MakeOIS` で
 
 旧版は変更していない。
 
-1. **II-3.3.2 の値は、節点の古いカーブによる値である。** 評価日を 8/25 に動かした後の NPV 6.6505 は、2 章の状態のカーブから出ている。Riemann のカーブで同じ値は出ない（変更なしのカーブで 6.6987、新しい評価日で作り直すと 7.6877）。比較資料では N/C にした。
+1. **II-3.3.2 の値は、節点の古いカーブによる値である。** 評価日を 8/25 に動かした後の NPV 6.6505 は、2 章の状態のカーブから出ている。rmql のカーブで同じ値は出ない（変更なしのカーブで 6.6987、新しい評価日で作り直すと 7.6877）。比較資料では N/C にした。
 2. **II-3.3.1 の `daily_compounding_result` はすべて NA である。** `jpy_daily_float_cf_tbl` にない列 `rate` を見ている。基準値に入れていない。
 
 ## 6. 未対応
@@ -67,9 +67,9 @@ GaussQuant の `trade_ois_swap_py_GQH` を通して、QuantLib の `MakeOIS` で
 
 ## 7. テナーからの日付（2026-11-18、Carmine Studio の要望）
 
-【実行照合済み・Rust の中核】`riemann::ois::compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days)` が、QuantLib `MakeOIS(swapTenor, index)` に受渡日数を指定した場合の日付を返す。`OisSwapDates` は `effective_date`、`termination_date`（調整前。スワップにはこちらを渡す）、`maturity_date`（修正翌営業日で調整した値。QuantLib のスワップが報告する満期日）を持つ。
+【実行照合済み・Rust の中核】`rmql::ois::compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days)` が、QuantLib `MakeOIS(swapTenor, index)` に受渡日数を指定した場合の日付を返す。`OisSwapDates` は `effective_date`、`termination_date`（調整前。スワップにはこちらを渡す）、`maturity_date`（修正翌営業日で調整した値。QuantLib のスワップが報告する満期日）を持つ。
 
 - **規則**：評価日を翌営業日に寄せ、受渡日数だけ営業日で進めて開始日とする。満期日は、開始日にテナーを足し、開始日がその月の最終営業日でテナーが 1 か月以上なら月末にする。それを修正翌営業日で調整したものが `maturity_date`。
 - **照合**（`tools/golden/p11_ois_swap_dates.R`、`tests/golden/ois_swap_dates.csv`、`tests/golden_ois_swap_dates.rs`）：QuantLib R 1.42 の `MakeOIS`。4 指標、評価日 6 区間（週末・祝日・月末・年末年始と、Carmine Studio の 2026-09-10 を含む）、テナー 13 種（1D から 30Y、7Y を含む）、受渡日数 0〜3 の 13,520 件。**成功 13,514 件で開始日と満期日が完全一致**。QuantLib が失敗する 6 件（12/30〜12/31 の 1 日 OIS で、スケジュールが 1 日に縮退）は、調整前の満期日を渡したスワップの作成も同じく失敗する。
 - **気づいた点**：満期日を「開始日＋テナー」のままにしても、調整しても、スケジュールの結果は同じだが、1 日 OIS の縮退の再現には調整前の日付を渡す必要がある。Carmine Studio の今の作り方（`seq()` で 7 年後）は、2026-09-10 の条件では一致する（開始 2026-09-14、満期 2033-09-14）。
-- **R の入口**：`compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L, on_error = "stop")` が、`effective_date`、`termination_date`、`maturity_date` の tibble を返す。スワップには `termination_date`（調整前）を渡す。テストは `crates/riemann-r/tests/testthat/test-ois-swap-dates.R`。残りの作業は `CLAUDE.md` の引継ぎ。
+- **R の入口**：`compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L, on_error = "stop")` が、`effective_date`、`termination_date`、`maturity_date` の tibble を返す。スワップには `termination_date`（調整前）を渡す。テストは `crates/rmql-r/tests/testthat/test-ois-swap-dates.R`。残りの作業は `CLAUDE.md` の引継ぎ。

@@ -2,7 +2,7 @@
 
 > **関数名について**：公開関数の名前は 2026-11-03 に変更した（`docs/naming_migration.md`、方針は `docs/specification.md` 4.4 節）。この文書の使い方と API の説明は新名である。照合結果の節は当時の記録なので、旧名のまま残している場合がある。旧名は対応表で読み替える。Rust のメソッド（`bond.clean_price(...)` など）は改名していない。
 
-R から RiemannFinMath を直接呼ぶ入口である。場所は `crates/riemann-r`。リポジトリ名と Rust の crate 名（`riemann`、`riemann-r`）は変えていない。金融の計算はすべて Rust の `riemann` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
+R から rmql を直接呼ぶ入口である。場所は `crates/rmql-r`。リポジトリ名と Rust の crate 名（`rmql`、`rmql-r`）は変えていない。金融の計算はすべて Rust の `rmql` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
 
 | 区分 | 状態 |
 |---|---|
@@ -17,13 +17,13 @@ R から RiemannFinMath を直接呼ぶ入口である。場所は `crates/riema
 
 | 場所 | 内容 |
 |---|---|
-| `crates/riemann/src/names.rs` | 選択肢の文字列名（全言語で共通。snake_case） |
-| `crates/riemann/src/batch.rs` | 並列バッチ（R に依存しない） |
-| `crates/riemann-r/src/rust/src/lib.rs` | extendr の境界。変換だけを行う |
-| `crates/riemann-r/R/` | 薄い R の関数（`common.R`、`bonds.R`、`ois.R`、`calendars.R`、`batch.R`） |
-| `crates/riemann-r/inst/examples/quickstart.R` | Positron の R コンソールから実行するサンプル |
-| `crates/riemann-r/tests/testthat/` | R の入口のテスト |
-| `crates/riemann-r/man/` | ヘルプ（`R/` のコメントから roxygen2 で生成） |
+| `crates/rmql/src/names.rs` | 選択肢の文字列名（全言語で共通。snake_case） |
+| `crates/rmql/src/batch.rs` | 並列バッチ（R に依存しない） |
+| `crates/rmql-r/src/rust/src/lib.rs` | extendr の境界。変換だけを行う |
+| `crates/rmql-r/R/` | 薄い R の関数（`common.R`、`bonds.R`、`ois.R`、`calendars.R`、`batch.R`） |
+| `crates/rmql-r/inst/examples/quickstart.R` | Positron の R コンソールから実行するサンプル |
+| `crates/rmql-r/tests/testthat/` | R の入口のテスト |
+| `crates/rmql-r/man/` | ヘルプ（`R/` のコメントから roxygen2 で生成） |
 | `tools/package/build_source_package.R` | 自己完結したソースパッケージを作る |
 
 既存の R 連携コードはなかったので新しく作った。`rextendr` は入っていないので、R の関数は手で書き、`.Call(wrap__関数名, ...)` で呼ぶ。extendr のモジュール名、DLL の名前、R の登録名は R パッケージ名にそろえる（R がその名前で初期化の関数を探すため）。Rust の crate は、ルートのワークスペースから外している（`R CMD INSTALL` が `windows-gnu` 向けに単独でビルドするため）。
@@ -33,13 +33,13 @@ R から RiemannFinMath を直接呼ぶ入口である。場所は `crates/riema
 Windows では次が必要である：Rtools 4.5、`rustup target add x86_64-pc-windows-gnu`。
 
 ```
-R CMD INSTALL crates/riemann-r
+R CMD INSTALL crates/rmql-r
 ```
 
-配布ファイルからの導入は `crates/riemann-r/README.md` と 8 章にある。
+配布ファイルからの導入は `crates/rmql-r/README.md` と 8 章にある。
 
 - `Makevars` は毎回 `cargo` を呼び、再ビルドの判断を `cargo` に任せる。依存を書かないと、一度ビルドした後は Rust のソースを変えても古いライブラリーのままになる。実際にこの不具合が起きたので直した。
-- `crates/riemann-r` からの導入（開発用）では、Rust の crate は相対パスで中核に依存する。配布用のソースパッケージは、8 章のとおり中核と依存 crate を同梱し、相対パスに依存しない。
+- `crates/rmql-r` からの導入（開発用）では、Rust の crate は相対パスで中核に依存する。配布用のソースパッケージは、8 章のとおり中核と依存 crate を同梱し、相対パスに依存しない。
 
 ## 3. 公開関数
 
@@ -77,7 +77,7 @@ P5 以降に足した関数の仕様は、それぞれの文書にある：感�
 |---|---|
 | 想定内のエラー（呼び出し全体）：不明な名前、作れない債券、収束しないカーブ | Rust が `failure` を持つリストを値として返し、`checked()` が R のエラーにする |
 | 想定内のエラー（行ごと）：範囲外の日付など | 行に NA と `error` のメッセージを入れる。`on_error = "stop"`（既定）で止まり、`"na"` で NA を残す |
-| 予期しない panic（Riemann の不具合） | process の panic hook を変えないので、ファイルと行が stderr に出る。extendr が R のエラーにし、R は動き続ける |
+| 予期しない panic（rmql の不具合） | process の panic hook を変えないので、ファイルと行が stderr に出る。extendr が R のエラーにし、R は動き続ける |
 
 extendr の `Err` は内部で panic を経由し、R のコンソールに `panicked` と表示する。そこで想定内のエラーには `Err` を使わない。hook は変えない（他のパッケージにも影響し、不具合の診断もできなくなるため）。手書きの `unsafe` はない。
 
@@ -87,9 +87,9 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 
 ## 5. 並列バッチ
 
-`riemann::batch` は rayon で計算する。入力は R のメインスレッドで Rust の値に変換し、スレッドはその値だけで計算し、結果は全スレッドの終了後に R のメインスレッドで変換する。中核の crate は extendr に依存しないので、計算中のスレッドから R の API は呼べない（コンパイルの時点で保証される）。結果の順序は、入力の順序のとおりである。`threads = 0` は論理プロセッサーごとに 1 スレッドである。`threads = 1` でも、呼び出したスレッドではなくワーカースレッドで計算する。1 つの単位の失敗は、他の単位に影響しない。
+`rmql::batch` は rayon で計算する。入力は R のメインスレッドで Rust の値に変換し、スレッドはその値だけで計算し、結果は全スレッドの終了後に R のメインスレッドで変換する。中核の crate は extendr に依存しないので、計算中のスレッドから R の API は呼べない（コンパイルの時点で保証される）。結果の順序は、入力の順序のとおりである。`threads = 0` は論理プロセッサーごとに 1 スレッドである。`threads = 1` でも、呼び出したスレッドではなくワーカースレッドで計算する。1 つの単位の失敗は、他の単位に影響しない。
 
-【実行照合済み】仕様書 5.2 節のテスト（`crates/riemann/tests/parallel_batch.rs`）：スレッド数 1・2・4・8・既定での完全一致、繰り返しの一致、順序の反転と分割の一致、失敗の分離、後の項目が先に終わる場合の出力順、指定したスレッド数のプールで実行されること。R 側でも、並べ替えた入力と順序のばらばらな日付で、出力順が入力順のままであることを確かめる（`tests/testthat/test-direct.R`）。比較はデバッグ文字列で行い、浮動小数のすべてのビットとエラーを含む。検証レポートでも、照合用データ全件で完全な一致を確かめる。
+【実行照合済み】仕様書 5.2 節のテスト（`crates/rmql/tests/parallel_batch.rs`）：スレッド数 1・2・4・8・既定での完全一致、繰り返しの一致、順序の反転と分割の一致、失敗の分離、後の項目が先に終わる場合の出力順、指定したスレッド数のプールで実行されること。R 側でも、並べ替えた入力と順序のばらばらな日付で、出力順が入力順のままであることを確かめる（`tests/testthat/test-direct.R`）。比較はデバッグ文字列で行い、浮動小数のすべてのビットとエラーを含む。検証レポートでも、照合用データ全件で完全な一致を確かめる。
 
 **スレッドと浮動小数点の状態**【実行確認】：R のメインスレッドの x87 制御ワードは `0x037F`（拡張精度、64 ビット）、新しいスレッドは `0x027F`（倍精度、53 ビット）である（2026-11-01、`fnstcw` で実測。SSE の MXCSR は同じ `0x1F80`）。GNU ビルドの数学関数はこの影響を受けるので、`threads = 1` だけメインスレッドで計算していたときは、スレッド数で最下位ビットが変わった（2・4・8・既定は互いに一致し、1 だけが 1 ビット違う行があった）。x87 の設定を変えるには手書きの `unsafe` が要るので変えない。代わりに、バッチは常にワーカースレッドで計算する。
 
@@ -99,7 +99,7 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 
 ## 6. 照合結果【実行照合済み】
 
-2026-11-01。`tools/verify/verify_riemann.qmd`。比較の相手は、正確な C++ コミットが不明な QuantLib R パッケージ Version 1.42 である（カレンダーは C++ v1.42 そのもの）。
+2026-11-01。`tools/verify/verify_rmql.qmd`。比較の相手は、正確な C++ コミットが不明な QuantLib R パッケージ Version 1.42 である（カレンダーは C++ v1.42 そのもの）。
 
 **直接呼び出しと CSV 経由の比較**：
 
@@ -117,7 +117,7 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 
 ### 6.1 改名後の検証レポート【実行確認】
 
-2026-11-03、公開関数の改名の後に `tools/verify/verify_riemann.qmd` を描画した（`RIEMANN_VERIFY_SKIP_EXAMPLES=verify_bonds`）。QuantLib との照合は改名後の公開 API で動き、表の判定はすべて PASS である。
+2026-11-03、公開関数の改名の後に `tools/verify/verify_rmql.qmd` を描画した（`RMQL_VERIFY_SKIP_EXAMPLES=verify_bonds`）。QuantLib との照合は改名後の公開 API で動き、表の判定はすべて PASS である。
 
 `verify_bonds` の CSV 経路（直接呼び出しとの一致の確認）だけ未実行である。`target/release/examples/verify_bonds.exe` を Windows のアプリ制御が止めた（`os error 4551`、イベント ID 3033、3077、`pwsh.exe` からの直接実行でも同じ）。同時に動く別のエージェントやプロセスはなかった。債券の値そのものは QuantLib と照合している。
 
@@ -133,13 +133,13 @@ extendr の `Err` は内部で panic を経由し、R のコンソールに `pan
 
 ### 8.1 パッケージ名
 
-CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名前の衝突を判定する（`R CMD check --as-cran` の ERROR）。そこで R パッケージ名を `RiemannFinMath` とした。
+CRAN に `rmql` があり、CRAN は大文字小文字を区別せずに名前の衝突を判定する（`R CMD check --as-cran` の ERROR）。そこで R パッケージ名を `rmql` とした。
 
-【実行確認】2026-11-01、大文字小文字を区別せずに調べ、次のどれにも `RiemannFinMath` はなかった：CRAN の現行（25,581 件）とアーカイブ（28,384 件）、Bioconductor の 4 区分（bioc、data/annotation、data/experiment、workflows）、R-universe の検索、GitHub のリポジトリ名の検索。CRAN への公開申請はしていない。これは調査の時点の結果で、名前を確保したものではない。
+【実行確認】2026-11-01、大文字小文字を区別せずに調べ、次のどれにも `rmql` はなかった：CRAN の現行（25,581 件）とアーカイブ（28,384 件）、Bioconductor の 4 区分（bioc、data/annotation、data/experiment、workflows）、R-universe の検索、GitHub のリポジトリ名の検索。CRAN への公開申請はしていない。これは調査の時点の結果で、名前を確保したものではない。
 
 ### 8.2 ソースパッケージ
 
-`tools/package/build_source_package.R` が一時的な複製を作り、中核の crate を `src/rust/riemann-core` に入れ、依存の 18 crate を `src/rust/vendor.tar.xz` にまとめて、`R CMD build` を実行する。リポジトリのファイルは変えない。`Makevars` は `vendor.tar.xz` があればネットワークを使わずにビルドし、終わったらビルドの生成物を消す。
+`tools/package/build_source_package.R` が一時的な複製を作り、中核の crate を `src/rust/rmql-core` に入れ、依存の 18 crate を `src/rust/vendor.tar.xz` にまとめて、`R CMD build` を実行する。リポジトリのファイルは変えない。`Makevars` は `vendor.tar.xz` があればネットワークを使わずにビルドし、終わったらビルドの生成物を消す。
 
 ライセンスの表示を同梱する：`inst/THIRD_PARTY_NOTICES`（QuantLib）、`inst/LICENSE-MIT`、`inst/LICENSE-APACHE`、`inst/RUST_DEPENDENCIES`（依存 crate の名前、版、ライセンス）。
 
@@ -159,7 +159,7 @@ CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名�
 
 ### 8.4 Windows バイナリ【実行確認】
 
-版は 0.2.0 で、コミット `c6218ae` から作った。`R CMD INSTALL --build` で、検査したものと同じソースパッケージから `RiemannFinMath_0.2.0.zip` を作った。ファイルと検査結果の対応は `dist/MANIFEST.txt` にある（SHA-256 を含む）。0.1.0 のファイルは `dist/archive-0.1.0` に移した。
+版は 0.2.0 で、コミット `c6218ae` から作った。`R CMD INSTALL --build` で、検査したものと同じソースパッケージから `rmql_0.2.0.zip` を作った。ファイルと検査結果の対応は `dist/MANIFEST.txt` にある（SHA-256 を含む）。0.1.0 のファイルは `dist/archive-0.1.0` に移した。
 
 別のライブラリーへ導入し、`tools/package/smoke_test.R` を新しい R セッションで実行した（2026-11-01）。ログは `dist/smoke_from_zip.log` である。
 
@@ -174,7 +174,7 @@ CRAN に `Riemann` があり、CRAN は大文字小文字を区別せずに名�
 
 この確認は導入の確認であり、数値の照合は Rust のテストと検証 QMD にある。
 
-**環境変数をすべて消すと終了時に落ちる**：`env -i` で環境変数を消した R では、終了時に Segmentation fault（139）になった。`RiemannFinMath` を使わず `tibble` だけを読み込むスクリプトでも同じなので、このパッケージの問題ではない。通常の環境変数では、パッケージの読み込み、バッチ、quickstart のすべてで終了コード 0 である。`tibble` の依存のどれが原因かは確かめていない。
+**環境変数をすべて消すと終了時に落ちる**：`env -i` で環境変数を消した R では、終了時に Segmentation fault（139）になった。`rmql` を使わず `tibble` だけを読み込むスクリプトでも同じなので、このパッケージの問題ではない。通常の環境変数では、パッケージの読み込み、バッチ、quickstart のすべてで終了コード 0 である。`tibble` の依存のどれが原因かは確かめていない。
 
 ### 8.6 版 0.3.0【実行確認】（2026-11-04）
 
@@ -182,11 +182,11 @@ P11（Z スプレッド、OIS スワップ、Hull-White の校正、Longstaff–
 
 | 作業 | 結果 |
 |---|---|
-| ソースパッケージ | `RiemannFinMath_0.3.0.tar.gz` を `tools/package/build_source_package.R` で作った（コミット `16e58be` と同じ内容） |
+| ソースパッケージ | `rmql_0.3.0.tar.gz` を `tools/package/build_source_package.R` で作った（コミット `16e58be` と同じ内容） |
 | `R CMD check --as-cran` | **未完了**。リポジトリの外の短いパス（`C:\rfm030\check`）で 2 回実行し、2 回とも導入の段階で止まった。新しく作られた依存 crate のビルドスクリプト（1 回目は `rayon-core`、2 回目は `proc-macro2`）を Windows の Smart App Control がブロックした（os error 4551、Code Integrity のイベント 3077 と 3118）。テストには進んでいない。アプリ制御の設定は変えておらず、回避もしていない |
-| Windows バイナリ | `RiemannFinMath_0.3.0.zip` を、コミット `16e58be` の `crates/riemann-r` から `R CMD INSTALL --build` で作った。0.2.0 と違い、tar.gz からは作っていない（上の理由）。中身は同じソースだが、tar.gz からのビルドは確かめていない |
+| Windows バイナリ | `rmql_0.3.0.zip` を、コミット `16e58be` の `crates/rmql-r` から `R CMD INSTALL --build` で作った。0.2.0 と違い、tar.gz からは作っていない（上の理由）。中身は同じソースだが、tar.gz からのビルドは確かめていない |
 | 導入と動作の確認 | 別ライブラリー `C:\rfm030\lib`（`tibble` とその依存 9 個だけを複製）に zip を導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで `tools/package/smoke_test.R` を新しい R セッションで実行した。34 項目すべて成功、失敗 0、終了コード 0。P11 の 4 項目（Hull-White の校正、Longstaff–Schwartz、MBS、Caplet）を含む |
-| 読み込んだ場所 | 別ライブラリーの 10 パッケージと R の標準ライブラリーの 7 個だけ。`RiemannFinMath` は `C:/rfm030/lib` から読み込んだ。版 0.3.0、公開関数 81 個。新しい関数のヘルプも見つかった |
+| 読み込んだ場所 | 別ライブラリーの 10 パッケージと R の標準ライブラリーの 7 個だけ。`rmql` は `C:/rfm030/lib` から読み込んだ。版 0.3.0、公開関数 81 個。新しい関数のヘルプも見つかった |
 | DLL の依存（`objdump`） | Windows のシステム DLL と `R.dll` だけ |
 
 ファイル、ログ、SHA-256 は `dist/`（git に入れない）にあり、一覧は `dist/MANIFEST.txt` である。0.2.0 の配布ファイルは `dist/archive-0.2.0/` に移した。
@@ -195,33 +195,33 @@ P11（Z スプレッド、OIS スワップ、Hull-White の校正、Longstaff–
 
 ### 8.7 版 0.3.2：GitHub からの導入と Releases の zip【実行確認】（2026-11-18）
 
-**`remotes::install_github` が失敗した原因**【実行照合済み】：`remotes::install_github("besuke/Riemann", subdir = "crates/riemann-r")` は、`crates/riemann-r` だけを `R CMD build` でソースパッケージにしてから導入する。`src/rust/Cargo.toml` は中核を `riemann = { path = "../../../riemann" }` で指すので、そのパッケージの中には中核がなく、cargo が `failed to load manifest for dependency riemann`（os error 3）で止まった。2026-11-18 にコミット `3f14521` を対象に、別ライブラリーで再現した。
+**`remotes::install_github` が失敗した原因**【実行照合済み】：`remotes::install_github("besuke/rmql", subdir = "crates/rmql-r")` は、`crates/rmql-r` だけを `R CMD build` でソースパッケージにしてから導入する。`src/rust/Cargo.toml` は中核を `rmql = { path = "../../../rmql" }` で指すので、そのパッケージの中には中核がなく、cargo が `failed to load manifest for dependency rmql`（os error 3）で止まった。2026-11-18 にコミット `3f14521` を対象に、別ライブラリーで再現した。
 
-**対処**：`configure` と `configure.win`（同じ内容）を加えた。中核が隣にあれば（リポジトリからの導入）、またはソースパッケージが `riemann-core` を同梱していれば、何も変えない。どちらでもなければ、remotes が DESCRIPTION に書く `RemoteSha`（なければ `GithubSHA1`）を読み、依存を `riemann = { git = "https://github.com/besuke/Riemann", rev = "<sha>" }` に書き換える。導入するパッケージと同じコミットの中核を使う。どちらの値もなければ、理由を示して止まる。この経路は Rust、Rtools、ネットワークが必要である。
+**対処**：`configure` と `configure.win`（同じ内容）を加えた。中核が隣にあれば（リポジトリからの導入）、またはソースパッケージが `rmql-core` を同梱していれば、何も変えない。どちらでもなければ、remotes が DESCRIPTION に書く `RemoteSha`（なければ `GithubSHA1`）を読み、依存を `rmql = { git = "https://github.com/besuke/rmql", rev = "<sha>" }` に書き換える。導入するパッケージと同じコミットの中核を使う。どちらの値もなければ、理由を示して止まる。この経路は Rust、Rtools、ネットワークが必要である。
 
 | 確認 | 結果 |
 |---|---|
-| remotes と同じ手順の再現 | `crates/riemann-r` を短いパスに複製し、DESCRIPTION に `RemoteSha: 3f14521…` を加えて `R CMD build` と `R CMD INSTALL`。configure が中核を GitHub から取り、導入は成功。smoke test は 34 項目すべて成功 |
+| remotes と同じ手順の再現 | `crates/rmql-r` を短いパスに複製し、DESCRIPTION に `RemoteSha: 3f14521…` を加えて `R CMD build` と `R CMD INSTALL`。configure が中核を GitHub から取り、導入は成功。smoke test は 34 項目すべて成功 |
 | リポジトリでの configure | 何も変えない（`Cargo.toml` の差分なし） |
-| push 後の本物の `install_github` | コミット `e12a68a` で、別ライブラリーへ `remotes::install_github("besuke/Riemann", ref = "main", subdir = "crates/riemann-r")`（remotes 2.5.0）。configure が同じコミットの中核を取り、導入は成功。smoke test は 34 項目すべて成功 |
+| push 後の本物の `install_github` | コミット `e12a68a` で、別ライブラリーへ `remotes::install_github("besuke/rmql", ref = "main", subdir = "crates/rmql-r")`（remotes 2.5.0）。configure が同じコミットの中核を取り、導入は成功。smoke test は 34 項目すべて成功 |
 | Releases の URL からの導入 | 新しいライブラリーに CRAN の `purrr`・`tibble` と Releases の zip の URL を導入し、Rust を外した PATH で smoke test：34 項目すべて成功、終了コード 0 |
 
-**Windows バイナリ**：`RiemannFinMath_0.3.2.zip` を、コミット `3f14521` の `crates/riemann-r` から `R CMD INSTALL --build` で作った（configure の追加の前だが、configure はリポジトリでは何もしないので、中身は同じ）。CRAN から `purrr` と `tibble`（依存を含め 11 個）だけを入れた新しいライブラリー `C:\rfm032\lib` に導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで smoke test を実行した：34 項目すべて成功、終了コード 0。環境変数をすべて消すと終了時に落ちるのは 8.4 節と同じ（`library(RiemannFinMath)` だけのスクリプトでも同じ。`tibble` だけで起きることは 0.2.0 で確認済み）。zip は GitHub Releases の `v0.3.2` に添付する。SHA-256 は `bd994df134729b064ff9c5bf503c21c8d4e0af5bc9cd1b65e9f80f00de904add`。
+**Windows バイナリ**：`rmql_0.3.2.zip` を、コミット `3f14521` の `crates/rmql-r` から `R CMD INSTALL --build` で作った（configure の追加の前だが、configure はリポジトリでは何もしないので、中身は同じ）。CRAN から `purrr` と `tibble`（依存を含め 11 個）だけを入れた新しいライブラリー `C:\rfm032\lib` に導入し、Rust と Rtools を外した PATH、リポジトリの外の作業フォルダーで smoke test を実行した：34 項目すべて成功、終了コード 0。環境変数をすべて消すと終了時に落ちるのは 8.4 節と同じ（`library(rmql)` だけのスクリプトでも同じ。`tibble` だけで起きることは 0.2.0 で確認済み）。zip は GitHub Releases の `v0.3.2` に添付する。SHA-256 は `bd994df134729b064ff9c5bf503c21c8d4e0af5bc9cd1b65e9f80f00de904add`。
 
 ### 8.8 版 0.3.4：R リポジトリ（GitHub Pages）による Rust なしの導入【実行確認】（2026-11-18）
 
-**ほかの PC で `remotes::install_github` が動かず、Rust を求められた件**：`subdir = "crates/riemann-r"` を付けない `install_github("besuke/Riemann")` は `HTTP error 404` で止まる（R パッケージが `crates/riemann-r` にあるため。2026-11-18 に再現）。また `install_github` は常にソースからビルドするので、Windows でも Rust と Rtools が要る。そこで、Windows の導入はバイナリを R リポジトリから入れる形にした。
+**ほかの PC で `remotes::install_github` が動かず、Rust を求められた件**：`subdir = "crates/rmql-r"` を付けない `install_github("besuke/rmql")` は `HTTP error 404` で止まる（R パッケージが `crates/rmql-r` にあるため。2026-11-18 に再現）。また `install_github` は常にソースからビルドするので、Windows でも Rust と Rtools が要る。そこで、Windows の導入はバイナリを R リポジトリから入れる形にした。
 
-**R リポジトリ**：`gh-pages` ブランチ（https://besuke.github.io/Riemann/ ）が、`bin/windows/contrib/4.6/`（zip）、`src/contrib/`（tar.gz）、それぞれの `PACKAGES` 索引を持つ。`tools/package/build_binary_repo.R` が作る。
+**R リポジトリ**：`gh-pages` ブランチ（https://besuke.github.io/rmql/ ）が、`bin/windows/contrib/4.6/`（zip）、`src/contrib/`（tar.gz）、それぞれの `PACKAGES` 索引を持つ。`tools/package/build_binary_repo.R` が作る。
 
 ```r
-install.packages("RiemannFinMath",
-                 repos = c("https://besuke.github.io/Riemann", "https://cloud.r-project.org"))
+install.packages("rmql",
+                 repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org"))
 ```
 
 | 確認 | 結果 |
 |---|---|
-| zip だけを置いた場合 | 失敗。Windows の既定（`type = "both"`）は先にソースの索引を見るので、`package 'RiemannFinMath' is not available for this version of R` になった |
+| zip だけを置いた場合 | 失敗。Windows の既定（`type = "both"`）は先にソースの索引を見るので、`package 'rmql' is not available for this version of R` になった |
 | zip と tar.gz を同じ版で置いた場合 | Windows ではバイナリが選ばれ、`purrr`、`tibble` とその依存の 11 パッケージも入った |
 | 公開 URL からの導入 | Rust を外した PATH、新しいライブラリーで成功。smoke test 34 項目すべて成功（`dist/smoke_from_pages_0.3.4.log`） |
 | Rust がない PC でソースを入れた場合 | `configure.win` が、上の入れ方を示して止まる（cargo の有無の検査を、手元で有無の両方について確認） |
@@ -236,4 +236,4 @@ install.packages("RiemannFinMath",
 - **R のバージョン**：R 4.6 の Windows 用の zip である。他のバージョンでは確かめていない。
 - **配布ファイル**：`dist/` にあり、git には入れない。最新の 0.3.4 は、R リポジトリ（`gh-pages`）と GitHub Releases にある（8.8 節）。
 - **CRAN**：公開申請はしていない。18 crate の同梱など、CRAN の Rust パッケージの方針との照合もしていない。
-- **既定のライブラリーの古い `riemann`**：名前を変える前の版が残る。Positron の R セッションが読み込んでいたので、消していない。
+- **既定のライブラリーの古い `rmql`**：名前を変える前の版が残る。Positron の R セッションが読み込んでいたので、消していない。

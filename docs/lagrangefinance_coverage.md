@@ -1,17 +1,17 @@
 # LagrangeFinance の計算の取り込み状況（2026-11-07）
 
-LagrangeFinance（コミット `05e1932`）の第II部と第III部の各節について、R のコードが行う計算が RiemannFinMath に入っているかを確かめた。調べ方は次のとおり。
+LagrangeFinance（コミット `05e1932`）の第II部と第III部の各節について、R のコードが行う計算が rmql に入っているかを確かめた。調べ方は次のとおり。
 
 - 各節のコードブロックが呼ぶ関数（QuantLib、GaussQuant、torch、章の中で定義した関数）を抜き出した。
-- それを Riemann の R の公開関数（123 個）と Rust の公開関数に照らした。
+- それを rmql の R の公開関数（123 個）と Rust の公開関数に照らした。
 
 判定は次の 4 つ。
 
 | 判定 | 意味 |
 |---|---|
-| 対応 | 同じ計算を Riemann の関数で行える |
+| 対応 | 同じ計算を rmql の関数で行える |
 | 一部 | 計算の中心はあるが、節の表や条件の一部がない |
-| 未対応 | Riemann にない |
+| 未対応 | rmql にない |
 | 対象外 | 説明だけでライブラリの計算がない節、または方針で外したもの（EONIA など） |
 
 `comparison/chapters/appendix_c_gaps.qmd` は 2026-11-02 時点の一覧で、その後に実装したものは反映されていない。ゼロカーブ・割引係数カーブ、LMM、FMM、PRDC の確率金利・コール・ターゲット償還・ノックアウトなどがそれにあたる。
@@ -20,7 +20,7 @@ LagrangeFinance（コミット `05e1932`）の第II部と第III部の各節に�
 
 ### 第II部
 
-| 節 | 計算 | Riemann | 判定 |
+| 節 | 計算 | rmql | 判定 |
 |---|---|---|---|
 | II-1.1〜1.2 | パーレート・ディスカウントファクター・スポット・フォワード、TONAR の三曲線 | `bootstrap_ois_curve`、`compute_discount`、`compute_zero_rate`、`compute_forward_rate` | 対応 |
 | II-1.3 | 固定利付債、利払スケジュール、キャッシュフロー表 | `create_fixed_rate_bond`、`generate_schedule`、`get_bond_cashflows` | 対応 |
@@ -60,7 +60,7 @@ LagrangeFinance（コミット `05e1932`）の第II部と第III部の各節に�
 
 ### 第III部
 
-| 節 | 計算 | Riemann | 判定 |
+| 節 | 計算 | rmql | 判定 |
 |---|---|---|---|
 | III-1〜2 | R の並列計算（future・furrr）、ジョブとタスクの分割 | Rust の並列バッチ（`compute_bond_values_batch`、`compute_curve_values_batch`）。R 側の並列化は R の機能 | 対応（R の並列化そのものは対象外） |
 | III-3.4〜3.5 | シナリオの格子で PRDC の近似式を並列に評価、集計 | PRDC のシナリオを一括で評価する関数はない（R から呼び直せば可能） | 一部 |

@@ -2,7 +2,7 @@
 # Builds tools/golden/p1_all_calendars.cpp against an unchanged QuantLib v1.42 source tree and
 # writes the golden calendar files.
 #
-# Usage (from the Riemann root): bash tools/golden/p1_all_calendars.sh <quantlib-v1.42> <boost-include> <build-dir>
+# Usage (from the rmql root): bash tools/golden/p1_all_calendars.sh <quantlib-v1.42> <boost-include> <build-dir>
 #   git clone --depth 1 --branch v1.42 https://github.com/lballabio/QuantLib.git <quantlib-v1.42>
 # Used on Windows with g++ 14.3.0 and the Boost headers of Rtools 4.5, on the PATH:
 #   /c/rtools45/x86_64-w64-mingw32.static.posix/{bin,include}

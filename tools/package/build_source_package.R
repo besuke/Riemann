@@ -1,18 +1,18 @@
-# Builds a self-contained source package of the R package RiemannFinMath, which installs outside this repository and
+# Builds a self-contained source package of the R package rmql, which installs outside this repository and
 # without a network: it holds the core crate and its Rust dependencies, and QuantLib's license
 # notices. The repository itself keeps its path dependency; only a temporary copy is changed.
 #
-# Usage (from the Riemann root): Rscript tools/package/build_source_package.R <output directory>
+# Usage (from the rmql root): Rscript tools/package/build_source_package.R <output directory>
 # Needs cargo, and tar and xz (from Rtools on Windows) on the PATH.
 
 args <- commandArgs(trailingOnly = TRUE)
-stopifnot(length(args) == 1L, file.exists("crates/riemann-r/DESCRIPTION"))
+stopifnot(length(args) == 1L, file.exists("crates/rmql-r/DESCRIPTION"))
 output <- normalizePath(args[1], winslash = "/", mustWork = FALSE)
 dir.create(output, recursive = TRUE, showWarnings = FALSE)
 
 staging <- tempfile("rfm-")
 dir.create(staging)
-package <- file.path(staging, "RiemannFinMath")
+package <- file.path(staging, "rmql")
 on.exit(unlink(staging, recursive = TRUE), add = TRUE)
 
 # Output goes to a file, and is shown only when the command fails.
@@ -36,15 +36,15 @@ copy_tree <- function(from, to) {
 }
 
 # ---- the package, without build products --------------------------------------------------------
-copy_tree("crates/riemann-r", package)
+copy_tree("crates/rmql-r", package)
 unlink(file.path(package, "src/rust/target"), recursive = TRUE)
 unlink(list.files(file.path(package, "src"), pattern = "[.](o|dll|so)$", full.names = TRUE))
 
 # ---- the core crate inside the package ----------------------------------------------------------
-core <- file.path(package, "src/rust/riemann-core")
+core <- file.path(package, "src/rust/rmql-core")
 dir.create(core, recursive = TRUE)
-copy_tree("crates/riemann/src", file.path(core, "src"))
-manifest <- readLines("crates/riemann/Cargo.toml")
+copy_tree("crates/rmql/src", file.path(core, "src"))
+manifest <- readLines("crates/rmql/Cargo.toml")
 workspace <- readLines("Cargo.toml")
 inherited <- function(field) {
   line <- grep(paste0("^", field, " *="), workspace, value = TRUE)
@@ -59,9 +59,9 @@ writeLines(manifest, file.path(core, "Cargo.toml"))
 
 rust_manifest <- file.path(package, "src/rust/Cargo.toml")
 text <- readLines(rust_manifest)
-dependency <- grepl("^riemann = \\{ path = ", text)
+dependency <- grepl("^rmql = \\{ path = ", text)
 stopifnot(sum(dependency) == 1L)
-text[dependency] <- 'riemann = { path = "riemann-core" }'
+text[dependency] <- 'rmql = { path = "rmql-core" }'
 writeLines(text, rust_manifest)
 
 # ---- the license notices ------------------------------------------------------------------------
@@ -97,7 +97,7 @@ writeLines(c(
 # ---- the source package -------------------------------------------------------------------------
 r_command <- file.path(R.home("bin"), "R")
 run(r_command, c("CMD", "build", "--no-build-vignettes", shQuote(package)), output)
-built <- list.files(output, pattern = "^RiemannFinMath_.*[.]tar[.]gz$", full.names = TRUE)
+built <- list.files(output, pattern = "^rmql_.*[.]tar[.]gz$", full.names = TRUE)
 stopifnot(length(built) == 1L)
 cat("Source package:", built, "\n")
 cat("Size in MB:", round(file.size(built) / 1e6, 1), "\n")

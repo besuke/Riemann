@@ -1,8 +1,8 @@
-# Golden values for Riemann P7: OIS asset swaps and the yen-converted asset swap from GaussQuant
+# Golden values for rmql P7: OIS asset swaps and the yen-converted asset swap from GaussQuant
 # (ois_asset_swap_GQL, ois_asset_swap_jpy_basis_GQL), and futures basis from QuantLib's bond values.
 # All quotes and prices are synthetic random numbers; no market data is used.
-# Usage (from the Riemann root): Rscript tools/golden/p7_asset_swaps.R
-# Writes tests/golden/asw_{nodes,bonds,jpy,futures}.csv. The curves are passed to Riemann as their
+# Usage (from the rmql root): Rscript tools/golden/p7_asset_swaps.R
+# Writes tests/golden/asw_{nodes,bonds,jpy,futures}.csv. The curves are passed to rmql as their
 # nodes, so this compares the asset swap, not the bootstrap.
 
 suppressMessages({library(QuantLib); library(GaussQuant)})

@@ -29,7 +29,7 @@ all_results |>
   filter(verdict == "FAIL") |>
   transmute(
     Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
-    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value), Difference = format_4(difference)
+    `Baseline value` = format_4(baseline_value), rmql = format_4(rmql_value), Difference = format_4(difference)
   ) |>
   knitr::kable()
 ```
@@ -59,7 +59,7 @@ all_results |>
   filter(verdict == "REF", abs(difference) > comparison_tolerance) |>
   transmute(
     Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
-    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value), Difference = format_4(difference)
+    `Baseline value` = format_4(baseline_value), rmql = format_4(rmql_value), Difference = format_4(difference)
   ) |>
   knitr::kable()
 ```
@@ -73,7 +73,7 @@ all_results |>
   filter(verdict == "N/C") |>
   transmute(
     Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
-    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value), Reason = note
+    `Baseline value` = format_4(baseline_value), rmql = format_4(rmql_value), Reason = note
   ) |>
   knitr::kable()
 ```
@@ -86,7 +86,7 @@ all_results |>
 all_results |>
   transmute(
     Chapter = chapter, Item = item, Unit = unit, Baseline = baseline,
-    `Baseline value` = format_4(baseline_value), RiemannFinMath = format_4(riemann_value),
+    `Baseline value` = format_4(baseline_value), rmql = format_4(rmql_value),
     Difference = format_4(difference), Tolerance = format_4(tolerance), Verdict = verdict
   ) |>
   knitr::kable()

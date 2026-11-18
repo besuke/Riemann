@@ -1,4 +1,4 @@
-# RiemannFinMath
+# rmql
 
 Rust を中核とする金融計算ライブラリーである。副作用の局所化と参照透過性を重視し、評価日・市場データ・計算規約を明示的な引数として与える関数型の設計を採用する。金融上の選択肢は実行時のデータとして表現し、利用言語に特定の型構成や継承関係を要求しない。
 
@@ -8,16 +8,16 @@ Rust の Send・Sync トレイトと、副作用を抑制した設計を基盤�
 
 ## 現在の状態
 
-- **実装済み**：日付、全カレンダー、固定利付債の価格・利回り・リスク、OIS カーブ（TONAR・€STR・SOFR・SONIA）、R パッケージ `RiemannFinMath`、債券と OIS カーブの並列バッチ、自動微分による債券の感応度、オプション（ヨーロピアン、アメリカン、バリア、Black、Bachelier、1 ステップの MC）、OIS アセットスワップ、国債先物のベーシス、Hull-White（スワップション、コール債）、SABR、CDS、PRDC（確定的な金利の簡略モデル）
+- **実装済み**：日付、全カレンダー、固定利付債の価格・利回り・リスク、OIS カーブ（TONAR・€STR・SOFR・SONIA）、R パッケージ `rmql`、債券と OIS カーブの並列バッチ、自動微分による債券の感応度、オプション（ヨーロピアン、アメリカン、バリア、Black、Bachelier、1 ステップの MC）、OIS アセットスワップ、国債先物のベーシス、Hull-White（スワップション、コール債）、SABR、CDS、PRDC（確定的な金利の簡略モデル）
 - **作業中**：R パッケージの配布整備
 - **開発目標（未実装）**：TypeScript、WebAssembly、Excel の Office アドイン、LMM などの金利モデル、確率的な金利の PRDC
 
-リポジトリ名、Rust の crate 名（`riemann`、`riemann-r`）、API 名は `riemann` のままであり、いずれも RiemannFinMath を指す。
+リポジトリ名、Rust の crate 名（`rmql`、`rmql-r`）、API 名は `rmql` のままであり、いずれも rmql を指す。
 
 ## 文書
 
 - 設計仕様書（草案）：[docs/specification.md](docs/specification.md)
-- R パッケージ：[crates/riemann-r/README.md](crates/riemann-r/README.md)、[docs/spec_r.md](docs/spec_r.md)
+- R パッケージ：[crates/rmql-r/README.md](crates/rmql-r/README.md)、[docs/spec_r.md](docs/spec_r.md)
 - 参考資料：[docs/library_comparison.md](docs/library_comparison.md)
 
 ## 著作権

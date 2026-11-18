@@ -6,12 +6,12 @@
 # shrinks, and the bias of the difference grows as it widens. Each condition is run on several seeds, so the
 # spread of the estimates across seeds can be set against the reported standard error.
 #
-# Usage, from the Riemann root, with RiemannFinMath installed:
+# Usage, from the rmql root, with rmql installed:
 #   Rscript tools/experiments/p10_prdc_path_sensitivity.R
 # Writes tools/experiments/output/p10_prdc_path_sensitivity.csv and p10_prdc_path_sensitivity.md.
 
 suppressPackageStartupMessages({
-  library(RiemannFinMath)
+  library(rmql)
   library(dplyr)
   library(purrr)
   library(tibble)

@@ -1,6 +1,6 @@
-# Golden values for Riemann P2-3 (discount curves and bond valuation on a curve) from the
+# Golden values for rmql P2-3 (discount curves and bond valuation on a curve) from the
 # QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p2_bond_curves.R
+# Usage (from the rmql root): Rscript tools/golden/p2_bond_curves.R
 # Reads tests/golden/bond_cases.csv (P2-1); writes tests/golden/curves.csv, curve_discounts.csv
 # and bond_curve_values.csv. Numbers have 17 significant digits; ERROR = QuantLib raised an error.
 

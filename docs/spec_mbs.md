@@ -1,6 +1,6 @@
 # パススルー MBS の仕様（P11-5）
 
-実装は `crates/riemann/src/mbs.rs`、R の入口は `crates/riemann-r/R/mbs.R`、比較文書は `comparison/chapters/ch11_hull_white.qmd` の「Mortgage-backed securities」節である。QuantLib には対応する機能がないので、比較の基準はすべて LagrangeFinance II-8.8 である。
+実装は `crates/rmql/src/mbs.rs`、R の入口は `crates/rmql-r/R/mbs.R`、比較文書は `comparison/chapters/ch11_hull_white.qmd` の「Mortgage-backed securities」節である。QuantLib には対応する機能がないので、比較の基準はすべて LagrangeFinance II-8.8 である。
 
 ## 1. LagrangeFinance II-8.8 の条件【ソース確認】
 
@@ -14,7 +14,7 @@
 
 **期限前返済は最適行使ではない。** 借り手の行動を、経過月数と借換えの誘因の関数として外から与える規則であり、Longstaff–Schwartz のように継続価値を回帰して行使を最適化することはしない。
 
-## 2. Riemann の実装
+## 2. rmql の実装
 
 | 関数（R） | 内容 |
 |---|---|
@@ -28,7 +28,7 @@
 
 **LagrangeFinance との違い**：
 
-| 項目 | LagrangeFinance | Riemann |
+| 項目 | LagrangeFinance | rmql |
 |---|---|---|
 | 返済額 | 当初の返済額を固定 | 既定は同じ（`amortization = "fixed_payment"`）。標準的な再計算（`"reamortized"`）も選べる |
 | 借換え金利 | 関数の中で `max(0, r + 3%)` を作る | 行列として受け取る |
@@ -45,7 +45,7 @@
 | 静的 OAS（PSA 0・50・100%、価格 95・105） | 6 | N/C、差は最大 0.26 bp |
 | このライブラリの乱数による 2 万経路の平均価格 | 1 | N/C（117.3165、乱数と経路数が違う） |
 
-**静的 OAS の差の原因**：LagrangeFinance は `uniroot` を既定の精度で使う。LagrangeFinance の OAS で価格を計算し直すと、想定価格 105 の場合に最大 0.033 下回った（104.9666）。Riemann の OAS では差は 1e-9 以下である。比較元の解法の精度による差であり、Riemann の不具合ではない。
+**静的 OAS の差の原因**：LagrangeFinance は `uniroot` を既定の精度で使う。LagrangeFinance の OAS で価格を計算し直すと、想定価格 105 の場合に最大 0.033 下回った（104.9666）。rmql の OAS では差は 1e-9 以下である。比較元の解法の精度による差であり、rmql の不具合ではない。
 
 ## 4. 未対応
 

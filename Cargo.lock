@@ -54,7 +54,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "riemann"
+name = "rmql"
 version = "0.3.0"
 dependencies = [
  "rayon",

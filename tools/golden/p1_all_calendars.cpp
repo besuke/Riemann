@@ -75,7 +75,7 @@ namespace {
     };
 
     std::vector<Entry> entries() {
-        BespokeCalendar bespoke("Riemann test");
+        BespokeCalendar bespoke("rmql test");
         bespoke.addWeekend(Wednesday);
         bespoke.addWeekend(Thursday);
         Calendar jp = Japan(), xetra = Germany(Germany::Xetra), bovespa = Brazil(Brazil::Exchange),

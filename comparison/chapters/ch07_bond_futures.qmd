@@ -78,34 +78,34 @@ baseline <- basis_table(ql_bonds, basket$bb_price, futures_price, funding_rate) 
   )
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: riemann-call
-riemann_bonds <- pmap(list(basket$issue_date, basket$maturity_date, basket$coupon_pct), \(issue, maturity, coupon) {
-  RiemannFinMath::create_fixed_rate_bond(
+#| label: rmql-call
+rmql_bonds <- pmap(list(basket$issue_date, basket$maturity_date, basket$coupon_pct), \(issue, maturity, coupon) {
+  rmql::create_fixed_rate_bond(
     settlement_days = 0L, face_amount = 100, effective_date = issue, termination_date = maturity, tenor = "6M", calendar = "japan",
     convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
     coupon_rate = coupon / 100, day_count = "actual_365_fixed", payment_convention = "following", redemption = 100, issue_date = issue
   )
 })
-riemann <- RiemannFinMath::compute_future_basket(
-  riemann_bonds, basket$bb_price, futures_price, basket$conversion_factor, funding_rate, valuation_date, delivery_date
+rmql <- rmql::compute_future_basket(
+  rmql_bonds, basket$bb_price, futures_price, basket$conversion_factor, funding_rate, valuation_date, delivery_date
 )
-riemann_yields <- map2_dbl(riemann_bonds, basket$bb_price, \(b, p) {
-  RiemannFinMath::compute_yield_from_price(b, p, "clean", "actual_365_fixed", "compounded", 2L, valuation_date)
+rmql_yields <- map2_dbl(rmql_bonds, basket$bb_price, \(b, p) {
+  rmql::compute_yield_from_price(b, p, "clean", "actual_365_fixed", "compounded", 2L, valuation_date)
 })
-riemann_durations <- map2_dbl(riemann_bonds, riemann_yields, \(b, y) {
-  RiemannFinMath::compute_duration(b, y, "actual_365_fixed", "compounded", 2L, valuation_date, "modified")
+rmql_durations <- map2_dbl(rmql_bonds, rmql_yields, \(b, y) {
+  rmql::compute_duration(b, y, "actual_365_fixed", "compounded", 2L, valuation_date, "modified")
 })
 ```
 
 `compute_future_basis` is the same calculation for one bond:
 
 ```{r}
-#| label: riemann-one
-one <- RiemannFinMath::compute_future_basis(
-  riemann_bonds[[1]], basket$bb_price[1], futures_price, basket$conversion_factor[1], funding_rate, valuation_date, delivery_date
+#| label: rmql-one
+one <- rmql::compute_future_basis(
+  rmql_bonds[[1]], basket$bb_price[1], futures_price, basket$conversion_factor[1], funding_rate, valuation_date, delivery_date
 )
 ```
 
@@ -114,17 +114,17 @@ one <- RiemannFinMath::compute_future_basis(
 baseline_name <- "QuantLib with R arithmetic"
 issues <- paste("Issue", basket$issue)
 bind_rows(
-  compare_values(paste(issues, "net basis"), "per 100", baseline$net_basis, riemann$net_basis, baseline_name),
-  compare_values(paste(issues, "implied repo"), "percent", 100 * baseline$implied_repo, 100 * riemann$implied_repo, baseline_name),
-  compare_values(paste(issues, "yield"), "percent", 100 * baseline$yield, 100 * riemann_yields),
-  compare_values(paste(issues, "modified duration"), "years", baseline$duration, riemann_durations),
-  compare_max("Accrued at valuation, all issues", "per 100, largest", baseline$accrued_start, riemann$accrued_start),
-  compare_max("Accrued at delivery, all issues", "per 100, largest", baseline$accrued_end, riemann$accrued_end),
-  compare_max("Coupon income, all issues", "per 100, largest", baseline$coupon_income, riemann$coupon_income, baseline_name),
-  compare_max("Gross basis, all issues", "per 100, largest", baseline$gross_basis, riemann$gross_basis, baseline_name),
-  compare_max("Carry, all issues", "per 100, largest", baseline$carry, riemann$carry, baseline_name),
+  compare_values(paste(issues, "net basis"), "per 100", baseline$net_basis, rmql$net_basis, baseline_name),
+  compare_values(paste(issues, "implied repo"), "percent", 100 * baseline$implied_repo, 100 * rmql$implied_repo, baseline_name),
+  compare_values(paste(issues, "yield"), "percent", 100 * baseline$yield, 100 * rmql_yields),
+  compare_values(paste(issues, "modified duration"), "years", baseline$duration, rmql_durations),
+  compare_max("Accrued at valuation, all issues", "per 100, largest", baseline$accrued_start, rmql$accrued_start),
+  compare_max("Accrued at delivery, all issues", "per 100, largest", baseline$accrued_end, rmql$accrued_end),
+  compare_max("Coupon income, all issues", "per 100, largest", baseline$coupon_income, rmql$coupon_income, baseline_name),
+  compare_max("Gross basis, all issues", "per 100, largest", baseline$gross_basis, rmql$gross_basis, baseline_name),
+  compare_max("Carry, all issues", "per 100, largest", baseline$carry, rmql$carry, baseline_name),
   compare_values("One bond: net basis, issue 373", "per 100", baseline$net_basis[1], one$net_basis, baseline_name),
-  compare_values("Cheapest to deliver: row in the basket", "row", which.min(baseline$net_basis), which(riemann$ctd), baseline_name)
+  compare_values("Cheapest to deliver: row in the basket", "row", which.min(baseline$net_basis), which(rmql$ctd), baseline_name)
 ) |>
   show_results()
 ```
@@ -145,15 +145,15 @@ ql_stress_price <- function(b) QuantLib::BondFunctions_cleanPrice(b, stress_yiel
 stress_futures_baseline <- ql_stress_price(ql_standard)
 stress_baseline <- basis_table(ql_bonds, map_dbl(ql_bonds, ql_stress_price), stress_futures_baseline, stress_funding)
 
-riemann_standard <- RiemannFinMath::create_fixed_rate_bond(
+rmql_standard <- rmql::create_fixed_rate_bond(
   settlement_days = 0L, face_amount = 100, effective_date = "2026-09-10", termination_date = "2036-09-10", tenor = "6M", calendar = "japan",
   convention = "unadjusted", termination_convention = "unadjusted", rule = "backward", end_of_month = FALSE,
   coupon_rate = 0.06, day_count = "actual_365_fixed", payment_convention = "following", redemption = 100, issue_date = "2026-09-10"
 )
-riemann_stress_price <- function(b) RiemannFinMath::compute_clean_price(b, stress_yield, "actual_365_fixed", "compounded", 2L, valuation_date)
-stress_futures_riemann <- riemann_stress_price(riemann_standard)
-stress_riemann <- RiemannFinMath::compute_future_basket(
-  riemann_bonds, map_dbl(riemann_bonds, riemann_stress_price), stress_futures_riemann, basket$conversion_factor,
+rmql_stress_price <- function(b) rmql::compute_clean_price(b, stress_yield, "actual_365_fixed", "compounded", 2L, valuation_date)
+stress_futures_rmql <- rmql_stress_price(rmql_standard)
+stress_rmql <- rmql::compute_future_basket(
+  rmql_bonds, map_dbl(rmql_bonds, rmql_stress_price), stress_futures_rmql, basket$conversion_factor,
   stress_funding, valuation_date, delivery_date
 )
 ```
@@ -161,10 +161,10 @@ stress_riemann <- RiemannFinMath::compute_future_basket(
 ```{r}
 #| label: stress-results
 bind_rows(
-  compare_values("Futures price from the standard bond", "per 100", stress_futures_baseline, stress_futures_riemann),
-  compare_values(paste(issues, "net basis"), "per 100", stress_baseline$net_basis, stress_riemann$net_basis, baseline_name),
-  compare_max("Implied repo, all issues", "percent, largest", 100 * stress_baseline$implied_repo, 100 * stress_riemann$implied_repo, baseline_name),
-  compare_values("Cheapest to deliver: row in the basket", "row", which.min(stress_baseline$net_basis), which(stress_riemann$ctd), baseline_name)
+  compare_values("Futures price from the standard bond", "per 100", stress_futures_baseline, stress_futures_rmql),
+  compare_values(paste(issues, "net basis"), "per 100", stress_baseline$net_basis, stress_rmql$net_basis, baseline_name),
+  compare_max("Implied repo, all issues", "percent, largest", 100 * stress_baseline$implied_repo, 100 * stress_rmql$implied_repo, baseline_name),
+  compare_values("Cheapest to deliver: row in the basket", "row", which.min(stress_baseline$net_basis), which(stress_rmql$ctd), baseline_name)
 ) |>
   show_results()
 ```
@@ -173,25 +173,25 @@ bind_rows(
 
 ```{r}
 #| label: lagrange
-stress_prices <- map_dbl(riemann_bonds, riemann_stress_price)
+stress_prices <- map_dbl(rmql_bonds, rmql_stress_price)
 keys <- function(name) paste0(name, ".", basket$issue)
 bind_rows(
-  against_lagrange_max("Yield, all issues", "percent, largest", keys("future.yield_pct"), 100 * riemann_yields),
-  against_lagrange_max("Modified duration, all issues", "years, largest", keys("future.duration"), riemann_durations),
-  against_lagrange_max("Accrued at valuation, all issues", "per 100, largest", keys("future.accrued_start"), riemann$accrued_start),
-  against_lagrange_max("Accrued at delivery, all issues", "per 100, largest", keys("future.accrued_end"), riemann$accrued_end),
-  against_lagrange_max("Coupon income, all issues", "per 100, largest", keys("future.coupon_income"), riemann$coupon_income),
-  against_lagrange_max("Gross basis, all issues", "per 100, largest", keys("future.gross_basis"), riemann$gross_basis),
-  against_lagrange_max("Carry, all issues", "per 100, largest", keys("future.carry"), riemann$carry),
-  against_lagrange(paste(issues, "net basis"), "per 100", keys("future.net_basis"), riemann$net_basis),
-  against_lagrange(paste(issues, "implied repo"), "percent", keys("future.implied_repo_pct"), 100 * riemann$implied_repo),
-  against_lagrange("Cheapest to deliver", "issue number", "future.ctd_issue", basket$issue[riemann$ctd]),
-  against_lagrange("Scenario: futures price", "per 100", "stress.futures_price", stress_futures_riemann),
+  against_lagrange_max("Yield, all issues", "percent, largest", keys("future.yield_pct"), 100 * rmql_yields),
+  against_lagrange_max("Modified duration, all issues", "years, largest", keys("future.duration"), rmql_durations),
+  against_lagrange_max("Accrued at valuation, all issues", "per 100, largest", keys("future.accrued_start"), rmql$accrued_start),
+  against_lagrange_max("Accrued at delivery, all issues", "per 100, largest", keys("future.accrued_end"), rmql$accrued_end),
+  against_lagrange_max("Coupon income, all issues", "per 100, largest", keys("future.coupon_income"), rmql$coupon_income),
+  against_lagrange_max("Gross basis, all issues", "per 100, largest", keys("future.gross_basis"), rmql$gross_basis),
+  against_lagrange_max("Carry, all issues", "per 100, largest", keys("future.carry"), rmql$carry),
+  against_lagrange(paste(issues, "net basis"), "per 100", keys("future.net_basis"), rmql$net_basis),
+  against_lagrange(paste(issues, "implied repo"), "percent", keys("future.implied_repo_pct"), 100 * rmql$implied_repo),
+  against_lagrange("Cheapest to deliver", "issue number", "future.ctd_issue", basket$issue[rmql$ctd]),
+  against_lagrange("Scenario: futures price", "per 100", "stress.futures_price", stress_futures_rmql),
   against_lagrange_max("Scenario: price at 8%, all issues", "per 100, largest", keys("stress.price"), stress_prices),
-  against_lagrange_max("Scenario: gross basis, all issues", "per 100, largest", keys("stress.gross_basis"), stress_riemann$gross_basis),
-  against_lagrange(paste("Scenario:", issues, "net basis"), "per 100", keys("stress.net_basis"), stress_riemann$net_basis),
-  against_lagrange_max("Scenario: implied repo, all issues", "percent, largest", keys("stress.implied_repo_pct"), 100 * stress_riemann$implied_repo),
-  against_lagrange("Scenario: cheapest to deliver", "issue number", "stress.ctd_issue", basket$issue[stress_riemann$ctd])
+  against_lagrange_max("Scenario: gross basis, all issues", "per 100, largest", keys("stress.gross_basis"), stress_rmql$gross_basis),
+  against_lagrange(paste("Scenario:", issues, "net basis"), "per 100", keys("stress.net_basis"), stress_rmql$net_basis),
+  against_lagrange_max("Scenario: implied repo, all issues", "percent, largest", keys("stress.implied_repo_pct"), 100 * stress_rmql$implied_repo),
+  against_lagrange("Scenario: cheapest to deliver", "issue number", "stress.ctd_issue", basket$issue[stress_rmql$ctd])
 ) |>
   show_results()
 ```
@@ -201,7 +201,7 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,            ~Baseline,                                       ~RiemannFinMath,
+  ~Layer,    ~Aspect,            ~Baseline,                                       ~rmql,
   "Wrapper", "Basket",           "A pipeline written by the caller",              "`compute_future_basket` with a list of bonds",
   "Wrapper", "Coupon income",    "Read from a cash flow table and filtered",      "A column of the result",
   "Core",    "Basis arithmetic", "R, in the chapter",                             "Rust",

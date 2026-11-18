@@ -4,7 +4,7 @@
 
 P3 では、O/N 預金と OIS の気配から割引カーブを作る。TONAR の対数線形（P3-1）、`MonotonicLogCubic`（P3-3）、€STR・SOFR・SONIA（P3-2）を実装済みである。OIS の指標はこの 4 つに限定する。計算の方式は QuantLib C++ で定める。R バインディングは照合に使うだけで、Rust の設計を R バインディングに合わせることはしない。
 
-記述の区分（【ソース確認】【実行確認】【実行照合済み】【設計案】）は仕様書と同じ考え方である。【実行確認】は R バインディングで動作を確かめた少数の例で、Riemann との数値照合である【実行照合済み】とは区別する。
+記述の区分（【ソース確認】【実行確認】【実行照合済み】【設計案】）は仕様書と同じ考え方である。【実行確認】は R バインディングで動作を確かめた少数の例で、rmql との数値照合である【実行照合済み】とは区別する。
 
 | 段階 | 内容 | 状態 |
 |---|---|---|
@@ -21,7 +21,7 @@ P3 では、O/N 預金と OIS の気配から割引カーブを作る。TONAR �
 | QuantLib（C++）、差の確認用 | `70f240f`（2026-10-29） | 同上 |
 | QuantLib R バインディング | 1.42 | 手元にインストール済みのパッケージ |
 | QuantLib-SWIG（照合用 R 関数の対応先の確認だけ） | `v1.42`（コミット `924f814`） | https://github.com/lballabio/QuantLib-SWIG 、`SWIG/piecewiseyieldcurve.i`、`SWIG/interpolation.i` |
-| GaussQuant | `c08fdb1` | `R/compat_quantive_riemann_GQH.R`（`ir_build_ois_curve_GQH`、`.ir_get_ois_convention_GQH`）、`tests/testthat/test-ois-asset-swap-GQL.R` |
+| GaussQuant | `c08fdb1` | `R/compat_quantive_rmql_GQH.R`（`ir_build_ois_curve_GQH`、`.ir_get_ois_convention_GQH`）、`tests/testthat/test-ois-asset-swap-GQL.R` |
 
 **基準と照合の区別**：仕様の基準は QuantLib C++ `v1.42` のソースである。実行照合に使う R パッケージは Version 1.42 だが、ビルド日（2026-04-06）が `v1.42` のタグのコミットより前で、正確な C++ のコミットは分からない。そこで、照合結果は「正確な C++ コミットが不明な R パッケージ Version 1.42 との照合」と記録し、C++ `v1.42` そのものとの実行照合とは区別する。C++ `v1.42` をビルドして実行した照合はしていない。
 
@@ -100,7 +100,7 @@ P3 では、O/N 預金と OIS の気配から割引カーブを作る。TONAR �
 - **過去のフィキシングがないことも、比の条件ではない。** 過去の部分は積で計算し、残りを比で計算する：`複利係数 = ∏_{過去}(1 + r_k dt_k) × P(v_i) / P(v_n)`。評価日当日のフィキシングは、値があれば積に、なければ比に入る。
 - **両方が成り立つ場合（P3 の範囲）**：複利係数は `P(s) / P(e)` だけで決まる。さらに、支払ラグが 0 で、`accruedPeriod` と `accrualPeriod` が同じなら、1 クーポンの現在価値は数式の上で `N (P(s) - P(e))` になる。支払ラグがあれば `N (P(s) / P(e) - 1) P(pay)` のままで、このように簡単にならない。
 - **`telescopicValueDates` は別のものである。** これは値の日付の列を短く作る最適化で、既定は false である。比の計算は、false でも上の条件を満たせば行われる。
-- **Riemann の計算順**：数式で等しくても浮動小数の結果は変わるので、P3 では QuantLib と同じく `(P(s) / P(e) - 1) / accruedPeriod × accrualPeriod × nominal` の順で計算し、各日の積も `N (P(s) - P(e))` も使わない。
+- **rmql の計算順**：数式で等しくても浮動小数の結果は変わるので、P3 では QuantLib と同じく `(P(s) / P(e) - 1) / accruedPeriod × accrualPeriod × nominal` の順で計算し、各日の積も `N (P(s) - P(e))` も使わない。
 
 ### 2.5 OIS が再現する値（`impliedQuote`）
 
@@ -128,7 +128,7 @@ P3 では、O/N 預金と OIS の気配から割引カーブを作る。TONAR �
 ### 2.7 補間
 
 - 対数線形：`LogLinear`。`exp(線形補間(log df))`。範囲外は端の区間を延ばす。P2-3 の `YieldCurve::discount_factors` と同じ（`docs/spec_bonds.md` 4 章で照合済み）。
-- 対数 3 次：**Riemann の仕様は QuantLib C++ の `MonotonicLogCubic` とする**。定義は `LogCubic(CubicInterpolation::Spline, monotonic = true, SecondDerivative 0, SecondDerivative 0)`（`loginterpolation.hpp`）。
+- 対数 3 次：**rmql の仕様は QuantLib C++ の `MonotonicLogCubic` とする**。定義は `LogCubic(CubicInterpolation::Spline, monotonic = true, SecondDerivative 0, SecondDerivative 0)`（`loginterpolation.hpp`）。
 
 **照合用 R 関数の対応先【ソース確認】**：SWIG `v1.42` では、`PiecewiseLogCubicDiscount` は SWIG の `LogCubic` を既定の引数で使う（`piecewiseyieldcurve.i`）。その既定は `Spline, true, SecondDerivative 0, SecondDerivative 0` で（`interpolation.i`）、C++ の `MonotonicLogCubic` と同じ設定である。名前は `MonotonicLogCubic` ではないが、計算は同じになる。
 
@@ -191,17 +191,17 @@ QuantLib の既定は市場の規約ではない。下の「市場の規約」�
 
 ### 2.11 英国のカレンダー
 
-`Sonia` は `UnitedKingdom(Exchange)` を使い、Riemann の既存のカレンダーは `UnitedKingdom(Settlement)` だけである。
+`Sonia` は `UnitedKingdom(Exchange)` を使い、rmql の既存のカレンダーは `UnitedKingdom(Settlement)` だけである。
 
 - 【ソース確認】v1.42 の `unitedkingdom.cpp` で、`SettlementImpl` と `ExchangeImpl` の `isBusinessDay` の本体は同じで、ともに共通の `isBankHoliday` を使う。
 - 【実行確認】R バインディング 1.42 で全日付（109,208 日、1901-01-01〜2199-12-31）を比べ、Settlement と Exchange の差は 0 件だった（Metals との差も 0 件）。
-- 既存の Riemann の Settlement は全日付で QuantLib と照合済みである（`docs/spec_dates_calendars.md`）。
+- 既存の rmql の Settlement は全日付で QuantLib と照合済みである（`docs/spec_dates_calendars.md`）。
 
-したがって、**現時点で営業日の結果は変わらない**。ただし QuantLib では市場ごとに別の定義で、将来の改定で分かれる可能性があり、例外の日も別々に持つ。そのため、Riemann でも `UkMarket::Exchange` を別の値として追加し、規則は共有し、P1 と同じ方法で照合する。
+したがって、**現時点で営業日の結果は変わらない**。ただし QuantLib では市場ごとに別の定義で、将来の改定で分かれる可能性があり、例外の日も別々に持つ。そのため、rmql でも `UkMarket::Exchange` を別の値として追加し、規則は共有し、P1 と同じ方法で照合する。
 
 ## 3. v1.42 と `70f240f` の差【ソース確認】
 
-Riemann は v1.42 に合わせる。`70f240f` では次が変わっている。
+rmql は v1.42 に合わせる。`70f240f` では次が変わっている。
 
 | 項目 | v1.42 | `70f240f` | 結果への影響 |
 |---|---|---|---|
@@ -215,9 +215,9 @@ Riemann は v1.42 に合わせる。`70f240f` では次が変わっている。
 
 「同じはず」はソースを読んだ判断で、`70f240f` を実行した確認ではない。
 
-## 4. グローバルな状態と Riemann の値【設計案】
+## 4. グローバルな状態と rmql の値【設計案】
 
-| QuantLib のグローバルな状態 | 使う場所 | Riemann |
+| QuantLib のグローバルな状態 | 使う場所 | rmql |
 |---|---|---|
 | `Settings::evaluationDate` | スポット日、預金の日付、クーポンの過去と将来の区別 | 引数 `evaluation_date` |
 | `Settings::includeReferenceDateEvents` | 基準日の支払を含めるか（既定 false） | 含めない（P2 と同じ扱い） |
@@ -276,9 +276,9 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 | 1 | 仕様書 7 章の P3：照合先は GaussQuant と回帰テスト、LagrangeFinance、EONIA ベンチマーク | 先に QuantLib R バインディングと直接照合する | 仕様書の段階の表に QuantLib を追記した。GaussQuant と LagrangeFinance は後の確認に回す。EONIA は `Eonia` クラスがあるだけで、P3-1〜P3-3 の照合には含めない |
 | 2 | P1 の英国カレンダーは Settlement だけ | `Sonia` は `UnitedKingdom(Exchange)` を使う。規則の本体は同じで、全日付で差は 0 件（2.11 節） | P3-2 で `UkMarket::Exchange` を別の値として追加し、P1 と同じく全日付で照合する |
 | 3 | 仕様書 5.1 の例：「気配の再現誤差 1e-8bp 以内」 | QuantLib の `accuracy = 1e-12` は割引係数の精度で、1 日の預金の金利では 1e-12 × 365 ≈ 3.7e-10（3.7e-6bp）までの差を許す。テストの許容誤差は 1e-8・1e-9（金利） | P3-1 の実測は最大 5.3e-11（5.3e-7bp）で、QuantLib も同じ値だった（8.3 節）。7.3 の例を 1e-9（金利）に直した |
-| 4 | GaussQuant：基準日の既定は `settlement`、`overnight_deposit` は `evaluation` が必要 | `settlement` では O/N 預金のピラーが基準日以前になり、捨てられる | Riemann は `reference_date` を必須にする |
-| 5 | GaussQuant：指標名は `TONA`、独自の `OvernightIndex` | QuantLib は `Tonar`。規約の値は同じ | Riemann の名前は TONAR に統一する |
-| 6 | GaussQuant：SONIA のスポット日の計算は UK Settlement、指標は UK Exchange | 2 番のとおり規則の本体は同じなので、結果は同じはず | Riemann は指標のカレンダーに統一する |
+| 4 | GaussQuant：基準日の既定は `settlement`、`overnight_deposit` は `evaluation` が必要 | `settlement` では O/N 預金のピラーが基準日以前になり、捨てられる | rmql は `reference_date` を必須にする |
+| 5 | GaussQuant：指標名は `TONA`、独自の `OvernightIndex` | QuantLib は `Tonar`。規約の値は同じ | rmql の名前は TONAR に統一する |
+| 6 | GaussQuant：SONIA のスポット日の計算は UK Settlement、指標は UK Exchange | 2 番のとおり規則の本体は同じなので、結果は同じはず | rmql は指標のカレンダーに統一する |
 | 7 | GaussQuant：`depo` と `flat_forward` にも対応 | 仕様書 7 章の P3 には含まれない | P3 の範囲外。必要になったら足す |
 | 8 | 仕様書 7 章の「日次複利のクーポン」 | P3 の範囲では各日の積を計算しない（2.4 節） | 過去のフィキシングを扱う段階（P7 の ASW など）で積の計算を足す |
 
@@ -309,7 +309,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 
 | 対象 | 件数 | 結果 |
 |---|---|---|
-| カーブの作成 | 800 通り | 764 通りを作成。36 通りは QuantLib と Riemann の両方がエラー |
+| カーブの作成 | 800 通り | 764 通りを作成。36 通りは QuantLib と rmql の両方がエラー |
 | 商品の日付（開始日、満期、ピラー、最終関連日、使用の有無） | 6,394 件 | すべて一致 |
 | 節点の日付 | 7,053 個 | すべて一致 |
 | 節点の割引係数 | 7,053 個 | 6,733 個が完全一致。320 個は最大で相対 4.1e-15 の差（許容誤差 1e-12 以内） |
@@ -317,13 +317,13 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 | 再現した気配（QuantLib との差） | 6,289 個 | 5,925 個が完全一致。364 個は最大で絶対 2.2e-16 の差（相対 5.3e-14） |
 | 入力の気配の再現 `\|implied − quote\|` | 6,289 個 | 最大 5.3e-11（5.3e-7bp）。QuantLib も同じ 5.3e-11 |
 
-作成時のエラーの原因は、QuantLib のメッセージと Riemann のメッセージを照合した：`all instruments expired` 21 通り、ピラーの重複 4 通り、`root not bracketed` 11 通り（気配を 150% にした場合など）。任意の日付の割引係数のエラー 1,522 件は、QuantLib のメッセージを記録していないので、日付からの判断である（基準日より前は負の時間、最後の日付より後は外挿なし）。
+作成時のエラーの原因は、QuantLib のメッセージと rmql のメッセージを照合した：`all instruments expired` 21 通り、ピラーの重複 4 通り、`root not bracketed` 11 通り（気配を 150% にした場合など）。任意の日付の割引係数のエラー 1,522 件は、QuantLib のメッセージを記録していないので、日付からの判断である（基準日より前は負の時間、最後の日付より後は外挿なし）。
 
 許容誤差：日付は完全一致、割引係数と再現した気配は相対 1e-12、入力の気配の再現は絶対 1e-9（金利）。
 
 **差の原因（未確認の推定）**：`ln` と `exp` の数学ライブラリーの最下位ビットの違いと考えられるが、個別には確かめていない。作成に失敗した 36 通りの商品の日付は、比べていない。
 
-**再現の精度**：`accuracy = 1e-12` は割引係数の精度なので、短い期間ほど金利の差は大きくなる。実測の最大 5.3e-11 は、以前の 7.3 の例（1e-8bp = 1e-12）を超える。QuantLib も同じ値なので Riemann 固有の問題ではなく、7.3 の例を 1e-9 に直した。
+**再現の精度**：`accuracy = 1e-12` は割引係数の精度なので、短い期間ほど金利の差は大きくなる。実測の最大 5.3e-11 は、以前の 7.3 の例（1e-8bp = 1e-12）を超える。QuantLib も同じ値なので rmql 固有の問題ではなく、7.3 の例を 1e-9 に直した。
 
 ## 9. P3-3 の実装と照合結果（TONAR、`MonotonicLogCubic`）
 
@@ -347,7 +347,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 
 | 対象 | 件数 | 結果 |
 |---|---|---|
-| カーブの作成 | 500 通り | 449 通りを作成。51 通りは QuantLib と Riemann の両方がエラー |
+| カーブの作成 | 500 通り | 449 通りを作成。51 通りは QuantLib と rmql の両方がエラー |
 | 商品の日付（作成できた場合） | 3,592 件 | すべて一致 |
 | 節点の日付 | 3,976 個 | すべて一致 |
 | 節点の割引係数 | 3,976 個 | 3,343 個が完全一致。633 個は最大で相対 3.4e-14 の差 |
@@ -368,7 +368,7 @@ pub fn build_ois_curve(spec: &OisCurveSpec) -> Result<OisCurve, Error>;
 
 ### 9.4 対数線形との比較
 
-`tools/verify/verify_riemann.qmd` で、同じ気配から作った 2 つのカーブを比べる。この文書の 4 つの曲線形では、ゼロ金利の差は最大 8.4bp、1 日フォワードの差は最大 90bp だった。対数線形のフォワードは節点で階段状に飛び、`MonotonicLogCubic` は連続する。一方、気配が上下する曲線形では、節点の間で対数線形より大きく振れる。これらは合成の気配の結果で、市場のカーブでの大きさを示すものではない。
+`tools/verify/verify_rmql.qmd` で、同じ気配から作った 2 つのカーブを比べる。この文書の 4 つの曲線形では、ゼロ金利の差は最大 8.4bp、1 日フォワードの差は最大 90bp だった。対数線形のフォワードは節点で階段状に飛び、`MonotonicLogCubic` は連続する。一方、気配が上下する曲線形では、節点の間で対数線形より大きく振れる。これらは合成の気配の結果で、市場のカーブでの大きさを示すものではない。
 
 ## 10. P3-2 の実装と照合結果（€STR・SOFR・SONIA、`MonotonicLogCubic`）
 
@@ -395,7 +395,7 @@ TONAR の処理をそのまま使い、指標の違いは `OvernightIndex` の�
 
 **「QuantLib との照合」と「入力気配の再現」は別の判定である。** QuantLib と一致していても、入力の気配を再現しているとは限らない。`accuracy` は仕様どおり 1e-12 である。
 
-**Riemann と QuantLib の差**
+**rmql と QuantLib の差**
 
 | 対象 | €STR | SOFR | SONIA |
 |---|---:|---:|---:|
@@ -417,21 +417,21 @@ TONAR の処理をそのまま使い、指標の違いは `OvernightIndex` の�
 
 | 対象 | TONAR | €STR | SOFR | SONIA |
 |---|---:|---:|---:|---:|
-| Riemann の最大誤差 | 1.6e-10 | 2.6e-5 | 3.8e-3 | 1.6e-10 |
-| Riemann の基準未達（商品、カーブ） | 0、0 | 3、2 | 2、1 | 0、0 |
+| rmql の最大誤差 | 1.6e-10 | 2.6e-5 | 3.8e-3 | 1.6e-10 |
+| rmql の基準未達（商品、カーブ） | 0、0 | 3、2 | 2、1 | 0、0 |
 | QuantLib の最大誤差 | 1.6e-10 | 2.6e-5 | 3.8e-3 | 1.6e-10 |
 | QuantLib の基準未達（商品、カーブ） | 0、0 | 3、2 | 2、1 | 0、0 |
 | **入力気配の再現** | **基準達成** | **基準未達** | **基準未達** | **基準達成** |
 
-基準未達のカーブは次の 3 つで、未達のカーブは Riemann と QuantLib で同じである。テストはこの一覧を固定しており、増減すると失敗する。
+基準未達のカーブは次の 3 つで、未達のカーブは rmql と QuantLib で同じである。テストはこの一覧を固定しており、増減すると失敗する。
 
-| 指標 | ケース | 気配 | Riemann と QuantLib の最大誤差 | QuantLib との照合 | 入力気配の再現 |
+| 指標 | ケース | 気配 | rmql と QuantLib の最大誤差 | QuantLib との照合 | 入力気配の再現 |
 |---|---|---|---|---|---|
 | €STR | 125 | ±8% で交互に振れる | 1.8e-7 | PASS | 基準未達 |
 | €STR | 246 | ±8% で交互に振れる | 2.6e-5 | PASS | 基準未達 |
 | SOFR | 199 | ±8% で交互に振れる | 3.8e-3 | PASS | 基準未達 |
 
-3 つとも節点の割引係数は QuantLib と完全に一致し（差 0）、最小の割引係数はほぼ 0 である。`accuracy` は割引係数に対する絶対の精度なので、割引係数がほぼ 0 のカーブでは金利の精度が落ちる。これは QuantLib の方式どおりの動作だが、**このような入力では、Riemann は入力の気配を再現しない**。呼び出す側は `quote_repricing` で再現誤差を確かめる必要がある。
+3 つとも節点の割引係数は QuantLib と完全に一致し（差 0）、最小の割引係数はほぼ 0 である。`accuracy` は割引係数に対する絶対の精度なので、割引係数がほぼ 0 のカーブでは金利の精度が落ちる。これは QuantLib の方式どおりの動作だが、**このような入力では、rmql は入力の気配を再現しない**。呼び出す側は `quote_repricing` で再現誤差を確かめる必要がある。
 
 ### 10.4 許容誤差の変更の理由と対象件数
 
@@ -443,7 +443,7 @@ TONAR の処理をそのまま使い、指標の違いは `OvernightIndex` の�
 | 任意の日付の割引係数 | 相対 1e-12 | 絶対 2e-12 | €STR 1 個。他の 3 指標は 0 |
 | 再現した気配の QuantLib との差 | 相対 1e-12 | 絶対 1e-10 | TONAR 1 個、€STR 2 個、SOFR 1 個、SONIA 0 個 |
 
-- **割引係数**：ケース 84 の差は相対 1.1e-12、絶対 1.0e-12 である。最後の周の変化量がほぼちょうど `accuracy` で、停止の判定が最下位ビットで分かれ、QuantLib と Riemann の反復回数が 1 回違う。原因を確かめるために、一度だけ `accuracy` を 1.001e-12 にして実行すると、QuantLib との差は 6.7e-16 に下がった。**この値は切り分けの実験であり、本番の設定にも照合にも使わない。** 仕様書 5.1 節は、収束条件の範囲内で反復回数が変わることを許している。両者がそれぞれ `accuracy` 以内で止まるので、差の上限を 2e-12 とした。
+- **割引係数**：ケース 84 の差は相対 1.1e-12、絶対 1.0e-12 である。最後の周の変化量がほぼちょうど `accuracy` で、停止の判定が最下位ビットで分かれ、QuantLib と rmql の反復回数が 1 回違う。原因を確かめるために、一度だけ `accuracy` を 1.001e-12 にして実行すると、QuantLib との差は 6.7e-16 に下がった。**この値は切り分けの実験であり、本番の設定にも照合にも使わない。** 仕様書 5.1 節は、収束条件の範囲内で反復回数が変わることを許している。両者がそれぞれ `accuracy` 以内で止まるので、差の上限を 2e-12 とした。
 - **再現した気配**：仕様書 5.1 節の金利の基準に合わせた。TONAR のケース 316 は 9.3 節のとおり確かめた。€STR と SOFR の 3 個は、原因を個別には確かめていない（未確認の推定：短い期間で割るので、最下位ビットの差が相対では大きく見える）。絶対差は最大 2.7e-13 である。
 - **入力気配の再現の基準（1e-9）は変えていない。** 未達は上のとおり「基準未達」と記録する。
 
@@ -451,11 +451,11 @@ TONAR の処理をそのまま使い、指標の違いは `OvernightIndex` の�
 
 ### 10.5 検証レポート
 
-`tools/verify/verify_riemann.qmd` に 3 指標を追加した。TONAR は 4 つ、他の指標は 2 つの曲線形で、対数線形と `MonotonicLogCubic` の両方を QuantLib と比べる。対数線形の 3 指標の照合は、このレポートの範囲だけである（`cargo test` の照合は `MonotonicLogCubic` だけ）。照合用データ全件の結果も表示し、「Riemann と QuantLib の差」「Riemann の再現誤差」「QuantLib の再現誤差」を分け、総合判定でも「QuantLib との照合」と「入力気配の再現」を分ける。
+`tools/verify/verify_rmql.qmd` に 3 指標を追加した。TONAR は 4 つ、他の指標は 2 つの曲線形で、対数線形と `MonotonicLogCubic` の両方を QuantLib と比べる。対数線形の 3 指標の照合は、このレポートの範囲だけである（`cargo test` の照合は `MonotonicLogCubic` だけ）。照合用データ全件の結果も表示し、「rmql と QuantLib の差」「rmql の再現誤差」「QuantLib の再現誤差」を分け、総合判定でも「QuantLib との照合」と「入力気配の再現」を分ける。
 
 ### 10.6 微小な差の原因（P4 で判明）
 
-R パッケージ（`crates/riemann-r`、Rtools の GNU ツールチェーン）で照合用データ全件を計算すると、節点、任意の日付の割引係数、再現した気配の QuantLib R パッケージとの差は、4 指標とも**ちょうど 0** だった（2026-11-01、`tools/verify/verify_riemann.qmd`）。`cargo test` は MSVC でビルドする。QuantLib R パッケージも Rtools でビルドされている。
+R パッケージ（`crates/rmql-r`、Rtools の GNU ツールチェーン）で照合用データ全件を計算すると、節点、任意の日付の割引係数、再現した気配の QuantLib R パッケージとの差は、4 指標とも**ちょうど 0** だった（2026-11-01、`tools/verify/verify_rmql.qmd`）。`cargo test` は MSVC でビルドする。QuantLib R パッケージも Rtools でビルドされている。
 
 【実行確認】したがって、8.3 節、9.3 節、10.4 節で未確認の推定としてきた微小な差の主な原因は、MSVC と Rtools の数学ライブラリーの違いと判断できる。ただし、`exp`・`ln` などの関数ごとに個別には確かめていない。GNU ビルドの値は、実行するスレッドの x87 の精度でも変わる（`docs/spec_r.md` 5 章）。ここでの差 0 は、R のメインスレッドで計算する直接呼び出しの結果である。
 

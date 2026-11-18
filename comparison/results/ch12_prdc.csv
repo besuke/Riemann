@@ -1,4 +1,4 @@
-chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+chapter,item,unit,baseline,baseline_value,rmql_value,difference,tolerance,verdict,note
 ch12_prdc,NPV,yen,QuantLib blackFormula,334146942.17058223,334146942.1705823,5.960464477539063e-8,NA,REF,NA
 ch12_prdc,NPV,percent of notional,QuantLib blackFormula,111.38231405686075,111.38231405686076,1.4210854715202004e-14,NA,REF,NA
 ch12_prdc,FX delta,yen per yen of spot,"QuantLib blackFormula, finite difference",1079052.0397424698,1079052.0396574696,-8.500018157064915e-5,NA,REF,NA
@@ -14,9 +14,9 @@ ch12_prdc,Volatility 0.075,yen,QuantLib blackFormula,336627223.1345405,336627223
 ch12_prdc,Volatility 0.125,yen,QuantLib blackFormula,331665674.9041632,331665674.9041632,0,NA,REF,NA
 ch12_prdc,Volatility 0.150,yen,QuantLib blackFormula,329279638.30764604,329279638.30764604,0,NA,REF,NA
 ch12_prdc,"NPV, Monte Carlo against the closed form",yen,QuantLib blackFormula,334146942.17058223,334088185.6990598,-58756.47152245045,NA,N/C,100000 paths; -1.60 standard errors from the closed form; standard error 36768 yen
-ch12_prdc,NPV on 1 and on 4 threads,yen,RiemannFinMath itself,334088185.6990598,334088185.6990598,0,NA,REF,NA
+ch12_prdc,NPV on 1 and on 4 threads,yen,rmql itself,334088185.6990598,334088185.6990598,0,NA,REF,NA
 ch12_prdc,"NPV, closed form",yen,torch,104242624,104114695.16506039,-127928.83493961394,NA,N/C,Different random numbers and different times of the curve nodes
-ch12_prdc,"NPV, Monte Carlo",yen,torch,104242624,104059837.48007356,-182786.5199264437,NA,N/C,Different random numbers and different times of the curve nodes; standard error of RiemannFinMath 55744 yen
+ch12_prdc,"NPV, Monte Carlo",yen,torch,104242624,104059837.48007356,-182786.5199264437,NA,N/C,Different random numbers and different times of the curve nodes; standard error of rmql 55744 yen
 ch12_prdc,FX delta,yen per yen of spot,torch,473469.34375,467194.62077835674,-6274.722971643263,NA,N/C,Different random numbers and different times of the curve nodes
 ch12_prdc,FX vega,yen per percent,torch,401208.12,397135.05582239205,-4073.064177607943,NA,N/C,Different random numbers and different times of the curve nodes
 ch12_prdc,"JPY curve, total",yen per bp,torch,-31792.727600000002,-31805.078299056524,-12.35069905652199,NA,N/C,Different risk factors: a yearly forward rate against a node's zero rate

@@ -1,11 +1,11 @@
-# The differences of RiemannFinMath's portfolio functions from the references of tests/golden/portfolio.csv
-# (tools/golden/p12_portfolio.R), for docs/spec_portfolio.md. Uses the installed RiemannFinMath.
-# Usage (from the Riemann root): Rscript tools/experiments/p12_portfolio_diffs.R
+# The differences of rmql's portfolio functions from the references of tests/golden/portfolio.csv
+# (tools/golden/p12_portfolio.R), for docs/spec_portfolio.md. Uses the installed rmql.
+# Usage (from the rmql root): Rscript tools/experiments/p12_portfolio_diffs.R
 
 suppressPackageStartupMessages({
   library(dplyr)
   library(purrr)
-  library(RiemannFinMath)
+  library(rmql)
 })
 
 g <- readr::read_csv(file.path("tests", "golden", "portfolio.csv"), comment = "#", show_col_types = FALSE,
@@ -70,11 +70,11 @@ rb <- one("risk_budget")
 es_gq_weights <- compute_portfolio_risk(x$r, vec(x$d, "gq_weight", "minimum_ES"), 0.95)$statistics
 rb_gq <- vec(x$d, "gq_weight", "risk_budget"); m <- compute_return_moments(x$r)
 rc_gq <- rb_gq * as.numeric(m$covariance %*% rb_gq); rc_gq <- rc_gq / sum(rc_gq)
-cat(sprintf("max Sharpe: RiemannFinMath %.6f, GaussQuant %.6f\n", s(sharpe, "sharpe_ratio"), gq("maximum_sharpe", "sharpe_ratio")))
-cat(sprintf("min ES (Rockafellar-Uryasev): RiemannFinMath %.6f, at GaussQuant's weights %.6f; mean of losses at or above VaR: %.6f and %.6f\n",
+cat(sprintf("max Sharpe: rmql %.6f, GaussQuant %.6f\n", s(sharpe, "sharpe_ratio"), gq("maximum_sharpe", "sharpe_ratio")))
+cat(sprintf("min ES (Rockafellar-Uryasev): rmql %.6f, at GaussQuant's weights %.6f; mean of losses at or above VaR: %.6f and %.6f\n",
             s(es, "historical_es"), es_gq_weights$value[6], s(es, "tail_mean_es"), es_gq_weights$value[7]))
-cat(sprintf("risk budget: largest deviation of the risk shares from 1/20: RiemannFinMath %.2e, GaussQuant %.2e\n",
+cat(sprintf("risk budget: largest deviation of the risk shares from 1/20: rmql %.2e, GaussQuant %.2e\n",
             max(abs(rb$weights$weight * as.numeric(m$covariance %*% rb$weights$weight) / s(rb, "variance") - 1 / 20)), max(abs(rc_gq - 1 / 20))))
-cat(sprintf("target risk %.6f: RiemannFinMath return %.6f at volatility %.6f; GaussQuant return %.6f at volatility %.6f\n",
+cat(sprintf("target risk %.6f: rmql return %.6f at volatility %.6f; GaussQuant return %.6f at volatility %.6f\n",
             x$p[["target_volatility"]], s(tr, "expected_return"), s(tr, "volatility"), gq("target_risk", "expected_return"), gq("target_risk", "volatility")))
 cat("periods", nrow(x$r), "assets", ncol(x$r), "\n")

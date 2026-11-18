@@ -1,6 +1,6 @@
 # Golden values for market VaR, ES and their backtests (LagrangeFinance I-9; docs/spec_market_risk.md).
 #
-# Usage (from the Riemann root): Rscript tools/golden/p13_market_risk.R
+# Usage (from the rmql root): Rscript tools/golden/p13_market_risk.R
 # Writes tests/golden/market_risk.csv: case, kind, i, j, value.
 #
 # Case lf_i9: the manuscript's equal-weight portfolio of the first rebalance year's 20 largest firms, the mean of
@@ -10,7 +10,7 @@
 #   historical VaR           quantile(type = 7) (the manuscript) and type 1
 #   historical ES            mean of the losses at or above the VaR (the manuscript) and Rockafellar-Uryasev
 #   Monte Carlo VaR          the manuscript's chunk as written (furrr, 20 x 5000 normal draws, seed 20260918):
-#                            a different random stream from RiemannFinMath's, so compared within the sampling error
+#                            a different random stream from rmql's, so compared within the sampling error
 #   backtest                 exceptions L_t > VaR, Kupiec's proportion of failures, Christoffersen's independence
 #                            and conditional coverage (likelihood ratios and pchisq)
 #   rolling backtest         VaR_t from the previous 36 losses (historical type 7 and Gaussian), then the same tests

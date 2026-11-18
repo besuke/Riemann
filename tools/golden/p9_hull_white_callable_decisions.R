@@ -1,7 +1,7 @@
 # Golden values for the issuer's call decisions of a callable bond: the `decisions` of LagrangeFinance II-8.4.2
 # (`compute_callable_bond_LRL`, its own R functions, read from the chapter without changing it).
 # All inputs are synthetic; no market data is used. No QuantLib is needed.
-# Usage (from the Riemann root): Rscript tools/golden/p9_hull_white_callable_decisions.R
+# Usage (from the rmql root): Rscript tools/golden/p9_hull_white_callable_decisions.R
 # Writes tests/golden/hw_callable_decisions_cases.csv and tests/golden/hw_callable_decisions.csv.
 
 suppressMessages({ library(tibble); library(dplyr); library(purrr) })

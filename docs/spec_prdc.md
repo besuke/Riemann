@@ -1,6 +1,6 @@
 # PRDC の仕様（P10）
 
-実装は `crates/riemann/src/prdc.rs`、R の入口は `crates/riemann-r/R/prdc.R` である。定義は GaussQuant の `prdc_coupon_GQL` と LagrangeFinance II-9、III-7 に従う。
+実装は `crates/rmql/src/prdc.rs`、R の入口は `crates/rmql-r/R/prdc.R` である。定義は GaussQuant の `prdc_coupon_GQL` と LagrangeFinance II-9、III-7 に従う。
 
 ## 1. 対象とモデル
 
@@ -392,7 +392,7 @@ GaussQuant は QuantLib の乱数を使うので、パスごとには比べら�
 - 適用範囲：スマイルを再現する FX のどのモデルでも成り立つ。各クーポンがその日の FX だけによるからである。経路に依存する条項（コール、ターゲット償還、ノックアウト）はダイナミクスによるので、この方法では評価しない。
 - 感応度：閉じた式の中心差分。スポットは相対 1e-5 で、面を一緒に動かすもの（`fx_delta`、sticky delta：delta の strike がスポットと動く）と、動かさないもの（`fx_delta_sticky_strike`）の 2 種。ボラティリティは各柱を 1e-5 動かした `pillar_vega` と、全柱を同じだけ動かした `fx_vega`。
 
-**照合**（2026-11-07 の実行、`tools/golden/p10_fx_smile.R`、`crates/riemann/tests/golden_fx_smile.rs`）【実行照合済み】：
+**照合**（2026-11-07 の実行、`tools/golden/p10_fx_smile.R`、`crates/rmql/tests/golden_fx_smile.rs`）【実行照合済み】：
 
 - `BlackDeltaCalculator`：4 種類の delta × 割引係数 2 組 × 標準偏差 3 通り × call と put で、strike（delta 3 通り）、delta（strike 5 通り）、ATM strike（4 種類）の 540 件。差は 0（delta の最大差は 2.6e-26）。プレミアム調整済みも Brent 法の手順が同じなので、同じ値になる。
 - `BlackVolatilitySurfaceDelta`：満期 5 本（3 か月〜5 年）、10P・25P・ATM・25C・10C で、次の 7 通りを照合した。照会点は時点 12（満期の上、間、最後の満期の後）× strike 14 の 168 点。7 通りの 1176 点で差は 0。

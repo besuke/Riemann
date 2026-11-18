@@ -1,8 +1,8 @@
-# Golden values for Riemann P11-2 (overnight indexed swaps: legs, NPV, fair rate, fixings) from the
+# Golden values for rmql P11-2 (overnight indexed swaps: legs, NPV, fair rate, fixings) from the
 # QuantLib R package Version 1.42, built with MakeOIS as LagrangeFinance II-3 builds them. All inputs are
-# synthetic; no market data is used. The curves are log-linear on the same nodes as Riemann's, so this
+# synthetic; no market data is used. The curves are log-linear on the same nodes as rmql's, so this
 # compares the swap and not the bootstrap.
-# Usage (from the Riemann root): Rscript tools/golden/p11_ois_swap.R
+# Usage (from the rmql root): Rscript tools/golden/p11_ois_swap.R
 # Writes tests/golden/ois_swaps.csv. Lists inside a cell are separated by spaces. status is ok, or
 # failed with the message.
 

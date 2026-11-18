@@ -420,7 +420,7 @@ $\widetilde\pi(\theta)=p(D\mid\theta)p(\theta)$ は正規化前の目的密度�
 
 ## モデルを実行する基盤：Rustの開発方針と目的
 
-モデルの仮説を関数にしたら、それを多数の商品・シナリオ・モンテカルロパスに対して繰り返し評価する必要がある。RiemannFinMathでは、この計算コアをRustで実装し、Rがデータとタスクを管理する構成を目指す。目的は、**検証済みのデータに対して、同じ計算を大量かつ効率的に実行すること**である。
+モデルの仮説を関数にしたら、それを多数の商品・シナリオ・モンテカルロパスに対して繰り返し評価する必要がある。rmqlでは、この計算コアをRustで実装し、Rがデータとタスクを管理する構成を目指す。目的は、**検証済みのデータに対して、同じ計算を大量かつ効率的に実行すること**である。
 
 ### 入口は厳格に、計算コアは単純に
 
@@ -457,7 +457,7 @@ Rustの関数の引数・戻り値・主要な金融量は型を明確にする�
 | CPU・複数スレッド | タスクの粒度、共有データ、スレッド数 | 同期やメモリー帯域が律速になっていないか |
 | GPU・CUDA | 専用カーネル、メモリー配置、まとめたデータ転送 | 転送を含む総時間、GPUメモリー使用量、数値精度 |
 
-現在のRiemannFinMathにはRayonを利用したCPU並列処理があり、CUDAによるGPUモードは未実装である。RustコードをGPU搭載機でコンパイルするだけではGPU処理にならず、CUDAカーネルと起動・転送処理の追加が必要になる。[^financial_function_modeling-5]
+現在のrmqlにはRayonを利用したCPU並列処理があり、CUDAによるGPUモードは未実装である。RustコードをGPU搭載機でコンパイルするだけではGPU処理にならず、CUDAカーネルと起動・転送処理の追加が必要になる。[^financial_function_modeling-5]
 
 [^financial_function_modeling-5]: NVIDIA「[CUDA Programming Model](https://docs.nvidia.com/cuda/archive/13.2.1/cuda-programming-guide/01-introduction/programming-model.html)」「[CUDA Best Practices Guide](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html)」。
 

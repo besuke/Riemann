@@ -18,7 +18,7 @@
 
 ## 2. 実装
 
-`crates/riemann/src/credit_risk.rs`、R は `crates/riemann-r/R/credit_risk.R`。
+`crates/rmql/src/credit_risk.rs`、R は `crates/rmql-r/R/credit_risk.R`。
 
 | R の関数 | 内容 |
 |---|---|
@@ -45,7 +45,7 @@
 
 ρ = 0.20 の主な値（厳密な分布）：EL 165、標準偏差 218、VaR 95% 600・99% 1020・99.9% 1680、ES（Rockafellar–Uryasev）857・1304・1974、`E[L | L ≥ VaR]` 836・1277・1943。
 
-| モンテカルロ（ρ = 0.20） | 厳密 | RiemannFinMath（10 万本） | 原稿（furrr、10 万本） |
+| モンテカルロ（ρ = 0.20） | 厳密 | rmql（10 万本） | 原稿（furrr、10 万本） |
 |---|---|---|---|
 | VaR 95% / 99% / 99.9% | 600 / 1020 / 1680 | 600 / 1020 / 1680 | 600 / 1020 / 1680 |
 | `E[L | L ≥ VaR]` 99% | 1276.6 | 1275.7 | 1271.1 |

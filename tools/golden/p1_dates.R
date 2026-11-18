@@ -1,5 +1,5 @@
-# Golden values for Riemann P1 (dates) from the QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p1_dates.R
+# Golden values for rmql P1 (dates) from the QuantLib R binding.
+# Usage (from the rmql root): Rscript tools/golden/p1_dates.R
 # Output: tests/golden/dates_all.csv, tests/golden/dates_period.csv
 
 suppressMessages(library(QuantLib))

@@ -4,7 +4,7 @@ project:
   execute-dir: project
 
 book:
-  title: "QuantLib and RiemannFinMath: A Comparison from R"
+  title: "QuantLib and rmql: A Comparison from R"
   subtitle: "C++ and Rust on the same inputs: calls, results, differences and verdicts"
   author: "Eiichi Horigome"
   chapters:

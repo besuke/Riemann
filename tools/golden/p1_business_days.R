@@ -1,5 +1,5 @@
-# Golden values for Riemann P1 (business day conventions) from the QuantLib R binding.
-# Usage (from the Riemann root): Rscript tools/golden/p1_business_days.R
+# Golden values for rmql P1 (business day conventions) from the QuantLib R binding.
+# Usage (from the rmql root): Rscript tools/golden/p1_business_days.R
 # Output: tests/golden/bdc_adjust.csv, bdc_month.csv, bdc_advance.csv, bdc_between.csv
 # ERROR means that QuantLib raised an error (e.g. stepping outside the valid date range).
 

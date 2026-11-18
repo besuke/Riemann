@@ -39,17 +39,17 @@ tona_quantlib <- list(
 )
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: tona-riemann
-tona_instruments <- RiemannFinMath::create_ois_instruments(tona_quotes$tenor, tona_quotes$rate, 2L, 1L, 0L)
-tona_riemann <- list(
-  monotonic_log_cubic = RiemannFinMath::bootstrap_ois_curve(tona_date, tona_date, "tonar", "actual_365_fixed", tona_instruments),
-  log_linear = RiemannFinMath::bootstrap_ois_curve(tona_date, tona_date, "tonar", "actual_365_fixed", tona_instruments, interpolation = "log_linear")
+#| label: tona-rmql
+tona_instruments <- rmql::create_ois_instruments(tona_quotes$tenor, tona_quotes$rate, 2L, 1L, 0L)
+tona_rmql <- list(
+  monotonic_log_cubic = rmql::bootstrap_ois_curve(tona_date, tona_date, "tonar", "actual_365_fixed", tona_instruments),
+  log_linear = rmql::bootstrap_ois_curve(tona_date, tona_date, "tonar", "actual_365_fixed", tona_instruments, interpolation = "log_linear")
 ) |>
-  map(RiemannFinMath::with_extrapolation)
-print(tona_riemann$monotonic_log_cubic)
+  map(rmql::with_extrapolation)
+print(tona_rmql$monotonic_log_cubic)
 ```
 
 ```{r}
@@ -58,7 +58,7 @@ pillars <- ql_pillars(tona_quantlib$monotonic_log_cubic)
 bind_rows(
   compare_values(
     paste("Discount factor,", tona_quotes$tenor), "discount factor",
-    ql_discount(tona_quantlib$monotonic_log_cubic, pillars), RiemannFinMath::compute_discount(tona_riemann$monotonic_log_cubic, pillars)
+    ql_discount(tona_quantlib$monotonic_log_cubic, pillars), rmql::compute_discount(tona_rmql$monotonic_log_cubic, pillars)
   )
 ) |>
   show_results("Monotonic log-cubic curve, at the pillars")
@@ -68,12 +68,12 @@ bind_rows(
 #| label: tona-summary
 reading_dates <- as.Date(tona_date) + c(1L, 30L, 100L, 365L, 1000L, 3650L, 7300L, 10950L, 14600L)
 curve_rows <- function(label, q, r) {
-  v <- RiemannFinMath::compute_curve_values(r, reading_dates, "actual_365_fixed")
-  repricing <- RiemannFinMath::get_quote_repricing(r)
+  v <- rmql::compute_curve_values(r, reading_dates, "actual_365_fixed")
+  repricing <- rmql::get_quote_repricing(r)
   bind_rows(
     compare_max(paste(label, "pillar dates"), "days, largest", as.numeric(ql_pillars(q)), as.numeric(repricing$pillar_date)),
-    compare_max(paste(label, "node dates"), "days, largest", as.numeric(ql_nodes(q)$date), as.numeric(RiemannFinMath::get_discount_nodes(r)$date)),
-    compare_max(paste(label, "node discount factors"), "discount factor, largest", ql_nodes(q)$discount, RiemannFinMath::get_discount_nodes(r)$discount),
+    compare_max(paste(label, "node dates"), "days, largest", as.numeric(ql_nodes(q)$date), as.numeric(rmql::get_discount_nodes(r)$date)),
+    compare_max(paste(label, "node discount factors"), "discount factor, largest", ql_nodes(q)$discount, rmql::get_discount_nodes(r)$discount),
     compare_max(paste(label, "discount on reading dates"), "discount factor, largest", ql_discount(q, reading_dates), v$discount),
     compare_max(paste(label, "continuous zero rate"), "percent, largest", ql_zero_percent(q, reading_dates), 100 * v$zero_continuous),
     compare_max(paste(label, "1-day simple forward"), "percent, largest", ql_forward_percent(q, reading_dates), 100 * v$forward_1d_simple),
@@ -83,7 +83,7 @@ curve_rows <- function(label, q, r) {
     )
   )
 }
-imap(tona_quantlib, \(q, label) curve_rows(label, q, tona_riemann[[label]])) |>
+imap(tona_quantlib, \(q, label) curve_rows(label, q, tona_rmql[[label]])) |>
   list_rbind() |>
   show_results("Largest difference over the curve")
 ```
@@ -97,10 +97,10 @@ q <- tona_quantlib$monotonic_log_cubic
 ql_set_evaluation_date(tona_date)
 quantlib_zero_annual <- 100 * QuantLib::InterestRate_rate(QuantLib::YieldTermStructure_zeroRate(q$curve, ql_date(target_date), q$day_count, "Compounded", "Annual"))
 quantlib_forward_cont <- 100 * QuantLib::InterestRate_rate(QuantLib::YieldTermStructure_forwardRate(q$curve, ql_date(target_date), ql_date(target_date + 365L), q$day_count, "Continuous", "Annual"))
-r <- tona_riemann$monotonic_log_cubic
+r <- tona_rmql$monotonic_log_cubic
 bind_rows(
-  compare_values("Annual zero rate, 5 years", "percent", quantlib_zero_annual, 100 * RiemannFinMath::compute_zero_rate(r, target_date, "actual_365_fixed", "compounded", 1L)),
-  compare_values("Continuous forward, 5y to 6y", "percent", quantlib_forward_cont, 100 * RiemannFinMath::compute_forward_rate(r, target_date, target_date + 365L, "actual_365_fixed", "continuous"))
+  compare_values("Annual zero rate, 5 years", "percent", quantlib_zero_annual, 100 * rmql::compute_zero_rate(r, target_date, "actual_365_fixed", "compounded", 1L)),
+  compare_values("Continuous forward, 5y to 6y", "percent", quantlib_forward_cont, 100 * rmql::compute_forward_rate(r, target_date, target_date + 365L, "actual_365_fixed", "continuous"))
 ) |>
   show_results()
 ```
@@ -116,7 +116,7 @@ fair_rate <- function(d) 100 * (d[1] - d[2]) / ((7 / 365) * d[3])
 compare_values(
   "Fair rate, 2022-08-23 to 2022-08-30, paid 2022-09-01", "percent",
   fair_rate(ql_discount(tona_quantlib$log_linear, fair_dates)),
-  fair_rate(RiemannFinMath::compute_discount(tona_riemann$log_linear, fair_dates))
+  fair_rate(rmql::compute_discount(tona_rmql$log_linear, fair_dates))
 ) |>
   show_results()
 ```
@@ -140,19 +140,19 @@ show_inputs(list(index = "SOFR", settlement_days = 2L, payment_frequency = "annu
 ```{r}
 #| label: sofr-calls
 sofr_quantlib <- ql_ois_curve(sofr_date, "sofr", QuantLib::Actual360(), sofr_quotes$tenor, sofr_quotes$rate, 2L, interpolation = "log_linear")
-sofr_riemann <- RiemannFinMath::bootstrap_ois_curve(
+sofr_rmql <- rmql::bootstrap_ois_curve(
   sofr_date, sofr_date, "sofr", "actual_360",
-  RiemannFinMath::create_ois_instruments(sofr_quotes$tenor, sofr_quotes$rate, 2L, 1L, 0L), interpolation = "log_linear"
+  rmql::create_ois_instruments(sofr_quotes$tenor, sofr_quotes$rate, 2L, 1L, 0L), interpolation = "log_linear"
 ) |>
-  RiemannFinMath::with_extrapolation()
+  rmql::with_extrapolation()
 sofr_dates <- as.Date(sofr_date) + c(30L, 365L, 1000L, 3650L, 7300L)
 ```
 
 ```{r}
 #| label: sofr-results
-v <- RiemannFinMath::compute_curve_values(sofr_riemann, sofr_dates, "actual_360")
+v <- rmql::compute_curve_values(sofr_rmql, sofr_dates, "actual_360")
 bind_rows(
-  compare_max("Node discount factors", "discount factor, largest", ql_nodes(sofr_quantlib)$discount, RiemannFinMath::get_discount_nodes(sofr_riemann)$discount),
+  compare_max("Node discount factors", "discount factor, largest", ql_nodes(sofr_quantlib)$discount, rmql::get_discount_nodes(sofr_rmql)$discount),
   compare_max("Continuous zero rate", "percent, largest", ql_zero_percent(sofr_quantlib, sofr_dates), 100 * v$zero_continuous),
   compare_max("1-day simple forward", "percent, largest", ql_forward_percent(sofr_quantlib, sofr_dates), 100 * v$forward_1d_simple)
 ) |>
@@ -170,7 +170,7 @@ import <- new.env()
 sys.source(file.path(lagrange_root, "R", "import_data.R"), envir = import)
 market_file <- file.path(lagrange_root, "data", "raw", "market", "Bloomberg_MarketData_20261006.xlsx")
 conventions <- tribble(
-  ~currency, ~index,  ~settlement_days, ~riemann_day_count,  ~quantlib_day_count,
+  ~currency, ~index,  ~settlement_days, ~rmql_day_count,  ~quantlib_day_count,
   "EUR",     "estr",  2L,               "actual_360",        list(QuantLib::Actual360()),
   "USD",     "sofr",  2L,               "actual_360",        list(QuantLib::Actual360()),
   "JPY",     "tonar", 2L,               "actual_365_fixed",  list(QuantLib::Actual365Fixed()),
@@ -182,11 +182,11 @@ market_quotes <- map(conventions$currency, \(ccy) {
     select(tenor, rate)
 })
 conventions |>
-  transmute(currency, index, settlement_days, curve_day_count = riemann_day_count, quotes = map_int(market_quotes, nrow)) |>
+  transmute(currency, index, settlement_days, curve_day_count = rmql_day_count, quotes = map_int(market_quotes, nrow)) |>
   knitr::kable(caption = "Conventions and the number of quotes")
 ```
 
-The legacy text pays these swaps with `ModifiedFollowing`. RiemannFinMath takes no payment convention and always uses `Following`, so `Following` is given to both sides for the judged rows.
+The legacy text pays these swaps with `ModifiedFollowing`. rmql takes no payment convention and always uses `Following`, so `Following` is given to both sides for the judged rows.
 
 ```{r}
 #| label: market-calls
@@ -195,11 +195,11 @@ market_pairs <- pmap(list(transpose(conventions), market_quotes), \(x, quotes) {
     currency = x$currency,
     quantlib = ql_ois_curve(market_date, x$index, x$quantlib_day_count[[1]], quotes$tenor, quotes$rate, x$settlement_days),
     modified = ql_ois_curve(market_date, x$index, x$quantlib_day_count[[1]], quotes$tenor, quotes$rate, x$settlement_days, payment_convention = "ModifiedFollowing"),
-    riemann = RiemannFinMath::bootstrap_ois_curve(
-      market_date, market_date, x$index, x$riemann_day_count,
-      RiemannFinMath::create_ois_instruments(quotes$tenor, quotes$rate, x$settlement_days, 1L, 0L)
+    rmql = rmql::bootstrap_ois_curve(
+      market_date, market_date, x$index, x$rmql_day_count,
+      rmql::create_ois_instruments(quotes$tenor, quotes$rate, x$settlement_days, 1L, 0L)
     ) |>
-      RiemannFinMath::with_extrapolation()
+      rmql::with_extrapolation()
   )
 })
 ```
@@ -208,15 +208,15 @@ market_pairs <- pmap(list(transpose(conventions), market_quotes), \(x, quotes) {
 #| label: market-results
 market_dates <- market_date + c(30L, 365L, 1825L, 3650L, 10000L)
 map(market_pairs, \(p) {
-  nodes <- RiemannFinMath::get_discount_nodes(p$riemann)
-  repricing <- RiemannFinMath::get_quote_repricing(p$riemann)
+  nodes <- rmql::get_discount_nodes(p$rmql)
+  repricing <- rmql::get_quote_repricing(p$rmql)
   bind_rows(
     compare_max(paste(p$currency, "node discount factors"), "discount factor, largest", ql_nodes(p$quantlib)$discount, nodes$discount),
     compare_max(paste(p$currency, "implied quotes"), "percent, largest", ql_implied_percent(p$quantlib), 100 * repricing$implied_rate),
     compare_max(paste(p$currency, "reprices its quotes"), "percent, largest", 100 * repricing$rate, 100 * repricing$implied_rate, "The input quotes"),
     compare_max(
       paste(p$currency, "effect of ModifiedFollowing on discount"), "discount factor, largest",
-      ql_discount(p$modified, market_dates), RiemannFinMath::compute_discount(p$riemann, market_dates),
+      ql_discount(p$modified, market_dates), rmql::compute_discount(p$rmql, market_dates),
       note = "Different payment conventions: the difference is the effect of the missing argument"
     )
   )
@@ -237,23 +237,23 @@ grid_dates <- as.Date(str_remove(grid_keys, "tona.discount."))
 reference_key <- paste0("tona.zero_pct.", tona_date)
 grid_keys <- grid_keys[grid_dates > as.Date(tona_date)]
 grid_dates <- grid_dates[grid_dates > as.Date(tona_date)]
-fair_dates_riemann <- RiemannFinMath::compute_discount(tona_riemann$log_linear, fair_dates)
+fair_dates_rmql <- rmql::compute_discount(tona_rmql$log_linear, fair_dates)
 bind_rows(
-  against_lagrange_max("TONAR discount factors, curve table", "discount factor, largest", grid_keys, RiemannFinMath::compute_discount(tona_riemann$log_linear, grid_dates)),
+  against_lagrange_max("TONAR discount factors, curve table", "discount factor, largest", grid_keys, rmql::compute_discount(tona_rmql$log_linear, grid_dates)),
   against_lagrange_max(
     "TONAR zero rates, curve table", "percent, largest", str_replace(grid_keys, "discount", "zero_pct"),
-    100 * RiemannFinMath::compute_zero_rate(tona_riemann$log_linear, grid_dates, "actual_365_fixed", "continuous")
+    100 * rmql::compute_zero_rate(tona_rmql$log_linear, grid_dates, "actual_365_fixed", "continuous")
   ),
   lagrange_not_comparable(
     "TONAR zero rate on the curve's date", "percent", reference_key,
-    100 * RiemannFinMath::compute_zero_rate(tona_riemann$log_linear, tona_date, "actual_365_fixed", "continuous"),
-    "Different definitions at time 0: the legacy table sets 0, and RiemannFinMath uses a short period, as QuantLib does"
+    100 * rmql::compute_zero_rate(tona_rmql$log_linear, tona_date, "actual_365_fixed", "continuous"),
+    "Different definitions at time 0: the legacy table sets 0, and rmql uses a short period, as QuantLib does"
   ),
-  against_lagrange("TONAR fair rate of the short swap", "percent", "tona.fair_rate_pct", fair_rate(fair_dates_riemann)),
+  against_lagrange("TONAR fair rate of the short swap", "percent", "tona.fair_rate_pct", fair_rate(fair_dates_rmql)),
   map(market_pairs, \(p) {
     against_lagrange(
       paste(p$currency, "largest quote error"), "bp", paste0("market.quote_error_bp.", p$currency),
-      1e4 * max(RiemannFinMath::get_quote_repricing(p$riemann)$reproduction_error)
+      1e4 * max(rmql::get_quote_repricing(p$rmql)$reproduction_error)
     )
   }) |>
     list_rbind()
@@ -266,7 +266,7 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,               ~QuantLib,                                                                ~RiemannFinMath,
+  ~Layer,    ~Aspect,               ~QuantLib,                                                                ~rmql,
   "Wrapper", "Quotes",              "One `SimpleQuote`, `QuoteHandle` and helper per quote, put in a vector", "A table from `create_ois_instruments`",
   "Wrapper", "Index",               "An index object; TONA built by hand in the legacy text",                 "A name: `tonar`, `estr`, `sofr`, `sonia`",
   "Wrapper", "Evaluation date",     "`Settings` singleton",                                                   "An argument of the curve",

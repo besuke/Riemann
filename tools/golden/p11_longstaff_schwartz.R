@@ -1,7 +1,7 @@
 # Golden values for P11-4, in three layers, so that a difference can be placed: the Sobol sequence, the
 # paths built from it, and the Longstaff-Schwartz values of QuantLib's low-discrepancy American engine.
 # All inputs are synthetic.
-# Usage (from the Riemann root): Rscript tools/golden/p11_longstaff_schwartz.R
+# Usage (from the rmql root): Rscript tools/golden/p11_longstaff_schwartz.R
 # Writes tests/golden/ls_sobol.csv, ls_paths.csv and ls_american.csv.
 
 suppressMessages(library(QuantLib))

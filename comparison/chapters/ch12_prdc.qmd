@@ -42,7 +42,7 @@ foreign_curve_rate <- terms$discount_rate - drift
 show_inputs(list(coupons = length(times), first_coupon = coupon_dates[1], last_coupon = max(coupon_dates), domestic_curve = domestic_curve_rate, foreign_curve = foreign_curve_rate))
 ```
 
-RiemannFinMath has no public schedule, so both sides take the dates above from QuantLib.
+rmql has no public schedule, so both sides take the dates above from QuantLib.
 
 ## Closed form
 
@@ -73,19 +73,19 @@ baseline_vega <- function() {
 }
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: riemann
+#| label: rmql
 domestic <- flat_curve(valuation_date, domestic_curve_rate, "actual_360", "tonar")
 foreign <- flat_curve(valuation_date, foreign_curve_rate, "actual_360", "sofr")
-riemann_note <- function(spot = terms$spot, volatility = terms$volatility, ...) {
-  RiemannFinMath::compute_prdc_value(
+rmql_note <- function(spot = terms$spot, volatility = terms$volatility, ...) {
+  rmql::compute_prdc_value(
     spot, volatility, domestic, foreign, times, accruals, terms$fx_base, terms$leverage, terms$subtraction,
     terms$floor, terms$cap, notional = terms$notional, ...
   )
 }
-closed <- riemann_note()
+closed <- rmql_note()
 ```
 
 ```{r}
@@ -114,8 +114,8 @@ bind_rows(
 spots <- terms$spot * c(0.90, 0.95, 1.05, 1.10)
 volatilities <- c(0.05, 0.075, 0.125, 0.15)
 bind_rows(
-  compare_values(sprintf("Spot %.4f", spots), "yen", map_dbl(spots, \(s) baseline_npv(spot = s)), map_dbl(spots, \(s) riemann_note(spot = s)$summary$npv), baseline_name),
-  compare_values(sprintf("Volatility %.3f", volatilities), "yen", map_dbl(volatilities, \(v) baseline_npv(volatility = v)), map_dbl(volatilities, \(v) riemann_note(volatility = v)$summary$npv), baseline_name)
+  compare_values(sprintf("Spot %.4f", spots), "yen", map_dbl(spots, \(s) baseline_npv(spot = s)), map_dbl(spots, \(s) rmql_note(spot = s)$summary$npv), baseline_name),
+  compare_values(sprintf("Volatility %.3f", volatilities), "yen", map_dbl(volatilities, \(v) baseline_npv(volatility = v)), map_dbl(volatilities, \(v) rmql_note(volatility = v)$summary$npv), baseline_name)
 ) |>
   show_results()
 ```
@@ -127,22 +127,22 @@ The legacy text uses 300 paths with QuantLib's generator through GaussQuant. Ran
 ```{r}
 #| label: monte-carlo
 paths <- 1e5
-mc <- riemann_note(paths = paths, seed = 123, threads = 4L)$summary
-mc_one <- riemann_note(paths = paths, seed = 123, threads = 1L)$summary
+mc <- rmql_note(paths = paths, seed = 123, threads = 4L)$summary
+mc_one <- rmql_note(paths = paths, seed = 123, threads = 1L)$summary
 bind_rows(
   not_comparable(
     "NPV, Monte Carlo against the closed form", "yen", baseline_npv(), mc$npv,
     sprintf("%.0f paths; %.2f standard errors from the closed form; standard error %.0f yen", paths, (mc$npv - baseline_npv()) / mc$standard_error, mc$standard_error),
     baseline_name
   ),
-  compare_values("NPV on 1 and on 4 threads", "yen", mc_one$npv, mc$npv, "RiemannFinMath itself")
+  compare_values("NPV on 1 and on 4 threads", "yen", mc_one$npv, mc$npv, "rmql itself")
 ) |>
   show_results()
 ```
 
 ## Five-year note with automatic differentiation
 
-The inputs are those of the legacy text's `torch` chapter, which rates each year with its own forward rate. The side is `torch`, which is C++ and not QuantLib. RiemannFinMath's curves have calendar node dates and `torch` has whole years, and the random numbers differ, so nothing here is judged.
+The inputs are those of the legacy text's `torch` chapter, which rates each year with its own forward rate. The side is `torch`, which is C++ and not QuantLib. rmql's curves have calendar node dates and `torch` has whole years, and the random numbers differ, so nothing here is judged.
 
 ```{r}
 #| label: torch-inputs
@@ -173,18 +173,18 @@ torch_npv <- legacy$prdc_price_torch(
 torch_gradients <- autograd_grad(torch_npv, list(spot_t, jpy_t, foreign_t, volatility_t))
 ```
 
-RiemannFinMath, with zero rates that average the yearly rates:
+rmql, with zero rates that average the yearly rates:
 
 ```{r}
-#| label: torch-riemann
+#| label: torch-rmql
 tenors <- paste0(curve_table$year, "Y")
 jpy_zero <- cumsum(curve_table$jpy_rate) / curve_table$year
 foreign_zero <- cumsum(curve_table$foreign_rate) / curve_table$year
 jpy_curve <- fitted_curve("2026-01-05", jpy_zero, tenors, index = "tonar")
 foreign_five <- fitted_curve("2026-01-05", foreign_zero, tenors, index = "sofr")
 subtraction <- note$leverage - note$fixed_coupon
-five_closed <- RiemannFinMath::compute_prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional)
-five_mc <- RiemannFinMath::compute_prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional, paths = note$paths, seed = note$seed)
+five_closed <- rmql::compute_prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional)
+five_mc <- rmql::compute_prdc_value(note$spot, note$volatility, jpy_curve, foreign_five, curve_table$year, rep(1, nrow(curve_table)), note$reference_fx, note$leverage, subtraction, 0, note$cap, notional = note$notional, paths = note$paths, seed = note$seed)
 ```
 
 ```{r}
@@ -193,7 +193,7 @@ reason <- "Different random numbers and different times of the curve nodes"
 sum_of <- function(x, name) x$curve_sensitivity |> filter(curve == name) |> summarise(value = sum(npv_per_bp)) |> pull(value)
 bind_rows(
   not_comparable("NPV, closed form", "yen", torch_npv$item(), five_closed$summary$npv, reason, "torch"),
-  not_comparable("NPV, Monte Carlo", "yen", torch_npv$item(), five_mc$summary$npv, sprintf("%s; standard error of RiemannFinMath %.0f yen", reason, five_mc$summary$standard_error), "torch"),
+  not_comparable("NPV, Monte Carlo", "yen", torch_npv$item(), five_mc$summary$npv, sprintf("%s; standard error of rmql %.0f yen", reason, five_mc$summary$standard_error), "torch"),
   not_comparable("FX delta", "yen per yen of spot", torch_gradients[[1]]$item(), five_mc$summary$fx_delta, reason, "torch"),
   not_comparable("FX vega", "yen per percent", torch_gradients[[4]]$item() * 0.01, five_mc$summary$fx_vega * 0.01, reason, "torch"),
   not_comparable("JPY curve, total", "yen per bp", sum(as.numeric(torch_gradients[[2]])) * 1e-4, sum_of(five_mc, "domestic"), "Different risk factors: a yearly forward rate against a node's zero rate", "torch"),
@@ -204,7 +204,7 @@ bind_rows(
 
 ## Against LagrangeFinance
 
-**No row of this chapter can be judged against the legacy text.** Its values are Monte Carlo estimates: 300 paths for the NPV and 100 for the scenarios. So they appear with RiemannFinMath's closed form and without a verdict. The rows above against `blackFormula` are the reference for the closed form.
+**No row of this chapter can be judged against the legacy text.** Its values are Monte Carlo estimates: 300 paths for the NPV and 100 for the scenarios. So they appear with rmql's closed form and without a verdict. The rows above against `blackFormula` are the reference for the closed form.
 
 ```{r}
 #| label: lagrange
@@ -213,8 +213,8 @@ spot_cases <- tribble(~scenario, ~factor, "spot_minus_10", 0.90, "spot_minus_5",
 volatility_cases <- tribble(~scenario, ~volatility, "vol_5pct", 0.05, "vol_7_5pct", 0.075, "base", 0.10, "vol_12_5pct", 0.125, "vol_15pct", 0.15)
 bind_rows(
   lagrange_not_comparable("NPV", "yen", "prdc.npv", closed$summary$npv, sampling),
-  lagrange_not_comparable(paste("Spot,", spot_cases$scenario), "yen", paste0("prdc.spot.", spot_cases$scenario), map_dbl(spot_cases$factor, \(f) riemann_note(spot = terms$spot * f)$summary$npv), "Monte Carlo estimate with 100 paths"),
-  lagrange_not_comparable(paste("Volatility,", volatility_cases$scenario), "yen", paste0("prdc.volatility.", volatility_cases$scenario), map_dbl(volatility_cases$volatility, \(v) riemann_note(volatility = v)$summary$npv), "Monte Carlo estimate with 100 paths")
+  lagrange_not_comparable(paste("Spot,", spot_cases$scenario), "yen", paste0("prdc.spot.", spot_cases$scenario), map_dbl(spot_cases$factor, \(f) rmql_note(spot = terms$spot * f)$summary$npv), "Monte Carlo estimate with 100 paths"),
+  lagrange_not_comparable(paste("Volatility,", volatility_cases$scenario), "yen", paste0("prdc.volatility.", volatility_cases$scenario), map_dbl(volatility_cases$volatility, \(v) rmql_note(volatility = v)$summary$npv), "Monte Carlo estimate with 100 paths")
 ) |>
   show_results()
 ```
@@ -224,7 +224,7 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,       ~`Baseline (QuantLib, GaussQuant, torch)`,                       ~RiemannFinMath,
+  ~Layer,    ~Aspect,       ~`Baseline (QuantLib, GaussQuant, torch)`,                       ~rmql,
   "Wrapper", "Instrument",  "No instrument; formula or `GaussQuant` functions in R",         "One call with the terms",
   "Wrapper", "Curves",      "Flat handles, or a vector of yearly rates",                     "OIS curve values; flat ones must be fitted",
   "Wrapper", "Schedule",    "`Schedule` and date vectors",                                   "Times and accruals as numbers",

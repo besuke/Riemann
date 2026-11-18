@@ -137,11 +137,11 @@ counterparts <- tribble(
   "create_flat_curve", "FlatForward",
   "create_fixed_rate_bond", "Schedule, FixedRateBond"
 )
-exports <- getNamespaceExports("RiemannFinMath") |> sort()
+exports <- getNamespaceExports("rmql") |> sort()
 chapter_files <- list.files("chapters", pattern = "^ch.*qmd$", full.names = TRUE)
 uses <- map(chapter_files, \(f) {
   text <- readLines(f, encoding = "UTF-8", warn = FALSE) |> paste(collapse = "\n")
-  found <- str_match_all(text, "RiemannFinMath::([a-z_0-9]+)")[[1]][, 2] |> unique()
+  found <- str_match_all(text, "rmql::([a-z_0-9]+)")[[1]][, 2] |> unique()
   tibble(fn = found, chapter = str_extract(basename(f), "ch[0-9]+[a-z]?"))
 }) |>
   list_rbind() |>

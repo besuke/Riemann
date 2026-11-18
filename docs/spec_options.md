@@ -1,6 +1,6 @@
 # オプションの仕様（P6）
 
-株のオプションと、フォワードのオプションである。実装は `crates/riemann/src/options.rs`、`crates/riemann/src/math/normal.rs`、`crates/riemann/src/math/random.rs`、R の入口は `crates/riemann-r/R/options.R` である。
+株のオプションと、フォワードのオプションである。実装は `crates/rmql/src/options.rs`、`crates/rmql/src/math/normal.rs`、`crates/rmql/src/math/random.rs`、R の入口は `crates/rmql-r/R/options.R` である。
 
 ## 1. 対象
 
@@ -27,7 +27,7 @@
 | `theta` | 時間についての微分の符号を変えた値（年あたり） |
 | `strike_sensitivity` | 行使価格についての微分 |
 
-**二項木の扱い**：木の価格はスポットについて区分的に線形なので、木そのものの 2 階微分は 0 になる。そこでデルタとガンマは、QuantLib と同じく木の最初の段の値から求める。他の感応度は、木の全ノードを記録して自動微分する。QuantLib の木のセータは Black–Scholes 方程式から求めるので、Riemann の `theta` とは定義が違う。
+**二項木の扱い**：木の価格はスポットについて区分的に線形なので、木そのものの 2 階微分は 0 になる。そこでデルタとガンマは、QuantLib と同じく木の最初の段の値から求める。他の感応度は、木の全ノードを記録して自動微分する。QuantLib の木のセータは Black–Scholes 方程式から求めるので、rmql の `theta` とは定義が違う。
 
 **モンテカルロのガンマ**：ペイオフの折れ目のパスごとの 2 階微分は 0 である。折れ目を残したまま微分しても正しいガンマにならないので、`smoothing` を与えない場合は `NA` を返す。与えた場合は `(x + sqrt(x^2 + w^2)) / 2` を 2 階微分する。LagrangeFinance III-5 と同じ考え方で、平滑化の偏りを含む。
 
@@ -55,9 +55,9 @@ Sobol 列と Longstaff–Schwartz 法（LagrangeFinance II-4.6）は P9 で扱�
 
 ## 5. QuantLib との差の原因【実行照合済み】
 
-差の原因は二つあり、どちらも実験で確かめた。Riemann は QuantLib に合わせず、本来の計算のままとする。
+差の原因は二つあり、どちらも実験で確かめた。rmql は QuantLib に合わせず、本来の計算のままとする。
 
-**(1) 数値的なドリフト（1e-10 程度の差）**：`GeneralizedBlackScholesProcess::drift` は、ドリフトを `t` から `t + 0.0001` のフォワードレートで求める。一定の金利でも、割引係数の比の対数を 0.0001 で割るので 1e-12 程度の丸めが入り、木の確率に効く。同じ丸めを Riemann の木に一時的に入れると、最大の差は 2.8e-11 から 1.3e-14 に下がった。
+**(1) 数値的なドリフト（1e-10 程度の差）**：`GeneralizedBlackScholesProcess::drift` は、ドリフトを `t` から `t + 0.0001` のフォワードレートで求める。一定の金利でも、割引係数の比の対数を 0.0001 で割るので 1e-12 程度の丸めが入り、木の確率に効く。同じ丸めを rmql の木に一時的に入れると、最大の差は 2.8e-11 から 1.3e-14 に下がった。
 
 **(2) 時間格子の丸め（QuantLib の不具合）**：QuantLib の時間格子の最後の時刻は `dt * n` で計算される。これが丸めで満期 `T` より小さくなると、満期の時刻が `stoppingTimes_[1]` を超えるので、`DiscretizedVanillaOption` は満期の行使を行わず、値が 0 のまま後退計算が始まる。アメリカンの価格は本来より低くなる。
 
@@ -68,14 +68,14 @@ GaussQuant の `make_american_option_GQL` はこのエンジンを使うので�
 
 ## 6. アメリカンの近似式（2026-11-04）【ソース確認・実行照合済み】
 
-実装は `crates/riemann/src/american_approximations.rs`。QuantLib v1.42 の `baroneadesiwhaleyengine.cpp` と `bjerksundstenslandengine.cpp` の価格の計算を移した。グリークスは移さず、価格を自動微分する（2 章と同じ）。
+実装は `crates/rmql/src/american_approximations.rs`。QuantLib v1.42 の `baroneadesiwhaleyengine.cpp` と `bjerksundstenslandengine.cpp` の価格の計算を移した。グリークスは移さず、価格を自動微分する（2 章と同じ）。
 
 - **Barone-Adesi–Whaley**：臨界価格を QuantLib と同じ種と Newton 反復（行使価格に対する相対誤差 1e-6 まで）で求め、二次近似の項を足す。配当がない（割引係数が 1 以上の）コールはヨーロピアンの値。負の金利（無リスクの割引係数が 1 より大きい）はエラー（QuantLib と同じ）。反復が正でない価格に達した場合もエラーにする（QuantLib は `blackFormula` で失敗する）。自動微分は Newton 反復の各段を通すので、微分には反復の打ち切り誤差が残る。QuantLib はこの場合グリークスを返さない。
 - **Bjerksund–Stensland**：1993 年の一定の境界の近似。プットはプット・コールの対称性（スポットと行使価格、金利と配当利回りを入れ替える）でコールに直す。境界 `I` 以上は即時行使、`ln(I / F) / σ√T > 12.5` はヨーロピアン、近似値がヨーロピアンより小さい場合もヨーロピアンとし（QuantLib の `americanCallApproximation` の最後）、最後に即時行使の値と比べる。`r < q < 0` のコールはエラー（QuantLib と同じ）。
 
-**照合**（2026-11-04、QuantLib R パッケージ 1.42、`tools/golden/p11_american_approximations.R`、`crates/riemann/tests/golden_american_approximations.rs`）：2 手法 × コール・プット × スポット 5 × 金利 4（-1%〜8%）× 配当利回り 3 × ボラティリティ 2 × 期間 3 の 1440 件。値のある 1270 件は相対差 2.8e-14 以内で一致した。QuantLib がエラーにする 155 件（BAW の負の金利、臨界価格の反復の失敗）は、Riemann もエラーにする。
+**照合**（2026-11-04、QuantLib R パッケージ 1.42、`tools/golden/p11_american_approximations.R`、`crates/rmql/tests/golden_american_approximations.rs`）：2 手法 × コール・プット × スポット 5 × 金利 4（-1%〜8%）× 配当利回り 3 × ボラティリティ 2 × 期間 3 の 1440 件。値のある 1270 件は相対差 2.8e-14 以内で一致した。QuantLib がエラーにする 155 件（BAW の負の金利、臨界価格の反復の失敗）は、rmql もエラーにする。
 
-**QuantLib との違い（意図したもの）**：QuantLib の Bjerksund–Stensland が NaN を返す 15 件（`r = -1%`、`q = 0` のコール。`beta` の平方根の中が負になる）を、Riemann はエラーにする。
+**QuantLib との違い（意図したもの）**：QuantLib の Bjerksund–Stensland が NaN を返す 15 件（`r = -1%`、`q = 0` のコール。`beta` の平方根の中が負になる）を、rmql はエラーにする。
 
 **LagrangeFinance II-4.5** のアメリカン・プット（スポット 100、行使価格 100、金利 5%、配当 0、ボラティリティ 20%、2024-03-01 から 2025-03-03）：BAW 6.110018383735435（基準値との差 -3.6e-15）、Bjerksund–Stensland 5.995058742279532（差 -1.4e-14）。
 

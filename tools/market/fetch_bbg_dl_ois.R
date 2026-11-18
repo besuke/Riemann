@@ -52,7 +52,7 @@ create_history_request <- function(tickers, field, start_date, end_date, pricing
   list(
     `@type` = "HistoryRequest",
     name = name,
-    description = "RiemannFinMath OIS par rates (sample)",
+    description = "rmql OIS par rates (sample)",
     universe = list(
       `@type` = "Universe",
       contains = map(tickers, \(t) list(`@type` = "Identifier", identifierType = "TICKER", identifierValue = t))

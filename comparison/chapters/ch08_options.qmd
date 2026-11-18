@@ -10,7 +10,7 @@ source("R/book.R")
 
 ## QuantLib set-up
 
-Every item uses this process. Time is days over 365 and rates are continuous, so the flat curves reduce to the numeric inputs of RiemannFinMath.
+Every item uses this process. Time is days over 365 and rates are continuous, so the flat curves reduce to the numeric inputs of rmql.
 
 ```{r}
 #| label: quantlib-process
@@ -40,7 +40,7 @@ show_inputs(black)
 ```{r}
 #| label: black-calls
 ql_black <- QuantLib::blackFormula(ql_type("call"), black$strike, black$forward, black$volatility * sqrt(black$time), black$discount)
-riemann_black <- RiemannFinMath::compute_forward_option_value("black", "call", black$forward, black$strike, black$volatility, black$time, black$discount)
+rmql_black <- rmql::compute_forward_option_value("black", "call", black$forward, black$strike, black$volatility, black$time, black$discount)
 calculator <- QuantLib::BlackCalculator(
   QuantLib::PlainVanillaPayoff(ql_type("call"), black$strike), black$forward, black$volatility * sqrt(black$time), black$discount
 )
@@ -49,10 +49,10 @@ calculator <- QuantLib::BlackCalculator(
 ```{r}
 #| label: black-results
 bind_rows(
-  compare_values("Value", "price", ql_black, riemann_black$value),
-  compare_values("Forward delta", "per unit of forward", calculator$deltaForward(), riemann_black$delta_forward),
-  compare_values("Forward gamma", "per unit of forward squared", calculator$gammaForward(), riemann_black$gamma_forward),
-  compare_values("Vega", "per unit of volatility", calculator$vega(black$time), riemann_black$vega)
+  compare_values("Value", "price", ql_black, rmql_black$value),
+  compare_values("Forward delta", "per unit of forward", calculator$deltaForward(), rmql_black$delta_forward),
+  compare_values("Forward gamma", "per unit of forward squared", calculator$gammaForward(), rmql_black$gamma_forward),
+  compare_values("Vega", "per unit of volatility", calculator$vega(black$time), rmql_black$vega)
 ) |>
   show_results()
 ```
@@ -68,8 +68,8 @@ show_inputs(normal)
 ql_normal <- map_dbl(c("call", "put"), \(kind) {
   QuantLib::bachelierBlackFormula(ql_type(kind), normal$strike, normal$forward, normal$volatility * sqrt(normal$time), normal$discount)
 })
-riemann_normal <- RiemannFinMath::compute_forward_option_value("bachelier", c("call", "put"), normal$forward, normal$strike, normal$volatility, normal$time, normal$discount)
-compare_values(c("Call", "Put"), "bp of price", 1e4 * ql_normal, 1e4 * riemann_normal$value) |>
+rmql_normal <- rmql::compute_forward_option_value("bachelier", c("call", "put"), normal$forward, normal$strike, normal$volatility, normal$time, normal$discount)
+compare_values(c("Call", "Put"), "bp of price", 1e4 * ql_normal, 1e4 * rmql_normal$value) |>
   show_results()
 ```
 
@@ -96,18 +96,18 @@ ql_greeks <- list(
 )
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: european-riemann
-riemann_call <- RiemannFinMath::compute_european_option_value("call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time)
+#| label: european-rmql
+rmql_call <- rmql::compute_european_option_value("call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time)
 ```
 
 ```{r}
 #| label: european-results
 units <- c(value = "price", delta = "per unit of spot", gamma = "per unit of spot squared", vega = "per unit of volatility",
            rho = "per unit of rate", dividend_rho = "per unit of yield", theta = "per year", strike_sensitivity = "per unit of strike")
-imap(ql_greeks, \(q, name) compare_values(name, units[[name]], q, riemann_call[[name]])) |>
+imap(ql_greeks, \(q, name) compare_values(name, units[[name]], q, rmql_call[[name]])) |>
   list_rbind() |>
   show_results()
 ```
@@ -117,8 +117,8 @@ imap(ql_greeks, \(q, name) compare_values(name, units[[name]], q, riemann_call[[
 ```{r}
 #| label: implied
 ql_implied <- ql_call$impliedVolatility(ql_greeks$value, ql_equity_process, 1e-10, 200L, 1e-7, 4)
-riemann_implied <- RiemannFinMath::compute_implied_volatility("call", ql_greeks$value, equity$spot, equity$strike, equity$rate, equity$dividend, equity$time)
-compare_values("Implied volatility", "percent", 100 * ql_implied, 100 * riemann_implied) |>
+rmql_implied <- rmql::compute_implied_volatility("call", ql_greeks$value, equity$spot, equity$strike, equity$rate, equity$dividend, equity$time)
+compare_values("Implied volatility", "percent", 100 * ql_implied, 100 * rmql_implied) |>
   show_results()
 ```
 
@@ -145,7 +145,7 @@ ql_tree <- map2(tree_cases$exercise, tree_cases$steps, \(kind, steps) {
   tibble(value = option$NPV(), delta = option$delta(), gamma = option$gamma())
 }) |>
   list_rbind()
-riemann_tree <- RiemannFinMath::compute_binomial_option_value(
+rmql_tree <- rmql::compute_binomial_option_value(
   "put", tree_cases$exercise, tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time, tree_cases$steps
 )
 ```
@@ -154,9 +154,9 @@ riemann_tree <- RiemannFinMath::compute_binomial_option_value(
 #| label: tree-results
 labels <- paste(tree_cases$exercise, tree_cases$steps, "steps")
 bind_rows(
-  compare_values(paste(labels, "value"), "price", ql_tree$value, riemann_tree$value),
-  compare_values(paste(labels, "delta"), "per unit of spot", ql_tree$delta, riemann_tree$delta),
-  compare_values(paste(labels, "gamma"), "per unit of spot squared", ql_tree$gamma, riemann_tree$gamma)
+  compare_values(paste(labels, "value"), "price", ql_tree$value, rmql_tree$value),
+  compare_values(paste(labels, "delta"), "per unit of spot", ql_tree$delta, rmql_tree$delta),
+  compare_values(paste(labels, "gamma"), "per unit of spot squared", ql_tree$gamma, rmql_tree$gamma)
 ) |>
   show_results()
 ```
@@ -169,7 +169,7 @@ ql_analytic_put <- ql_vanilla("put", tree$strike, QuantLib::EuropeanExercise(ql_
 QuantLib::Instrument_setPricingEngine(ql_analytic_put, QuantLib::AnalyticEuropeanEngine(ql_tree_process))
 compare_values(
   "Analytic European put", "price", ql_analytic_put$NPV(),
-  RiemannFinMath::compute_european_option_value("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)$value
+  rmql::compute_european_option_value("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)$value
 ) |>
   show_results()
 ```
@@ -195,10 +195,10 @@ ql_barrier <- map2_dbl(barriers$ql_type, barriers$level, \(type, level) {
   QuantLib::Instrument_setPricingEngine(option, QuantLib::AnalyticBarrierEngine(ql_equity_process))
   option$NPV()
 })
-riemann_barrier <- RiemannFinMath::compute_barrier_option_value(
+rmql_barrier <- rmql::compute_barrier_option_value(
   "call", barriers$type, equity$spot, equity$strike, barriers$level, 0, equity$rate, equity$dividend, equity$volatility, equity$time
 )
-compare_values(paste("Call,", barriers$type, barriers$level), "price", ql_barrier, riemann_barrier$value) |>
+compare_values(paste("Call,", barriers$type, barriers$level), "price", ql_barrier, rmql_barrier$value) |>
   show_results()
 ```
 
@@ -208,7 +208,7 @@ The two sides do not share random numbers, so a Monte Carlo value cannot meet an
 
 ```{r}
 #| label: monte-carlo
-mc <- RiemannFinMath::compute_monte_carlo_european_value(
+mc <- rmql::compute_monte_carlo_european_value(
   "call", equity$spot, equity$strike, equity$rate, equity$dividend, equity$volatility, equity$time,
   paths = 200000, seed = 1234, smoothing = 0.25
 )
@@ -229,19 +229,19 @@ bind_rows(
 
 ```{r}
 #| label: monte-carlo-threads
-one_thread <- RiemannFinMath::compute_monte_carlo_european_value(
+one_thread <- rmql::compute_monte_carlo_european_value(
   "call", 100, 100, 0.03, 0, 0.2, equity$time, paths = 200000, seed = 1234, threads = 1L
 )
-four_threads <- RiemannFinMath::compute_monte_carlo_european_value(
+four_threads <- rmql::compute_monte_carlo_european_value(
   "call", 100, 100, 0.03, 0, 0.2, equity$time, paths = 200000, seed = 1234, threads = 4L
 )
-compare_values("Value on 1 and on 4 threads", "price", one_thread$value, four_threads$value, "RiemannFinMath itself") |>
+compare_values("Value on 1 and on 4 threads", "price", one_thread$value, four_threads$value, "rmql itself") |>
   show_results()
 ```
 
 ## Sobol paths and Longstaff-Schwartz
 
-The three layers are compared in order, so that a difference can be placed: the Sobol points, the paths built from them, and the value. QuantLib's `SobolRsg` uses its seed only for the direction integers beyond 32 dimensions, so at 12 dimensions the seed changes nothing and RiemannFinMath has none. QuantLib's `MCAmericanEngine` regresses on the powers of S / K plus the payoff, starts its calibration and its valuation from the same first point of the sequence, exercises every path in the money at a date with too few of them, and passes no Brownian bridge. These are set explicitly on the RiemannFinMath side.
+The three layers are compared in order, so that a difference can be placed: the Sobol points, the paths built from them, and the value. QuantLib's `SobolRsg` uses its seed only for the direction integers beyond 32 dimensions, so at 12 dimensions the seed changes nothing and rmql has none. QuantLib's `MCAmericanEngine` regresses on the powers of S / K plus the payoff, starts its calibration and its valuation from the same first point of the sequence, exercises every path in the money at a date with too few of them, and passes no Brownian bridge. These are set explicitly on the rmql side.
 
 ```{r}
 #| label: lsm-inputs
@@ -282,19 +282,19 @@ lsm_cases <- tibble(order = c(0L, 1L, 2L, 3L), calibration = c(2048L, 2048L, 204
 ```
 
 ```{r}
-#| label: lsm-riemann
-riemann_points <- RiemannFinMath::generate_sobol_sequence(lsm$steps, 256)
-riemann_paths <- RiemannFinMath::generate_black_scholes_paths(lsm$spot, lsm$rate, lsm$dividend, lsm$volatility, lsm$time, lsm$steps, 256)
-riemann_path_matrix <- matrix(riemann_paths$price, nrow = 256, byrow = TRUE)
-riemann_american <- function(order, calibration, samples) {
-  RiemannFinMath::compute_longstaff_schwartz_value(
+#| label: lsm-rmql
+rmql_points <- rmql::generate_sobol_sequence(lsm$steps, 256)
+rmql_paths <- rmql::generate_black_scholes_paths(lsm$spot, lsm$rate, lsm$dividend, lsm$volatility, lsm$time, lsm$steps, 256)
+rmql_path_matrix <- matrix(rmql_paths$price, nrow = 256, byrow = TRUE)
+rmql_american <- function(order, calibration, samples) {
+  rmql::compute_longstaff_schwartz_value(
     "put", lsm$spot, lsm$strike, lsm$rate, lsm$dividend, lsm$volatility, lsm$time, lsm$steps, samples, basis_degree = order,
     include_payoff = TRUE, calibration = "overlapping", calibration_paths = calibration, few_in_the_money = "exercise"
   )
 }
-riemann_lsm <- pmap(lsm_cases, riemann_american)
+rmql_lsm <- pmap(lsm_cases, rmql_american)
 # the legacy text: quadratic, no payoff, the same 2048 paths for regression and valuation, hold when too few paths
-legacy_conditions <- RiemannFinMath::compute_longstaff_schwartz_value(
+legacy_conditions <- rmql::compute_longstaff_schwartz_value(
   "put", lsm$spot, lsm$strike, lsm$rate, lsm$dividend, lsm$volatility, lsm$time, lsm$steps, 2048
 )
 ```
@@ -302,12 +302,12 @@ legacy_conditions <- RiemannFinMath::compute_longstaff_schwartz_value(
 ```{r}
 #| label: lsm-results
 bind_rows(
-  compare_max("Sobol points, 256 x 12", "unit interval", ql_points, riemann_points),
-  compare_max("Sobol paths, 256 x 13", "price", ql_paths, riemann_path_matrix),
+  compare_max("Sobol points, 256 x 12", "unit interval", ql_points, rmql_points),
+  compare_max("Sobol paths, 256 x 13", "price", ql_paths, rmql_path_matrix),
   compare_values(
     sprintf("American put, degree %d plus payoff, %d calibration and %d paths", lsm_cases$order, lsm_cases$calibration, lsm_cases$samples), "price",
-    pmap_dbl(lsm_cases, ql_american), map_dbl(riemann_lsm, "value"), "QuantLib C++",
-    sprintf("Dates with too few paths in the money: %d", map_int(riemann_lsm, "dates_with_too_few_paths"))
+    pmap_dbl(lsm_cases, ql_american), map_dbl(rmql_lsm, "value"), "QuantLib C++",
+    sprintf("Dates with too few paths in the money: %d", map_int(rmql_lsm, "dates_with_too_few_paths"))
   )
 ) |>
   show_results()
@@ -323,7 +323,7 @@ legacy_counts <- legacy_exercise$paths + ifelse(legacy_exercise$step == lsm$step
 shown <- legacy_exercise$step >= 2L
 regression <- legacy_conditions$regressions[[1]]
 bind_rows(
-  against_lagrange("Sum of the 64 Sobol paths of II-4.6.1", "price", "sobol.first_paths_sum", sum(riemann_path_matrix[1:64, ])),
+  against_lagrange("Sum of the 64 Sobol paths of II-4.6.1", "price", "sobol.first_paths_sum", sum(rmql_path_matrix[1:64, ])),
   against_lagrange("Longstaff-Schwartz value", "price", "lsm.npv", legacy_conditions$value),
   against_lagrange("Standard error, sd / sqrt(paths)", "price", "lsm.standard_error", legacy_conditions$standard_error),
   against_lagrange(sprintf("Paths stopping at step %d", legacy_exercise$step[shown]), "paths",
@@ -342,10 +342,10 @@ The legacy text values the Black 76 option through a process whose spot is the f
 
 ```{r}
 #| label: lagrange
-black_as_equity <- RiemannFinMath::compute_european_option_value("call", black$forward, black$strike, black$rate, black$rate, black$volatility, black$time)
-tree_value <- function(kind, steps) riemann_tree$value[tree_cases$exercise == kind & tree_cases$steps == steps]
-european_put <- RiemannFinMath::compute_european_option_value("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)
-approximation <- RiemannFinMath::compute_american_approximation_value(c("barone_adesi_whaley", "bjerksund_stensland"), "put", tree$spot, tree$strike,
+black_as_equity <- rmql::compute_european_option_value("call", black$forward, black$strike, black$rate, black$rate, black$volatility, black$time)
+tree_value <- function(kind, steps) rmql_tree$value[tree_cases$exercise == kind & tree_cases$steps == steps]
+european_put <- rmql::compute_european_option_value("put", tree$spot, tree$strike, tree$rate, tree$dividend, tree$volatility, tree$time)
+approximation <- rmql::compute_american_approximation_value(c("barone_adesi_whaley", "bjerksund_stensland"), "put", tree$spot, tree$strike,
                                                                      tree$rate, tree$dividend, tree$volatility, tree$time)
 bind_rows(
   against_lagrange("Black 76 value", "price", "black.npv", black_as_equity$value),
@@ -355,7 +355,7 @@ bind_rows(
   against_lagrange("Black 76 theta", "per year", "black.theta", black_as_equity$theta),
   lagrange_not_comparable(
     "Black 76 implied volatility", "percent", "black.implied_volatility_pct",
-    100 * RiemannFinMath::compute_implied_volatility("call", black_as_equity$value, black$forward, black$strike, black$rate, black$rate, black$time),
+    100 * rmql::compute_implied_volatility("call", black_as_equity$value, black$forward, black$strike, black$rate, black$rate, black$time),
     "Different solver accuracy: 1e-4 against 1e-10"
   ),
   against_lagrange("European put, analytic", "price", "tree.european.analytic", european_put$value),
@@ -366,13 +366,13 @@ bind_rows(
   against_lagrange("American put, 500 steps", "price", "tree.american.crr_500", tree_value("american", 500L)),
   against_lagrange("American put, Barone-Adesi-Whaley", "price", "tree.american.barone_adesi_whaley", approximation$value[1]),
   against_lagrange("American put, Bjerksund-Stensland", "price", "tree.american.bjerksund_stensland", approximation$value[2]),
-  against_lagrange("European call value", "price", "greeks.npv", riemann_call$value),
-  against_lagrange("European call delta", "per unit of spot", "greeks.delta", riemann_call$delta),
-  against_lagrange("European call gamma", "per unit of spot squared", "greeks.gamma", riemann_call$gamma),
-  against_lagrange("European call vega", "per unit of volatility", "greeks.vega", riemann_call$vega),
-  against_lagrange("European call theta", "per year", "greeks.theta", riemann_call$theta),
+  against_lagrange("European call value", "price", "greeks.npv", rmql_call$value),
+  against_lagrange("European call delta", "per unit of spot", "greeks.delta", rmql_call$delta),
+  against_lagrange("European call gamma", "per unit of spot squared", "greeks.gamma", rmql_call$gamma),
+  against_lagrange("European call vega", "per unit of volatility", "greeks.vega", rmql_call$vega),
+  against_lagrange("European call theta", "per year", "greeks.theta", rmql_call$theta),
   lagrange_not_comparable(
-    "Black 76, Monte Carlo against the formula", "price", "mc.npv", riemann_black$value,
+    "Black 76, Monte Carlo against the formula", "price", "mc.npv", rmql_black$value,
     sprintf("The legacy value is a Monte Carlo estimate with a standard error of %.4f", lagrange_value("mc.standard_error"))
   )
 ) |>
@@ -388,7 +388,7 @@ Sobol sequences stop at 32 dimensions and are not scrambled. See @sec-gaps.
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,             ~QuantLib,                                                    ~RiemannFinMath,
+  ~Layer,    ~Aspect,             ~QuantLib,                                                    ~rmql,
   "Wrapper", "Set-up",            "Quote, curves, volatility, process, payoff, exercise, engine", "One call with numbers",
   "Wrapper", "Time",              "Evaluation date and maturity date",                          "Time in years",
   "Wrapper", "Many options",      "A loop; one object each",                                    "Vectors recycled to a common length; a table",

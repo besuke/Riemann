@@ -1,4 +1,4 @@
-# Checks an installed RiemannFinMath in a new R session: the quickstart and one representative of each
+# Checks an installed rmql in a new R session: the quickstart and one representative of each
 # stage from P5. Inputs are synthetic. Paths are few, because this checks the install, not the numbers;
 # the comparisons with QuantLib and GaussQuant are in the Rust tests and tools/verify.
 #
@@ -16,22 +16,22 @@ check <- function(name, ok) {
   if (!ok) failures <<- failures + 1L
 }
 
-path <- find.package("RiemannFinMath")
+path <- find.package("rmql")
 cat("Library paths:", paste(.libPaths(), collapse = "; "), "\n")
 cat("Loaded from:", path, "\n")
 cat("Rust tools on the PATH:", paste(names(Filter(nzchar, Sys.which(c("cargo", "rustc")))), collapse = ", "), "\n")
-check("version", as.character(packageVersion("RiemannFinMath")) == args[1])
+check("version", as.character(packageVersion("rmql")) == args[1])
 if (length(args) >= 2L) check("loaded from the given library", startsWith(normalizePath(path), normalizePath(args[2])))
 
 cat("\n--- quickstart\n")
-quickstart <- system.file("examples", "quickstart.R", package = "RiemannFinMath")
+quickstart <- system.file("examples", "quickstart.R", package = "rmql")
 check("quickstart is installed", nzchar(quickstart))
 source(quickstart, echo = FALSE, local = new.env())
 check("quickstart ran", TRUE)
-check("help is installed", length(utils::help("compute_prdc_value", package = "RiemannFinMath")) == 1L)
+check("help is installed", length(utils::help("compute_prdc_value", package = "rmql")) == 1L)
 
 cat("\n--- from P5\n")
-library(RiemannFinMath, warn.conflicts = FALSE)
+library(rmql, warn.conflicts = FALSE)
 today <- "2026-11-02"
 tenors <- c("1Y", "2Y", "3Y", "5Y", "7Y", "10Y")
 jpy <- bootstrap_ois_curve(today, today, "tonar", "actual_365_fixed", create_ois_instruments(tenors, c(0.01, 0.012, 0.013, 0.015, 0.016, 0.018), 2L, 1L, 0L))

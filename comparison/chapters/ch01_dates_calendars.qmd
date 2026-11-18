@@ -27,12 +27,12 @@ day_of_week <- as.POSIXlt(all_dates)$wday + 1L
 show_inputs(list(calendars = nrow(markets), from = min(all_dates), to = max(all_dates), dates_for_each_calendar = length(all_dates)))
 ```
 
-RiemannFinMath, one call for each calendar:
+rmql, one call for each calendar:
 
 ```{r}
-#| label: cpp-riemann
+#| label: cpp-rmql
 check_calendar <- function(name, weekend) {
-  flags <- RiemannFinMath::is_business_day(name, all_dates, on_error = "na")
+  flags <- rmql::is_business_day(name, all_dates, on_error = "na")
   weekend_days <- if (is.na(weekend)) integer() else as.integer(str_split_1(weekend, " "))
   is_weekend <- day_of_week %in% weekend_days
   expected <- exceptions |> filter(calendar == name)
@@ -68,7 +68,7 @@ The sections below use QuantLib's R package as a reference.
 ```{r}
 #| label: calendar-inputs
 pairs <- tribble(
-  ~riemann_name,      ~quantlib_calendar,
+  ~rmql_name,      ~quantlib_calendar,
   "japan",            list(QuantLib::Japan()),
   "target",           list(QuantLib::TARGET()),
   "us_sofr",          list(QuantLib::UnitedStates("SOFR")),
@@ -77,7 +77,7 @@ pairs <- tribble(
 )
 from <- "2020-01-01"
 to <- "2040-12-31"
-show_inputs(list(calendars = pairs$riemann_name, from = from, to = to))
+show_inputs(list(calendars = pairs$rmql_name, from = from, to = to))
 ```
 
 QuantLib:
@@ -93,16 +93,16 @@ quantlib_holidays <- function(calendar) {
 quantlib_lists <- map(pairs$quantlib_calendar, \(x) quantlib_holidays(x[[1]]))
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: calendar-riemann
-riemann_lists <- map(pairs$riemann_name, \(name) RiemannFinMath::generate_holidays(name, from, to))
+#| label: calendar-rmql
+rmql_lists <- map(pairs$rmql_name, \(name) rmql::generate_holidays(name, from, to))
 ```
 
 ```{r}
 #| label: calendar-results
-pmap(list(pairs$riemann_name, quantlib_lists, riemann_lists), \(name, q, r) {
+pmap(list(pairs$rmql_name, quantlib_lists, rmql_lists), \(name, q, r) {
   compare_values(
     paste0(name, ": holidays only in one list"), "dates",
     0, length(setdiff(q, r)) + length(setdiff(r, q))
@@ -125,12 +125,12 @@ show_inputs(list(calendar = "japan", from = min(dates), to = max(dates)))
 ```{r}
 #| label: business-day-calls
 quantlib_flags <- map_lgl(dates, \(d) QuantLib::Calendar_isBusinessDay(QuantLib::Japan(), ql_date(d)))
-riemann_flags <- RiemannFinMath::is_business_day("japan", dates)
+rmql_flags <- rmql::is_business_day("japan", dates)
 ```
 
 ```{r}
 #| label: business-day-results
-compare_values("japan 2026: days that differ", "days", 0, sum(quantlib_flags != riemann_flags)) |>
+compare_values("japan 2026: days that differ", "days", 0, sum(quantlib_flags != rmql_flags)) |>
   show_results()
 ```
 
@@ -139,7 +139,7 @@ compare_values("japan 2026: days that differ", "days", 0, sum(quantlib_flags != 
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,            ~QuantLib,                                        ~RiemannFinMath,
+  ~Layer,    ~Aspect,            ~QuantLib,                                        ~rmql,
   "Wrapper", "Date argument",    "`Date` object made from day, month name, year",  "`Date` or ISO string",
   "Wrapper", "Calendar argument", "Constructor call such as `UnitedStates(\"SOFR\")`", "Name such as `\"us_sofr\"`",
   "Wrapper", "Date vector",      "Loop over a SWIG `DateVector`",                  "An R `Date` vector",

@@ -1,6 +1,6 @@
 # LMM の構成要素の仕様（P11-6）
 
-実装は `crates/riemann/src/lmm.rs`（コレスキー分解は `crates/riemann/src/math/linear.rs`）、R の入口は `crates/riemann-r/R/lmm.R`、比較文書は `comparison/chapters/ch10_sabr.qmd` の「Caplets and correlated shocks」節である。
+実装は `crates/rmql/src/lmm.rs`（コレスキー分解は `crates/rmql/src/math/linear.rs`）、R の入口は `crates/rmql-r/R/lmm.R`、比較文書は `comparison/chapters/ch10_sabr.qmd` の「Caplets and correlated shocks」節である。
 
 **範囲**：ユーザーの指示により、当面は LagrangeFinance II-7.4 の Caplet と相関の例を再現する範囲とする。LMM 全体（共通測度でのドリフト、複数のフォワード金利の共同経路、Swaption や相関への校正）は実装しない。本格的なモデルへの拡張は別途判断する。**2026-11-04 の指示で範囲を広げた**：後決め金利の FMM と、LMM の共同経路・校正は [spec_rates_fx_extension.md](spec_rates_fx_extension.md) 7・8 章（`fmm.rs`、`lmm_market.rs`）。
 
@@ -9,7 +9,7 @@
 - **II-7.4.2 Caplet**：フォワード 0.025、行使価格 0.0275、満期 2 年、ボラティリティ 0.24、利息期間 0.5 年、割引係数 `exp(−0.02 × 2.5)`、想定元本 1。Black 公式 `N Δ P(0, T+Δ) [F N(d1) − K N(d2)]` と、当該フォワード測度での周辺分布 `L(T) = L(0) exp(−v²T/2 + v√T Z)` から作った 5 万本のモンテカルロ価格を比べる（`set.seed(618)`、`rnorm`）。標準誤差は `sd / √n`。総ボラティリティが 0 のときは本源的価値。
 - **II-7.4.3 相関**：目標の相関行列（0.8、0.5、0.7）の上三角のコレスキー因子 `chol(C)` で、独立な正規乱数 3 万行 × 3 列に相関を付け（`set.seed(619)`、`matrix(rnorm(90000), ncol = 3)` で列方向に詰める）、標本相関を確認する。各金利の測度や共通測度のドリフト、共同経路は扱わない。
 
-## 2. Riemann の実装
+## 2. rmql の実装
 
 | 関数（R） | 内容 |
 |---|---|

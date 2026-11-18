@@ -1,4 +1,4 @@
-chapter,item,unit,baseline,baseline_value,riemann_value,difference,tolerance,verdict,note
+chapter,item,unit,baseline,baseline_value,rmql_value,difference,tolerance,verdict,note
 ch08_options,Value,price,QuantLib C++,0.5615965733453677,0.5615965733453677,0,NA,REF,NA
 ch08_options,Forward delta,per unit of forward,QuantLib C++,0.4355827517855987,0.4355827517855963,-2.3869795029440866e-15,NA,REF,NA
 ch08_options,Forward gamma,per unit of forward squared,QuantLib C++,0.22396918989345416,0.22396918989345382,-3.3306690738754696e-16,NA,REF,NA
@@ -42,7 +42,7 @@ ch08_options,Delta,per unit of spot,QuantLib C++,0.598706325682924,0.59847039650
 ch08_options,"Gamma, smoothed payoff",per unit of spot squared,QuantLib C++,0.01933340584014246,0.019697503497881144,3.640976577386837e-4,NA,N/C,Sampling error and a smoothed payoff of width 0.25
 ch08_options,Vega,per unit of volatility,QuantLib C++,38.66681168028492,38.63594407549712,-0.03086760478780093,NA,N/C,Sampling error
 ch08_options,Theta,per year,QuantLib C++,-5.380398043561679,-5.376570815681124,0.0038272278805555615,NA,N/C,Sampling error
-ch08_options,Value on 1 and on 4 threads,price,RiemannFinMath itself,9.411077962658092,9.411077962658092,0,NA,REF,NA
+ch08_options,Value on 1 and on 4 threads,price,rmql itself,9.411077962658092,9.411077962658092,0,NA,REF,NA
 ch08_options,"Sobol points, 256 x 12",unit interval,QuantLib C++,NA,NA,0,NA,REF,NA
 ch08_options,"Sobol paths, 256 x 13",price,QuantLib C++,NA,NA,1.7053025658242404e-13,NA,REF,NA
 ch08_options,"American put, degree 0 plus payoff, 2048 calibration and 4096 paths",price,QuantLib C++,6.16828428144466,6.16828428144466,0,NA,REF,Dates with too few paths in the money: 0

@@ -13,7 +13,7 @@ QuantLib has no OIS asset swap instrument. The verdicts are against the results 
 
 ## Inputs
 
-The OIS quotes are Bloomberg data, read from the local file of the legacy text and not shown. The bonds are the assumptions of the legacy text. `Following` replaces the legacy text's `ModifiedFollowing` on the OIS payments, because RiemannFinMath has only `Following` (see the OIS chapter).
+The OIS quotes are Bloomberg data, read from the local file of the legacy text and not shown. The bonds are the assumptions of the legacy text. `Following` replaces the legacy text's `ModifiedFollowing` on the OIS payments, because rmql has only `Following` (see the OIS chapter).
 
 ```{r}
 #| label: inputs
@@ -69,30 +69,30 @@ baseline_native <- map(terms$currency, \(ccy) {
   set_names(terms$currency)
 ```
 
-RiemannFinMath:
+rmql:
 
 ```{r}
-#| label: riemann-native
-riemann_curve <- function(currency, rates = quotes[[currency]]$rate) {
+#| label: rmql-native
+rmql_curve <- function(currency, rates = quotes[[currency]]$rate) {
   row <- terms |> filter(currency == .env$currency)
-  RiemannFinMath::bootstrap_ois_curve(
+  rmql::bootstrap_ois_curve(
     market_date, market_date, row$index, row$curve_day_count,
-    RiemannFinMath::create_ois_instruments(quotes[[currency]]$tenor, rates, row$settlement_days, 1L, 0L)
+    rmql::create_ois_instruments(quotes[[currency]]$tenor, rates, row$settlement_days, 1L, 0L)
   )
 }
-riemann_bond <- function(currency) {
+rmql_bond <- function(currency) {
   row <- terms |> filter(currency == .env$currency)
-  RiemannFinMath::create_fixed_rate_bond(
+  rmql::create_fixed_rate_bond(
     settlement_days = 2L, face_amount = 100, effective_date = "2026-09-30", termination_date = "2036-09-30", tenor = "6M",
     calendar = row$calendar, convention = "unadjusted", termination_convention = "unadjusted", rule = "backward",
     end_of_month = FALSE, coupon_rate = row$coupon_rate, day_count = row$bond_day_count, payment_convention = "following",
     redemption = 100, issue_date = "2026-09-30"
   )
 }
-riemann_curves <- map(set_names(terms$currency), riemann_curve)
-riemann_bonds <- map(set_names(terms$currency), riemann_bond)
-riemann_native <- map(terms$currency, \(ccy) {
-  RiemannFinMath::compute_ois_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], market_date)
+rmql_curves <- map(set_names(terms$currency), rmql_curve)
+rmql_bonds <- map(set_names(terms$currency), rmql_bond)
+rmql_native <- map(terms$currency, \(ccy) {
+  rmql::compute_ois_asset_swap(rmql_bonds[[ccy]], 99.5, rmql_curves[[ccy]], market_date)
 }) |>
   set_names(terms$currency)
 ```
@@ -101,7 +101,7 @@ riemann_native <- map(terms$currency, \(ccy) {
 #| label: results-native
 native_rows <- function(ccy) {
   b <- baseline_native[[ccy]]
-  r <- riemann_native[[ccy]]
+  r <- rmql_native[[ccy]]
   bind_rows(
     compare_values(paste(ccy, "accrued"), "per 100", b$accrued_per_100, r$accrued, "GaussQuant R on QuantLib curve"),
     compare_values(paste(ccy, "fair spread"), "bp", b$fair_spread_bp, r$fair_spread_bp, "GaussQuant R on QuantLib curve"),
@@ -128,19 +128,19 @@ baseline_yen_call <- function(ccy, fx_spot, basis_bp) {
     baseline_bonds[[ccy]], 99.5, baseline_curves[[ccy]], baseline_curves[["JPY"]], fx_spot, basis_bp, currency = ccy
   )$valuation
 }
-riemann_yen_call <- function(ccy, fx_spot, basis_bp) {
-  RiemannFinMath::compute_yen_asset_swap(riemann_bonds[[ccy]], 99.5, riemann_curves[[ccy]], riemann_curves[["JPY"]], fx_spot, basis_bp, market_date)
+rmql_yen_call <- function(ccy, fx_spot, basis_bp) {
+  rmql::compute_yen_asset_swap(rmql_bonds[[ccy]], 99.5, rmql_curves[[ccy]], rmql_curves[["JPY"]], fx_spot, basis_bp, market_date)
 }
 yen_terms <- terms |> filter(currency %in% foreign)
 baseline_yen <- pmap(list(yen_terms$currency, yen_terms$fx_spot, yen_terms$basis_bp), baseline_yen_call) |> set_names(yen_terms$currency)
-riemann_yen <- pmap(list(yen_terms$currency, yen_terms$fx_spot, yen_terms$basis_bp), riemann_yen_call) |> set_names(yen_terms$currency)
+rmql_yen <- pmap(list(yen_terms$currency, yen_terms$fx_spot, yen_terms$basis_bp), rmql_yen_call) |> set_names(yen_terms$currency)
 ```
 
 ```{r}
 #| label: yen-results
 map(foreign, \(ccy) {
   b <- baseline_yen[[ccy]]
-  r <- riemann_yen[[ccy]]
+  r <- rmql_yen[[ccy]]
   baseline_name <- "GaussQuant R on QuantLib curve"
   bind_rows(
     compare_values(paste(ccy, "native spread"), "bp", b$native_asw_bp, r$native_asw_bp, baseline_name),
@@ -166,7 +166,7 @@ scenarios <- bind_rows(tibble(fx_spot = 150, basis_bp = c(-50, -30, -10, 0)), ti
 compare_values(
   sprintf("USD, FX %.0f, basis %.0f bp", scenarios$fx_spot, scenarios$basis_bp), "bp",
   map2_dbl(scenarios$fx_spot, scenarios$basis_bp, \(x, y) baseline_yen_call("USD", x, y)$jpy_asw_bp),
-  map2_dbl(scenarios$fx_spot, scenarios$basis_bp, \(x, y) riemann_yen_call("USD", x, y)$yen_asw_bp),
+  map2_dbl(scenarios$fx_spot, scenarios$basis_bp, \(x, y) rmql_yen_call("USD", x, y)$yen_asw_bp),
   "GaussQuant R on QuantLib curve"
 ) |>
   show_results()
@@ -174,7 +174,7 @@ compare_values(
 
 ## Spread sensitivity to the quotes
 
-The baseline rebuilds the QuantLib curve with a bump of 1e-6 and repeats the formula. RiemannFinMath differentiates. JPY only, for the running time.
+The baseline rebuilds the QuantLib curve with a bump of 1e-6 and repeats the formula. rmql differentiates. JPY only, for the running time.
 
 ```{r}
 #| label: sensitivity
@@ -193,17 +193,17 @@ baseline_sensitivity <- map_dbl(seq_along(base_rates), \(i) {
   }
   (move(1) - move(-1)) / (2 * h) * 1e-4
 })
-riemann_sensitivity <- RiemannFinMath::compute_asset_swap_quote_sensitivity(riemann_bonds[["JPY"]], 99.5, riemann_curves[["JPY"]], market_date)
+rmql_sensitivity <- rmql::compute_asset_swap_quote_sensitivity(rmql_bonds[["JPY"]], 99.5, rmql_curves[["JPY"]], market_date)
 compare_values(
   paste("Quote", quotes[["JPY"]]$tenor), "bp of spread per bp of quote",
-  baseline_sensitivity, riemann_sensitivity$spread_bp_per_quote_bp, "GaussQuant R, finite difference"
+  baseline_sensitivity, rmql_sensitivity$spread_bp_per_quote_bp, "GaussQuant R, finite difference"
 ) |>
   show_results()
 ```
 
 ## Against LagrangeFinance
 
-The legacy text builds its curves with `ModifiedFollowing` on the OIS payments, and RiemannFinMath has only `Following`. These rows keep that difference, and a FAIL may come from it.
+The legacy text builds its curves with `ModifiedFollowing` on the OIS payments, and rmql has only `Following`. These rows keep that difference, and a FAIL may come from it.
 
 ```{r}
 #| label: lagrange
@@ -211,13 +211,13 @@ native_map <- c(accrued = "accrued", fair_spread_bp = "fair_spread_bp", spread_a
 native_units <- c(accrued = "per 100", fair_spread_bp = "bp", spread_annuity = "per 100, per unit of spread", npv = "per 100", bond_leg_pv = "per 100", overnight_leg_pv = "per 100", principal_pv = "per 100", upfront_pv = "per 100")
 judged_native <- map(terms$currency, \(ccy) {
   imap(native_map, \(column, name) {
-    against_lagrange(paste(ccy, name), native_units[[name]], paste("asw", ccy, name, sep = "."), riemann_native[[ccy]][[column]])
+    against_lagrange(paste(ccy, name), native_units[[name]], paste("asw", ccy, name, sep = "."), rmql_native[[ccy]][[column]])
   }) |>
     list_rbind()
 }) |>
   list_rbind()
 judged_yen <- map(foreign, \(ccy) {
-  r <- riemann_yen[[ccy]]
+  r <- rmql_yen[[ccy]]
   bind_rows(
     against_lagrange(paste(ccy, "native spread"), "bp", paste("yen_asw", ccy, "native_asw_bp", sep = "."), r$native_asw_bp),
     against_lagrange(paste(ccy, "yen spread"), "bp", paste("yen_asw", ccy, "jpy_asw_bp", sep = "."), r$yen_asw_bp),
@@ -231,8 +231,8 @@ fx_scenarios <- c(140, 150, 160)
 bind_rows(
   judged_native,
   judged_yen,
-  against_lagrange(sprintf("USD yen spread, basis %.0f bp", basis_scenarios), "bp", paste0("yen_asw.basis.", basis_scenarios), map_dbl(basis_scenarios, \(b) riemann_yen_call("USD", 150, b)$yen_asw_bp)),
-  against_lagrange(sprintf("USD yen spread, FX %.0f", fx_scenarios), "bp", paste0("yen_asw.fx.", fx_scenarios), map_dbl(fx_scenarios, \(x) riemann_yen_call("USD", x, -30)$yen_asw_bp))
+  against_lagrange(sprintf("USD yen spread, basis %.0f bp", basis_scenarios), "bp", paste0("yen_asw.basis.", basis_scenarios), map_dbl(basis_scenarios, \(b) rmql_yen_call("USD", 150, b)$yen_asw_bp)),
+  against_lagrange(sprintf("USD yen spread, FX %.0f", fx_scenarios), "bp", paste0("yen_asw.fx.", fx_scenarios), map_dbl(fx_scenarios, \(x) rmql_yen_call("USD", x, -30)$yen_asw_bp))
 ) |>
   show_results()
 ```
@@ -242,8 +242,8 @@ bind_rows(
 ```{r}
 #| label: design
 tribble(
-  ~Layer,    ~Aspect,            ~`Baseline (GaussQuant on QuantLib)`,                ~RiemannFinMath,
-  "Wrapper", "Curve argument",   "A list holding the curve, the index and the quotes", "A `riemann_ois_curve` value",
+  ~Layer,    ~Aspect,            ~`Baseline (GaussQuant on QuantLib)`,                ~rmql,
+  "Wrapper", "Curve argument",   "A list holding the curve, the index and the quotes", "A `rmql_ois_curve` value",
   "Wrapper", "Frequency",        "A name, `\"Semiannual\"`",                          "A count, `2L`",
   "Wrapper", "Result",           "A list with a `valuation` table",                   "One table, one row per price",
   "Core",    "Where it runs",    "Legs evaluated in R, curves in C++",                "Everything in Rust",

@@ -1,8 +1,8 @@
-# Builds a CRAN-like repository of RiemannFinMath for GitHub Pages (the gh-pages branch,
-# https://besuke.github.io/Riemann):
+# Builds a CRAN-like repository of rmql for GitHub Pages (the gh-pages branch,
+# https://besuke.github.io/rmql):
 #
-#   install.packages("RiemannFinMath",
-#                    repos = c("https://besuke.github.io/Riemann", "https://cloud.r-project.org"))
+#   install.packages("rmql",
+#                    repos = c("https://besuke.github.io/rmql", "https://cloud.r-project.org"))
 #
 # On Windows, install.packages() takes the binary when its version is the same as the source package's,
 # so neither Rust nor Rtools is needed, and the CRAN dependencies (purrr, tibble) are installed too.

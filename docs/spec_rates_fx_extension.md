@@ -9,11 +9,11 @@
 
 検証は QuantLib、解析解、無裁定の関係で行い、細かな差の追究より機能の充実を優先する。担保 CTD の時間価値と PRDC の多因子モデルは、検証方法の案を 4 章に整理して後続課題に残す。段階ごとにコミットする。
 
-## 1. LagrangeFinance と RiemannFinMath の現状【ソース確認】
+## 1. LagrangeFinance と rmql の現状【ソース確認】
 
-LagrangeFinance の該当節を読み、RiemannFinMath の実装と突き合わせた。
+LagrangeFinance の該当節を読み、rmql の実装と突き合わせた。
 
-| LagrangeFinance | 内容 | LagrangeFinance の状態 | RiemannFinMath の状態 | この拡張で行うこと |
+| LagrangeFinance | 内容 | LagrangeFinance の状態 | rmql の状態 | この拡張で行うこと |
 |---|---|---|---|---|
 | II-3.7.4 | 円担保の円ベーシス込み ASW | 簡略化モデル（満期の通貨ベーシス 1 本から一定の `z`、名目一定）。GaussQuant の計算例あり | **移植済み**（P7、`compute_yen_asset_swap`。GaussQuant と 45 件照合） | 段階 1：FX スワップと複数年限の通貨ベーシスから担保付きの割引カーブを作り、一定の `z` を置き換える。名目リセット（MtM）型も扱う |
 | II-3.7.5 | 担保 CTD と今後の拡張 | **説明のみ**（三段階の拡張手順。計算なし） | 未着手 | 段階 2：本源的価値（担保通貨ごとの割引カーブを揃え、日ごとに最も有利な翌日物フォワードを選ぶ）。時間価値は後続課題 |
@@ -54,16 +54,16 @@ LagrangeFinance の該当節を読み、RiemannFinMath の実装と突き合わ�
 
 ## 5. 段階 1：通貨ベーシスの期間構造（2026-11-04）【ソース確認・実行照合済み】
 
-実装は `crates/riemann/src/xccy.rs`（ブートストラップの 1 回の走査は `crates/riemann/src/bootstrap.rs` に切り出し、債券のカーブと共有）、R の入口は `crates/riemann-r/R/xccy.R`。
+実装は `crates/rmql/src/xccy.rs`（ブートストラップの 1 回の走査は `crates/rmql/src/bootstrap.rs` に切り出し、債券のカーブと共有）、R の入口は `crates/rmql-r/R/xccy.R`。
 
 **計算**（QuantLib v1.42 の `FxSwapRateHelper`、`ConstNotionalCrossCurrencyBasisSwapRateHelper`、`MtMCrossCurrencyBasisSwapRateHelper`、`PiecewiseLogLinearDiscount`）：
 
 - 通貨の組は base/quote で、FX は base 1 単位あたりの quote 通貨の額。担保でない通貨の割引カーブを、割引係数の対数線形でブートストラップする。担保通貨は `collateral_curve` で割り引く。
 - FX スワップ：`(担保の比 / 解く曲線の比 - 1) × スポット`（担保が base なら逆）。日付は評価日を営業日に直し、決済日数だけ進め、期間を足す。
 - ベーシス・スワップ：両レグとも名目 1 で、開始と満期に名目を交換する。翌日物レグのクーポンは各指数のカーブで `P(開始) / P(終了) - 1`（同じカーブでの日次複利）。名目リセット型は、各期の開始に名目を FX フォワード（相手通貨の割引係数との比）に直し、期首に貸して期末に利息付きで受け取る。ベーシスはどちらのレグにも付けられる。
-- 結合カレンダー：Riemann には QuantLib の `JointCalendar` がないので、`HolidayCalendar::joined_with` で一方の休日を期間内だけ他方に加える。R の既定は二つの指数のカレンダーの結合。
+- 結合カレンダー：rmql には QuantLib の `JointCalendar` がないので、`HolidayCalendar::joined_with` で一方の休日を期間内だけ他方に加える。R の既定は二つの指数のカレンダーの結合。
 
-**照合**（QuantLib R パッケージ 1.42、`tools/golden/p12_xccy_curves.R`、`crates/riemann/tests/golden_xccy_curves.rs`）：USD/JPY（円担保、名目一定と base リセット、ドル担保で quote リセット）と EUR/USD（ドル担保、名目一定と base リセット）の 5 ケース、計 21 節点の割引係数が差 3.3e-16 以内で一致した。指数の予測カーブはフラットな連続複利で与えた。
+**照合**（QuantLib R パッケージ 1.42、`tools/golden/p12_xccy_curves.R`、`crates/rmql/tests/golden_xccy_curves.rs`）：USD/JPY（円担保、名目一定と base リセット、ドル担保で quote リセット）と EUR/USD（ドル担保、名目一定と base リセット）の 5 ケース、計 21 節点の割引係数が差 3.3e-16 以内で一致した。指数の予測カーブはフラットな連続複利で与えた。
 
 **円ベーシス込み ASW の拡張**（`compute_yen_asset_swap_on_basis_curve`）：II-3.7.4 の一定の `z` の代わりに、ブートストラップした「円担保の外貨の割引カーブ」`Pb` から FX フォワード `S [Pb(t)/Pb(t0)] / [Pj(t)/Pj(t0)]` を作る。名目一定、担保の選択なしは従来と同じ。
 
@@ -73,13 +73,13 @@ LagrangeFinance の該当節を読み、RiemannFinMath の実装と突き合わ�
 
 ## 6. 段階 2：担保 CTD の本源的価値（2026-11-04）【実行照合済み（構成と無裁定の検査）】
 
-実装は `crates/riemann/src/ctd.rs`、R は `create_ctd_curve`（`crates/riemann-r/R/xccy.R`）。同じキャッシュフローの、担保通貨ごとの割引カーブ（円担保なら TONAR、ドル担保なら段階 1 の `bootstrap_xccy_curve` でドルを担保にした円のカーブ）を与え、暦日ごとのフォワード `f_c = ln(P_c(d) / P_c(d + 1))` の最大を選んで割引係数をつなぐ（`exp(-Σ max_c f_c)`）。結果は日ごとの節点の対数線形のカーブと、同じ担保が続く期間の表（優位幅つき）。今日のフォワードだけによる選択で、時間価値・ヘアカット・差替えの条件は含まない。
+実装は `crates/rmql/src/ctd.rs`、R は `create_ctd_curve`（`crates/rmql-r/R/xccy.R`）。同じキャッシュフローの、担保通貨ごとの割引カーブ（円担保なら TONAR、ドル担保なら段階 1 の `bootstrap_xccy_curve` でドルを担保にした円のカーブ）を与え、暦日ごとのフォワード `f_c = ln(P_c(d) / P_c(d + 1))` の最大を選んで割引係数をつなぐ（`exp(-Σ max_c f_c)`）。結果は日ごとの節点の対数線形のカーブと、同じ担保が続く期間の表（優位幅つき）。今日のフォワードだけによる選択で、時間価値・ヘアカット・差替えの条件は含まない。
 
 **検査**（Rust と R のテスト）：通貨が 1 つなら元のカーブと差 1e-13 以内で一致する。どの日付でも、どの単一通貨の割引係数より大きくならない。交差するカーブでは、短期と長期で選ぶ通貨が入れ替わる。外部の照合先はない。
 
 ## 7. 段階 3：FMM（後決め RFR の期間金利）（2026-11-05）【解析式とモンテカルロで確認】
 
-実装は `crates/riemann/src/fmm.rs`、R は `compute_backward_forward_rate`、`compute_backward_caplet_value`（`crates/riemann-r/R/fmm.R`）。
+実装は `crates/rmql/src/fmm.rs`、R は `compute_backward_forward_rate`、`compute_backward_caplet_value`（`crates/rmql-r/R/fmm.R`）。
 
 **計算**（Lyashenko–Mercurio の generalized FMM）：
 
@@ -98,7 +98,7 @@ LagrangeFinance の該当節を読み、RiemannFinMath の実装と突き合わ�
 
 ## 8. 段階 4：LMM の共同経路と校正（2026-11-05）【無裁定の関係と解析式で確認】
 
-実装は `crates/riemann/src/lmm_market.rs`、R は `crates/riemann-r/R/lmm_market.R`（`create_lmm`、`create_exponential_correlation`、`generate_lmm_paths`、`compute_lmm_swaption_value`、`compute_lmm_caplet_value`、`compute_rebonato_swaption_volatility`、`calibrate_lmm_correlation`）。
+実装は `crates/rmql/src/lmm_market.rs`、R は `crates/rmql-r/R/lmm_market.R`（`create_lmm`、`create_exponential_correlation`、`generate_lmm_paths`、`compute_lmm_swaption_value`、`compute_lmm_caplet_value`、`compute_rebonato_swaption_volatility`、`calibrate_lmm_correlation`）。
 
 **計算**：
 
@@ -126,7 +126,7 @@ LagrangeFinance の該当節を読み、RiemannFinMath の実装と突き合わ�
 - スポット測度のドリフト：`LMMDriftCalculator::computePlain`（数値基準を最初の未確定のフォワードに置く）。共分散の平方根には Cholesky 分解を渡す。R の包み関数は出力の引数を数値のコピーに変えてしまうので、パッケージ自身の C の入口 `R_swig_LMMDriftCalculator_computePlain__SWIG_0` を `DoubleVector` で呼んで値を読む。
 - スワップ・レートと割引の比：`LMMCurveState` の `swapRate`、`discountRatio`。
 
-**照合の用意**：`tools/golden/p13_lmm_market.R` が合成入力 6 ケース（フォワード 3〜8 本）で 383 値（相関 93、ドリフト 93、スワップ・レート 58、割引の比 58）を `tests/golden/lmm_market.csv` に書き、`crates/riemann/tests/golden_lmm_market.rs` が Riemann の `create_exponential_correlation`、`compute_lmm_drift`、`compute_lmm_swap_rate` と相対 1e-12 で比べる。
+**照合の用意**：`tools/golden/p13_lmm_market.R` が合成入力 6 ケース（フォワード 3〜8 本）で 383 値（相関 93、ドリフト 93、スワップ・レート 58、割引の比 58）を `tests/golden/lmm_market.csv` に書き、`crates/rmql/tests/golden_lmm_market.rs` が rmql の `create_exponential_correlation`、`compute_lmm_drift`、`compute_lmm_swap_rate` と相対 1e-12 で比べる。
 
 **照合結果**【実行照合済み】（2026-11-05、PC の再起動の後）：6 ケース 302 値（相関 93、ドリフト 93、スワップ・レート 58、割引の比 58）がすべて一致した。最大の相対差は、相関 0、ドリフト 4.2e-16、スワップ・レート 2.1e-14、割引の比 0。それまでは照合テストの実行ファイルを Smart App Control が止めていた（os error 4551、CodeIntegrity のイベント ID 3033・3077、2026-11-05 の 20:43 から 23:25 過ぎまで。回避はしていない）。照合を保留にしたコミット（`021db1a`）の後、再起動してから実行できた。
 

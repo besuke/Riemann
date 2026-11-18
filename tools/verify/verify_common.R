@@ -5,10 +5,10 @@ suppressPackageStartupMessages({
   library(QuantLib)
 })
 
-find_riemann_root <- function(start = getwd()) {
+find_rmql_root <- function(start = getwd()) {
   candidates <- accumulate(seq_len(8), \(path, i) dirname(path), .init = normalizePath(start, winslash = "/"))
   root <- detect(candidates, \(path) file.exists(file.path(path, "Cargo.toml")))
-  if (is.null(root)) stop("Riemann root not found from: ", start, call. = FALSE)
+  if (is.null(root)) stop("rmql root not found from: ", start, call. = FALSE)
   root
 }
 
@@ -24,9 +24,9 @@ cargo_path <- function() {
   file.path(Sys.getenv("USERPROFILE"), ".cargo", "bin", "cargo.exe")
 }
 
-# Runs an example program of the riemann crate on an input CSV. Windows can report a transient
+# Runs an example program of the rmql crate on an input CSV. Windows can report a transient
 # LNK1104 for a new executable; one retry is enough.
-run_riemann_example <- function(example, input_path, output_path, root, attempts = 2L) {
+run_rmql_example <- function(example, input_path, output_path, root, attempts = 2L) {
   arguments <- c("run", "--release", "--quiet", "--example", example, "--", input_path, output_path)
   owd <- setwd(root)
   on.exit(setwd(owd), add = TRUE)
@@ -40,20 +40,20 @@ run_riemann_example <- function(example, input_path, output_path, root, attempts
   invisible(log)
 }
 
-# The examples that this machine does not let run, comma separated in RIEMANN_VERIFY_SKIP_EXAMPLES. Windows's
+# The examples that this machine does not let run, comma separated in RMQL_VERIFY_SKIP_EXAMPLES. Windows's
 # application control can block a newly built executable. The report then says that the CSV path was not run.
 example_is_skipped <- function(example) {
-  example %in% strsplit(Sys.getenv("RIEMANN_VERIFY_SKIP_EXAMPLES"), ",", fixed = TRUE)[[1]]
+  example %in% strsplit(Sys.getenv("RMQL_VERIFY_SKIP_EXAMPLES"), ",", fixed = TRUE)[[1]]
 }
 
 csv_path_not_run <- function() {
   tibble(compared = 0L, exact = 0L, both_error = 0L, one_sided = 0L, max_abs_diff = NA_real_)
 }
 
-# The R package of Riemann, RiemannFinMath, called directly. Install it with: R CMD INSTALL crates/riemann-r
-require_riemann_package <- function() {
-  if (!requireNamespace("RiemannFinMath", quietly = TRUE)) {
-    stop("The RiemannFinMath package is not installed. Run: R CMD INSTALL crates/riemann-r", call. = FALSE)
+# The R package of rmql, rmql, called directly. Install it with: R CMD INSTALL crates/rmql-r
+require_rmql_package <- function() {
+  if (!requireNamespace("rmql", quietly = TRUE)) {
+    stop("The rmql package is not installed. Run: R CMD INSTALL crates/rmql-r", call. = FALSE)
   }
   invisible(TRUE)
 }
