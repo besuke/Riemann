@@ -1,0 +1,102 @@
+# Builds the Windows binaries of the R package rmql for R 4.4, 4.5 and 4.6, and the self-contained source
+# package, and publishes them as a CRAN-like repository on the gh-pages branch
+# (https://besuke.github.io/RiemannQL): install.packages("rmql", repos = c("https://besuke.github.io/RiemannQL",
+# "https://cloud.r-project.org")). A binary is tied to the minor version of R it was built with, so each is built
+# on its own R. Run it by hand (Actions > Run workflow; "publish" is off by default, which only builds and tests)
+# or push a tag such as v0.4.0 (which publishes).
+name: Build the R repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to the gh-pages branch"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the R dependencies
+        run: Rscript -e 'install.packages(c("purrr", "tibble"), repos = "https://cloud.r-project.org")'
+      - name: Build the self-contained source package
+        run: Rscript tools/package/build_source_package.R out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source
+          path: out/*.tar.gz
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        r: ["4.4", "4.5", "4.6"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - name: Install the R dependencies
+        shell: bash
+        run: Rscript -e 'install.packages(c("purrr", "tibble"), repos = "https://cloud.r-project.org")'
+      - name: Build the binary
+        shell: bash
+        run: |
+          mkdir -p lib
+          R CMD INSTALL --build --library=lib .
+          ls -l *.zip
+      - name: Smoke test the installed package
+        shell: bash
+        run: |
+          version=$(sed -n 's/^Version: *//p' DESCRIPTION | tr -d '\r')
+          Rscript --vanilla tools/package/smoke_test.R "$version" lib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-R${{ matrix.r }}
+          path: "*.zip"
+
+  publish:
+    needs: [source, windows]
+    if: ${{ github.event_name == 'push' || inputs.publish }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Update the R repository
+        run: |
+          source_package=$(ls artifacts/source/*.tar.gz)
+          for zip in artifacts/windows-R*/*.zip; do
+            Rscript tools/package/build_binary_repo.R "$zip" "$source_package" pages
+          done
+      - name: Commit and push
+        run: |
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish the R repository for ${GITHUB_REF_NAME}" || echo "nothing to commit"
+          git push
