@@ -7,3 +7,13 @@ License: MIT + file LICENSE | Apache License 2.0
 MD5sum: 425a9be914235b34ccb32740cde15653
 NeedsCompilation: yes
 File: RiemannFinMath_0.3.4.tar.gz
+
+Package: rmql
+Version: 0.4.0
+Depends: R (>= 4.1.0)
+Imports: purrr, tibble
+Suggests: testthat (>= 3.0.0)
+License: MIT + file LICENSE | Apache License 2.0
+MD5sum: 44a33265f2926533795c49c492b8b7df
+NeedsCompilation: yes
+File: rmql_0.4.0.tar.gz
