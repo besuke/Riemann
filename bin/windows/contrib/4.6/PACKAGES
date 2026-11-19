@@ -1,12 +1,3 @@
-Package: RiemannFinMath
-Version: 0.3.4
-Imports: purrr, tibble
-Suggests: testthat (>= 3.0.0)
-License: MIT + file LICENSE | Apache License 2.0
-Archs: x64
-Built: R 4.6.0; x86_64-w64-mingw32; 2026-11-17 15:45:33 UTC; windows
-File: RiemannFinMath_0.3.4.zip
-
 Package: rmql
 Version: 0.4.1
 Imports: purrr, tibble
