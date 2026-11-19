@@ -63,8 +63,9 @@ jobs:
       - name: Smoke test the installed package
         shell: bash
         run: |
-          # smoke_test.R searches only the given library, so the dependencies go there too
-          Rscript -e 'install.packages(c("purrr", "tibble"), lib = "lib", repos = "https://cloud.r-project.org")'
+          # smoke_test.R searches only the given library (and R's own), so every dependency goes there too:
+          # with only these two paths, install.packages() cannot find rlang and the rest elsewhere
+          Rscript -e '.libPaths(c("lib", .Library)); install.packages(c("purrr", "tibble"), lib = "lib", repos = "https://cloud.r-project.org")'
           version=$(sed -n 's/^Version: *//p' DESCRIPTION | tr -d '\r')
           Rscript --vanilla tools/package/smoke_test.R "$version" lib
       - uses: actions/upload-artifact@v4
