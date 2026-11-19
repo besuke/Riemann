@@ -2,7 +2,8 @@ TARGET = x86_64-pc-windows-gnu
 TARGET_DIR = ./rust/target
 LIBDIR = $(TARGET_DIR)/$(TARGET)/release
 STATLIB = $(LIBDIR)/librmql_r.a
-PKG_LIBS = -L$(LIBDIR) -lrmql_r -lws2_32 -ladvapi32 -luserenv -lbcrypt -lntdll
+PKG_LIBS = -L$(LIBDIR) -lrmql_r -lws2_32 -ladvapi32 -luserenv -lbcrypt -lntdll -lsynchronization
+# -lsynchronization: the standard library of Rust 1.100 and later waits on addresses (WaitOnAddress, WakeByAddress*).
 # A source package holds its Rust dependencies in rust/vendor.tar.xz and builds offline. An install
 # from the repository has no such file and uses the normal cargo setup.
 CARGOTMP = $(CURDIR)/.cargo
