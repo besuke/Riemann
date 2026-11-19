@@ -3,9 +3,9 @@
 #' The calculations are in Rust. The R functions convert dates and return tibbles. There is no
 #' global state such as an evaluation date: dates, calendars and conventions are arguments.
 #'
-#' Results are compared with QuantLib, not with market data. Agreement with QuantLib is not a
-#' check against actual market holidays or market conventions, and QuantLib's defaults are not
-#' market conventions. Conventions therefore have no defaults here.
+#' Results are checked against reference values, not against market data. A match is not a
+#' check against actual market holidays or market conventions. Conventions therefore have no
+#' defaults here.
 #'
 #' Names of choices are snake_case strings:
 #' \describe{

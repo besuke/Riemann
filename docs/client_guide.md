@@ -2,7 +2,7 @@
 
 対象：rmql（計算サーバー）を呼ぶクライアント（Carmine Studio、Infrago Quant、Crimson Proof、今後のもの）。クライアントは金融計算を自分で書かず、R から `rmql` を呼ぶ。2026-11-18 作成。入れ方の確認記録は `docs/spec_r.md` 8.7 節。
 
-## 1. 入れる（Windows、R 4.6）：Rust も Rtools も不要
+## 1. 入れる（Windows、R 4.4・4.5・4.6）：Rust も Rtools も不要
 
 ```r
 install.packages(
@@ -12,16 +12,16 @@ install.packages(
 ```
 
 - バイナリと依存パッケージ（`purrr`、`tibble` とその依存）が自動で入る。
-- **`remotes::install_github()` は使わない。** 常にソースからビルドするので Rust が要る。
-- 公開しているのは R 4.6 用のバイナリだけ。他の R の版では、ソースからのビルド（Rust が要る）になる。確認していない。
-- Windows 以外（Linux、macOS）は未確認。同じ 1 行でソースからビルドされ、Rust が要るはずだが、実行していない。
+- 公開しているバイナリは **R 4.4・4.5・4.6 用**（0.4.0、2026-11-20。GitHub Actions で各版の R を使ってビルドし、スモークテストを通した）。この PC で導入を確かめたのは R 4.6 だけで、4.4 と 4.5 は CI での確認。
+- `remotes::install_github("besuke/RiemannQL")`（`subdir` なし）でも入る。ただし常にソースからビルドするので、Rust と、Windows では Rtools が要る（`DESCRIPTION` をリポジトリの直下に置いた。2026-11-19）。
+- 上の R の版以外（4.3 以前）や、Windows 以外（Linux、macOS）は、同じ 1 行でソースからビルドされ、Rust が要るはずだが、確認していない。
 
-zip を直接入れる場合（ネットワークが GitHub Pages に届かないときなど）：
+zip を直接入れる場合（ネットワークが GitHub Pages に届かないときなど）。R の版ごとに URL が違う（`4.4`・`4.5`・`4.6`）：
 
 ```r
 install.packages(c("purrr", "tibble"))
 install.packages(
-  "https://github.com/besuke/RiemannQL/releases/download/v0.3.4/rmql_0.3.4.zip",
+  "https://besuke.github.io/RiemannQL/bin/windows/contrib/4.6/rmql_0.4.0.zip",
   repos = NULL, type = "binary"
 )
 ```
@@ -37,11 +37,14 @@ install.packages(
 クライアントの起動時（R API の先頭や QMD の `setup`）に、必要な版を確かめる。
 
 ```r
-stopifnot(packageVersion("rmql") >= "0.3.4")
+stopifnot(packageVersion("rmql") >= "0.4.0")
 ```
 
-- 照合を固定するときは、版と配布ファイルの SHA-256（`dist/MANIFEST.txt`、Releases の説明）を記録する。0.3.4 の zip は `b2e2ed00e8fe428b9716dee6c6b96f37f1e9e9ad38d513d34622d3b93a1599ab`。
-- 古い版を入れ直したいときは、Releases（https://github.com/besuke/RiemannQL/releases）の zip を指定する。
+- 照合を固定するときは、版と配布ファイルの SHA-256 を記録する。0.4.0（2026-11-20 に公開したものを取得して計算）：
+  - Windows R 4.4 の zip：`54233f7a6600a15eef5cd26615398fe0b377321ed3e9cd95a0ff355b4b084037`
+  - Windows R 4.5 の zip：`ff3faf6fcd3d0ed26b6d0c5a5755786f888395f419a56ab985d5fe39362c08b7`
+  - Windows R 4.6 の zip：`e7fcaf2f8740724a121683ef2103baf2df5f4c84d4acb4913a9371bb311fb216`
+  - ソースの tar.gz：`da4da3a4aff036ba62237ba46cb221c09c69db5f396fef4b789eccecd41a2cb4`
 
 ## 4. 呼び方のきまり
 

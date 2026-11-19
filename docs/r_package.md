@@ -93,6 +93,6 @@ rmql::compute_bond_values(bond, rate = 0.02, day_count = "act_act_isma", compoun
 ## 注意
 
 - **カーブの再現誤差を確かめてください。** 大きく振れる気配では、割引係数がほぼ 0 になり、入力の気配を再現しないことがあります（`get_quote_repricing()`）。
-- **カレンダーの一致は QuantLib とのものです。** 実際の市場休日とは照合していません。年別データの収録期間にも制限があります（`?rmql::is_business_day`）。
+- **カレンダーは、実際の市場休日とは照合していません。** 年別データの収録期間にも制限があります（`?rmql::is_business_day`）。
 - `library(rmql)` すると `duration` などが他のパッケージと衝突することがあるので、`rmql::` を付けて呼ぶのが安全です。
-- 同梱した Rust の crate のライセンスは `system.file("RUST_DEPENDENCIES", package = "rmql")`、QuantLib の表示は `THIRD_PARTY_NOTICES` にあります（配布ファイルだけ）。
+- 同梱した Rust の crate のライセンスは `system.file("RUST_DEPENDENCIES", package = "rmql")`、移したコードの著作権表示は `THIRD_PARTY_NOTICES` にあります（配布ファイルだけ）。
