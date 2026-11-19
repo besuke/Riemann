@@ -63,7 +63,7 @@ pass_label <- function(pass) if_else(pass, "PASS", "FAIL")
 rmql の実装済みの計算を、合成データで QuantLib と比べる検証です。計算と照合はすべて `verify_common.R`、`verify_bonds.R`、`verify_ois.R`、`verify_calendars.R` の関数で行い、この文書はその結果を表と図で示します。
 
 - **比較の相手**：QuantLib R パッケージ Version `r as.character(packageVersion("QuantLib"))`。正確な C++ のコミットは分からないので、QuantLib C++ v1.42 そのものを実行した照合ではありません。
-- **rmql の呼び方**：R パッケージ `rmql`（`crates/rmql-r`、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/rmql/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
+- **rmql の呼び方**：R パッケージ `rmql`（リポジトリの直下、extendr）を直接呼びます。Joint と Bespoke のカレンダーは R の入口にまだないので、Rust の `crates/rmql/examples/` を実行し、CSV で受け渡します。従来の CSV 経由の結果とも比べます（「直接呼び出しと CSV 経由の比較」）。
 - **データ**：すべて合成の値で、市場データは使っていません。
 - **対象**：PRDC（P10）、CDS（P8）、Hull-White と SABR（P9）、OIS アセットスワップ（P7）、オプション（P6）、自動微分による感応度（P5）、債券の価格と利回り（P2-1・P2-2）、OIS カーブ 4 指標（TONAR・€STR・SOFR・SONIA。P3）、全カレンダー。
 

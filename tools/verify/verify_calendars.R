@@ -3,7 +3,7 @@
 # cross-checks the QuantLib R package Version 1.42, whose exact C++ commit is unknown.
 # Agreement with QuantLib is not a check against actual market holidays.
 #
-# rmql is called directly through its R package rmql (crates/rmql-r). The joint and bespoke
+# rmql is called directly through its R package rmql (the repository root). The joint and bespoke
 # calendars are not in that entry point yet, so they and the comparison use
 # crates/rmql/examples/verify_calendars.rs.
 #

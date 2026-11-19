@@ -1,6 +1,6 @@
 # Hull-White モデルと SABR の仕様（P9）
 
-実装は `crates/rmql/src/hull_white.rs`、`crates/rmql/src/sabr.rs`、R の入口は `crates/rmql-r/R/rate_models.R` である。
+実装は `crates/rmql/src/hull_white.rs`、`crates/rmql/src/sabr.rs`、R の入口は `R/rate_models.R` である。
 
 **モデルの価値であることに注意する。** ここでの一致は、実装がモデルどおりであることを示す。パラメーターの妥当性や、市場で成り立つ価格であることは示さない。
 
@@ -38,7 +38,7 @@ R の関数は、さらに各コール日の境界 `boundary`（`call_below_shor
 
 **瞬間フォワード**：`YieldCurve::forward_rate_at_time`（QuantLib の `forwardRate(t, t)`、0.0001 年の金利）を使う。平坦なカーブでは正確で、それ以外では 0.0001 年の幅の近似である。この桁落ちのため、短期金利の照合の差は最大 2.6e-12 である。
 
-**照合**：LagrangeFinance II-8.4.2 の `compute_callable_bond_LRL`（`decisions`）を、`tools/golden/p9_hull_white_callable_decisions.R` が第 8 章から読んで、`tests/golden/hw_callable_decisions*.csv` に書く。5 ケース（クーポン 2〜6%、コール価格 100・101、最初のコール 1・2 年、満期 3・5・7 年、a 0.05〜0.2、格子 161・321 点）、10,918 行で、状態・時刻・コール価格は 1e-12 以内、継続価値は 6.3e-13、短期金利は 2.6e-12 の差だった。行使の有無は全行が一致し、継続価値とコール価格が 1e-9 以内で等しい（同値）行はなかった。テストは `crates/rmql/tests/golden_hull_white.rs`、性質のテスト（価格が元の関数と一致、行使は低い金利側に 1 つの境界、コールなしなら空）は `crates/rmql/src/hull_white.rs`、R のテストは `crates/rmql-r/tests/testthat/test-rate-models.R`。
+**照合**：LagrangeFinance II-8.4.2 の `compute_callable_bond_LRL`（`decisions`）を、`tools/golden/p9_hull_white_callable_decisions.R` が第 8 章から読んで、`tests/golden/hw_callable_decisions*.csv` に書く。5 ケース（クーポン 2〜6%、コール価格 100・101、最初のコール 1・2 年、満期 3・5・7 年、a 0.05〜0.2、格子 161・321 点）、10,918 行で、状態・時刻・コール価格は 1e-12 以内、継続価値は 6.3e-13、短期金利は 2.6e-12 の差だった。行使の有無は全行が一致し、継続価値とコール価格が 1e-9 以内で等しい（同値）行はなかった。テストは `crates/rmql/tests/golden_hull_white.rs`、性質のテスト（価格が元の関数と一致、行使は低い金利側に 1 つの境界、コールなしなら空）は `crates/rmql/src/hull_white.rs`、R のテストは `tests/testthat/test-rate-models.R`。
 
 ## 1.1 校正（P11-3）
 

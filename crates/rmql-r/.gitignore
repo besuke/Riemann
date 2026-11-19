@@ -1,4 +1,0 @@
-src/rust/target
-src/*.o
-src/*.dll
-src/*.so

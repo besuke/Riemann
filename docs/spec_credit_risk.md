@@ -18,7 +18,7 @@
 
 ## 2. 実装
 
-`crates/rmql/src/credit_risk.rs`、R は `crates/rmql-r/R/credit_risk.R`。
+`crates/rmql/src/credit_risk.rs`、R は `R/credit_risk.R`。
 
 | R の関数 | 内容 |
 |---|---|

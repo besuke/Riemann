@@ -1,6 +1,6 @@
 # オプションの仕様（P6）
 
-株のオプションと、フォワードのオプションである。実装は `crates/rmql/src/options.rs`、`crates/rmql/src/math/normal.rs`、`crates/rmql/src/math/random.rs`、R の入口は `crates/rmql-r/R/options.R` である。
+株のオプションと、フォワードのオプションである。実装は `crates/rmql/src/options.rs`、`crates/rmql/src/math/normal.rs`、`crates/rmql/src/math/random.rs`、R の入口は `R/options.R` である。
 
 ## 1. 対象
 

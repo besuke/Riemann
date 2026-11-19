@@ -10,7 +10,7 @@
 
 ## 2. 実装
 
-`crates/rmql/src/tranche.rs`、R は `crates/rmql-r/R/tranche.R`。
+`crates/rmql/src/tranche.rs`、R は `R/tranche.R`。
 
 | R の関数 | 内容 |
 |---|---|

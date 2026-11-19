@@ -32,10 +32,10 @@ install.packages(
 ### GitHub から（ソース）：Rust が必要（Windows では Rtools も）
 
 ```r
-remotes::install_github("besuke/RiemannQL", subdir = "crates/rmql-r")
+remotes::install_github("besuke/RiemannQL")
 ```
 
-R パッケージは `crates/rmql-r` にあるので、`subdir` が必要です。中核の crate（`crates/rmql`）はこのフォルダーの外にあるため、`configure` が DESCRIPTION の `RemoteSha`（remotes が書くコミット）を読み、同じコミットの中核を cargo が GitHub から取ります。Windows では Rtools 4.5 と Rust（`rustup target add x86_64-pc-windows-gnu`）、ネットワークが必要です。
+R パッケージはリポジトリの直下にあるので、`subdir` は要りません。remotes がリポジトリ全体を取り、中核の crate（`crates/rmql`）が隣にあるので、そのままビルドできます。`configure` は、中核が見つからないときだけ止まります。
 
 ### ソースパッケージ（tar.gz）：リポジトリもネットワークも不要
 
@@ -51,7 +51,7 @@ R CMD INSTALL rmql_0.3.4.tar.gz
 ### リポジトリから（開発用）
 
 ```
-R CMD INSTALL crates/rmql-r
+R CMD INSTALL .
 ```
 
 ## 配布ファイルの作り方

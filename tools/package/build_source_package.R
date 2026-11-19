@@ -6,7 +6,7 @@
 # Needs cargo, and tar and xz (from Rtools on Windows) on the PATH.
 
 args <- commandArgs(trailingOnly = TRUE)
-stopifnot(length(args) == 1L, file.exists("crates/rmql-r/DESCRIPTION"))
+stopifnot(length(args) == 1L, file.exists("DESCRIPTION"), file.exists("crates/rmql/Cargo.toml"))
 output <- normalizePath(args[1], winslash = "/", mustWork = FALSE)
 dir.create(output, recursive = TRUE, showWarnings = FALSE)
 
@@ -36,7 +36,12 @@ copy_tree <- function(from, to) {
 }
 
 # ---- the package, without build products --------------------------------------------------------
-copy_tree("crates/rmql-r", package)
+dir.create(package, recursive = TRUE)
+for (item in c("DESCRIPTION", "NAMESPACE", "LICENSE", "configure", "configure.win", "R", "man", "inst", "src")) {
+  stopifnot(file.copy(item, package, recursive = TRUE))
+}
+dir.create(file.path(package, "tests"))
+stopifnot(file.copy(c("tests/testthat", "tests/testthat.R"), file.path(package, "tests"), recursive = TRUE))
 unlink(file.path(package, "src/rust/target"), recursive = TRUE)
 unlink(list.files(file.path(package, "src"), pattern = "[.](o|dll|so)$", full.names = TRUE))
 

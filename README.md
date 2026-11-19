@@ -12,12 +12,12 @@ Rust の Send・Sync トレイトと、副作用を抑制した設計を基盤�
 - **作業中**：R パッケージの配布整備
 - **開発目標（未実装）**：TypeScript、WebAssembly、Excel の Office アドイン、LMM などの金利モデル、確率的な金利の PRDC
 
-リポジトリ名、Rust の crate 名（`rmql`、`rmql-r`）、API 名は `rmql` のままであり、いずれも rmql を指す。
+名前：R パッケージと Rust の crate は `rmql`（Rust Mathematical Quantitative Library。`rmql`、`rmql-r`）、GitHub のリポジトリは `RiemannQL`（`besuke/RiemannQL`）である。旧名の `RiemannFinMath` は使わない。
 
 ## 文書
 
 - 設計仕様書（草案）：[docs/specification.md](docs/specification.md)
-- R パッケージ：[crates/rmql-r/README.md](crates/rmql-r/README.md)、[docs/spec_r.md](docs/spec_r.md)
+- R パッケージ：[docs/r_package.md](docs/r_package.md)（導入の方法）、[docs/spec_r.md](docs/spec_r.md)
 - 参考資料：[docs/library_comparison.md](docs/library_comparison.md)
 
 ## 著作権

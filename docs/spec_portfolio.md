@@ -99,7 +99,7 @@ P12 の後、LagrangeFinance 第 I 部の次の章に相当する計算を同じ
 | `crates/rmql/src/math/quadratic.rs` | 狭義凸2次計画の双対有効制約法（Goldfarb–Idnani 1983 の論文から書いた。quadprog と同じ方式で、コードは写していない）。`J = L^-T Q` と `R` を Givens 回転で更新する。停留条件の残差 `max |Gx + a − Σ u_i n_i|` を返す |
 | `crates/rmql/src/math/simplex.rs` | 標準形の線形計画の2段階単体法（密なタブロー、Bland の規則）。最後に基底の連立方程式を元の行列で解き直す（タブローの丸めの蓄積を除く） |
 | `crates/rmql/src/portfolio.rs` | 平均・共分散、制約、8 つの方法、Frontier、リスク尺度とオイラー寄与（自動微分） |
-| `crates/rmql-r/R/portfolio.R` | `create_portfolio_constraints()`、`compute_return_moments()`、`compute_optimal_portfolio()`、`compute_efficient_frontier()`、`compute_portfolio_risk()`。リターンは行列、列ごとの data frame、long 形式（`date`・`asset`・`return`、GaussQuant と同じ列名）のどれでもよい |
+| `R/portfolio.R` | `create_portfolio_constraints()`、`compute_return_moments()`、`compute_optimal_portfolio()`、`compute_efficient_frontier()`、`compute_portfolio_risk()`。リターンは行列、列ごとの data frame、long 形式（`date`・`asset`・`return`、GaussQuant と同じ列名）のどれでもよい |
 
 ### 6.2 参照値との差
 

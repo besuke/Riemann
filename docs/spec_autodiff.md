@@ -159,7 +159,7 @@ torch はコードで精度を指定していないので、単精度で動い�
 
 ## 5. P5 の実装と結果
 
-実装は `crates/rmql/src/autodiff.rs`、`crates/rmql/src/risk.rs`、`OisCurve::quote_jacobian`（`ois.rs`）、R の入口は `crates/rmql-r/R/sensitivities.R` である。
+実装は `crates/rmql/src/autodiff.rs`、`crates/rmql/src/risk.rs`、`OisCurve::quote_jacobian`（`ois.rs`）、R の入口は `R/sensitivities.R` である。
 
 ### 5.1 実装の決定
 

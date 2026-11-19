@@ -54,7 +54,7 @@ LagrangeFinance の該当節を読み、rmql の実装と突き合わせた。
 
 ## 5. 段階 1：通貨ベーシスの期間構造（2026-11-04）【ソース確認・実行照合済み】
 
-実装は `crates/rmql/src/xccy.rs`（ブートストラップの 1 回の走査は `crates/rmql/src/bootstrap.rs` に切り出し、債券のカーブと共有）、R の入口は `crates/rmql-r/R/xccy.R`。
+実装は `crates/rmql/src/xccy.rs`（ブートストラップの 1 回の走査は `crates/rmql/src/bootstrap.rs` に切り出し、債券のカーブと共有）、R の入口は `R/xccy.R`。
 
 **計算**（QuantLib v1.42 の `FxSwapRateHelper`、`ConstNotionalCrossCurrencyBasisSwapRateHelper`、`MtMCrossCurrencyBasisSwapRateHelper`、`PiecewiseLogLinearDiscount`）：
 
@@ -73,13 +73,13 @@ LagrangeFinance の該当節を読み、rmql の実装と突き合わせた。
 
 ## 6. 段階 2：担保 CTD の本源的価値（2026-11-04）【実行照合済み（構成と無裁定の検査）】
 
-実装は `crates/rmql/src/ctd.rs`、R は `create_ctd_curve`（`crates/rmql-r/R/xccy.R`）。同じキャッシュフローの、担保通貨ごとの割引カーブ（円担保なら TONAR、ドル担保なら段階 1 の `bootstrap_xccy_curve` でドルを担保にした円のカーブ）を与え、暦日ごとのフォワード `f_c = ln(P_c(d) / P_c(d + 1))` の最大を選んで割引係数をつなぐ（`exp(-Σ max_c f_c)`）。結果は日ごとの節点の対数線形のカーブと、同じ担保が続く期間の表（優位幅つき）。今日のフォワードだけによる選択で、時間価値・ヘアカット・差替えの条件は含まない。
+実装は `crates/rmql/src/ctd.rs`、R は `create_ctd_curve`（`R/xccy.R`）。同じキャッシュフローの、担保通貨ごとの割引カーブ（円担保なら TONAR、ドル担保なら段階 1 の `bootstrap_xccy_curve` でドルを担保にした円のカーブ）を与え、暦日ごとのフォワード `f_c = ln(P_c(d) / P_c(d + 1))` の最大を選んで割引係数をつなぐ（`exp(-Σ max_c f_c)`）。結果は日ごとの節点の対数線形のカーブと、同じ担保が続く期間の表（優位幅つき）。今日のフォワードだけによる選択で、時間価値・ヘアカット・差替えの条件は含まない。
 
 **検査**（Rust と R のテスト）：通貨が 1 つなら元のカーブと差 1e-13 以内で一致する。どの日付でも、どの単一通貨の割引係数より大きくならない。交差するカーブでは、短期と長期で選ぶ通貨が入れ替わる。外部の照合先はない。
 
 ## 7. 段階 3：FMM（後決め RFR の期間金利）（2026-11-05）【解析式とモンテカルロで確認】
 
-実装は `crates/rmql/src/fmm.rs`、R は `compute_backward_forward_rate`、`compute_backward_caplet_value`（`crates/rmql-r/R/fmm.R`）。
+実装は `crates/rmql/src/fmm.rs`、R は `compute_backward_forward_rate`、`compute_backward_caplet_value`（`R/fmm.R`）。
 
 **計算**（Lyashenko–Mercurio の generalized FMM）：
 
@@ -98,7 +98,7 @@ LagrangeFinance の該当節を読み、rmql の実装と突き合わせた。
 
 ## 8. 段階 4：LMM の共同経路と校正（2026-11-05）【無裁定の関係と解析式で確認】
 
-実装は `crates/rmql/src/lmm_market.rs`、R は `crates/rmql-r/R/lmm_market.R`（`create_lmm`、`create_exponential_correlation`、`generate_lmm_paths`、`compute_lmm_swaption_value`、`compute_lmm_caplet_value`、`compute_rebonato_swaption_volatility`、`calibrate_lmm_correlation`）。
+実装は `crates/rmql/src/lmm_market.rs`、R は `R/lmm_market.R`（`create_lmm`、`create_exponential_correlation`、`generate_lmm_paths`、`compute_lmm_swaption_value`、`compute_lmm_caplet_value`、`compute_rebonato_swaption_volatility`、`calibrate_lmm_correlation`）。
 
 **計算**：
 

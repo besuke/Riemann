@@ -12,7 +12,7 @@ name = "rmql_r"
 
 [dependencies]
 extendr-api = "0.9.0"
-rmql = { path = "../../../rmql" }
+rmql = { path = "../../crates/rmql" }
 
 [profile.release]
 lto = false

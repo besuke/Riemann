@@ -1,6 +1,6 @@
 # アセットスワップと国債先物のベーシスの仕様（P7）
 
-実装は `crates/rmql/src/asset_swap.rs`、R の入口は `crates/rmql-r/R/asset_swaps.R` である。定義は GaussQuant の `ois_asset_swap_GQL`、`ois_asset_swap_jpy_from_legs_GQL` と LagrangeFinance II-2.6、II-3.7 に従う。
+実装は `crates/rmql/src/asset_swap.rs`、R の入口は `R/asset_swaps.R` である。定義は GaussQuant の `ois_asset_swap_GQL`、`ois_asset_swap_jpy_from_legs_GQL` と LagrangeFinance II-2.6、II-3.7 に従う。
 
 ## 1. OIS アセットスワップ
 

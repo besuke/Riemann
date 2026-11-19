@@ -12,3 +12,7 @@ Cargo.lock.bak
 
 # market data (JBTS BB closing prices etc.): local only, not committed
 /market_data/
+src/rust/target
+src/*.o
+src/*.dll
+src/*.so

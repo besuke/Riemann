@@ -184,7 +184,7 @@ P2-1 の 1,500 本の債券それぞれに、乱数（種を固定）で評価�
 
 **区分線形のスプレッド**（`YieldCurve::piecewise_zero_spreaded`、R は `create_zero_spreaded_curve(spread_dates = )`）：QuantLib `PiecewiseZeroSpreadedTermStructure`（線形補間）。スプレッドは日付の間で時間について線形、最初の日付より前と最後の日付より後は端の値で一定。時間は元のカーブの参照日と日数計算で測る。カーブの最終日は、元のカーブと最後のスプレッドの日付の早いほうである。
 
-**照合**（2026-11-04、QuantLib R パッケージ 1.42、`crates/rmql-r/inst/examples/quantlib_guide/duration_risk.R`）：QuantLib Guide「Assessing duration risk」の条件で、12 本のパー利回りからのカーブ、18 銘柄のクリーン価格と、利回り +1bp、ゼロ金利 +1bp、フラット化、スティープ化、1 年後のカーブの 5 つの変化（計 108 値）が、QuantLib 1.42 と最大 7.1e-14 で一致した。利回り +1bp の行は、QuantLib の `Bond.yield` の既定の精度 1e-8 を `compute_yield_from_price` に渡して比べた（rmql の既定 1e-10 のままでは QuantLib 1.42 との差 1.3e-5）。Guide の 6 桁表示との差は、利回り +1bp の行を除いて最大 5.3e-7 で、丸めの範囲である。利回り +1bp の行は Guide と最大 1.3e-5 違い、精度 1e-10 で解くと Guide と 5.3e-7 以内になる。Guide の版の利回りは 1.42 の既定より精しく解かれている。理由は確かめていない（未確認。QuantLib の版の差として扱う）。
+**照合**（2026-11-04、QuantLib R パッケージ 1.42、`inst/examples/quantlib_guide/duration_risk.R`）：QuantLib Guide「Assessing duration risk」の条件で、12 本のパー利回りからのカーブ、18 銘柄のクリーン価格と、利回り +1bp、ゼロ金利 +1bp、フラット化、スティープ化、1 年後のカーブの 5 つの変化（計 108 値）が、QuantLib 1.42 と最大 7.1e-14 で一致した。利回り +1bp の行は、QuantLib の `Bond.yield` の既定の精度 1e-8 を `compute_yield_from_price` に渡して比べた（rmql の既定 1e-10 のままでは QuantLib 1.42 との差 1.3e-5）。Guide の 6 桁表示との差は、利回り +1bp の行を除いて最大 5.3e-7 で、丸めの範囲である。利回り +1bp の行は Guide と最大 1.3e-5 違い、精度 1e-10 で解くと Guide と 5.3e-7 以内になる。Guide の版の利回りは 1.42 の既定より精しく解かれている。理由は確かめていない（未確認。QuantLib の版の差として扱う）。
 
 **未対応**：預金・先物のヘルパー、債券価格の気配についての感応度（`bootstrap_bond_curve` のカーブは与えたカーブとして扱い、気配の感応度の関数は受け付けない）、フラットフォワード・3 次の補間。
 

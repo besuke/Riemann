@@ -1,0 +1,23 @@
+#!/bin/sh
+# Finds the core crate `rmql` for the Rust build.
+#
+# The Rust build needs the core crate rmql: see the end of this file. It needs cargo and, on Windows, Rtools;
+# the Windows binary needs neither.
+
+manifest=src/rust/Cargo.toml
+relative='rmql = { path = "../../crates/rmql" }'
+
+# In the repository, and in an install by remotes::install_github() (which holds the whole repository), the core
+# crate is crates/rmql and nothing is changed. A source package made by tools/package/build_source_package.R carries
+# the core in src/rust/rmql-core and its manifest has no path to crates/rmql, so nothing is changed either.
+if ! grep -qF "$relative" "$manifest"; then
+  exit 0
+fi
+if [ -f crates/rmql/Cargo.toml ]; then
+  exit 0
+fi
+
+echo "rmql: the core crate (crates/rmql) was not found next to src/. Install from the repository" >&2
+echo "(R CMD INSTALL . or remotes::install_github(\"besuke/RiemannQL\")), from the source package of a release," >&2
+echo "or use the Windows binary of a release." >&2
+exit 1

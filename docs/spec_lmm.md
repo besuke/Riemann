@@ -1,6 +1,6 @@
 # LMM の構成要素の仕様（P11-6）
 
-実装は `crates/rmql/src/lmm.rs`（コレスキー分解は `crates/rmql/src/math/linear.rs`）、R の入口は `crates/rmql-r/R/lmm.R`、比較文書は `comparison/chapters/ch10_sabr.qmd` の「Caplets and correlated shocks」節である。
+実装は `crates/rmql/src/lmm.rs`（コレスキー分解は `crates/rmql/src/math/linear.rs`）、R の入口は `R/lmm.R`、比較文書は `comparison/chapters/ch10_sabr.qmd` の「Caplets and correlated shocks」節である。
 
 **範囲**：ユーザーの指示により、当面は LagrangeFinance II-7.4 の Caplet と相関の例を再現する範囲とする。LMM 全体（共通測度でのドリフト、複数のフォワード金利の共同経路、Swaption や相関への校正）は実装しない。本格的なモデルへの拡張は別途判断する。**2026-11-04 の指示で範囲を広げた**：後決め金利の FMM と、LMM の共同経路・校正は [spec_rates_fx_extension.md](spec_rates_fx_extension.md) 7・8 章（`fmm.rs`、`lmm_market.rs`）。
 

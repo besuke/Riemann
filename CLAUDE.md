@@ -126,14 +126,14 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
 | 層 | 状態 |
 |---|---|
 | Rust の中核 `rmql::ois::compute_ois_swap_dates` | **完了**。QuantLib 1.42 `MakeOIS` と 13,520 件で照合し、成功 13,514 件は完全一致、失敗 6 件も同じ（`docs/spec_ois_swap.md` 7 章）。コミット済み（`d8c5ba7`） |
-| R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L, on_error)` | **実装とテストは完了、コミット済み（2026-11-18）**。ラッパーは `crates/rmql-r/src/rust/src/lib.rs`、R 関数は `R/ois_swaps.R`、ヘルプは `man/compute_ois_swap_dates.Rd`、テストは `tests/testthat/test-ois-swap-dates.R`。R のテスト全体は 156 件成功、Rust は 278 件成功、`cargo clippy --all-targets` は通る |
+| R の関数 `compute_ois_swap_dates(index, evaluation_date, tenor, settlement_days = 2L, on_error)` | **実装とテストは完了、コミット済み（2026-11-18）**。ラッパーは `src/rust/src/lib.rs`、R 関数は `R/ois_swaps.R`、ヘルプは `man/compute_ois_swap_dates.Rd`、テストは `tests/testthat/test-ois-swap-dates.R`。R のテスト全体は 156 件成功、Rust は 278 件成功、`cargo clippy --all-targets` は通る |
 | Carmine Studio の置き換え | **未了**。`../carmine-studio/server/R/tona_ois_model.R` の `TONA_SWAP_DATES` を `compute_ois_swap_dates("tonar", evaluation_date, "7Y")` に置き換える。結果は同じ日付（開始 2026-09-14、満期 2033-09-14）のはず。置き換えたら `reconciliation/RECONCILIATION.md` 6 章 #1 を「解消」に更新する（クライアントの会話で、頼まれたときだけコミット） |
 | 版と公開 | **未了**。`DESCRIPTION` を 0.3.5 にして、下の「配布」の手順で公開する。公開してから、Carmine Studio は `stopifnot(packageVersion("rmql") >= "0.3.5")` を足す |
 
 **注意**：
 
-- 既定のライブラリーの `rmql` は 0.3.2 のまま（別の R が DLL を使っている）。新しい関数を試すには、`R CMD INSTALL -l <別ライブラリー> crates/rmql-r` に入れる（今回は `C:/rfmdev/lib`）。
-- `crates/rmql-r`（ワークスペースの外）の `cargo clippy` は、もとから 13 件のエラーが出る（引数の多さ、不要な型変換など）。今回の追加分ではない。プロジェクトの検査は、ルートの `cargo clippy --all-targets -- -D warnings`。
+- 既定のライブラリーの `rmql` は 0.3.2 のまま（別の R が DLL を使っている）。新しい関数を試すには、`R CMD INSTALL -l <別ライブラリー> .` に入れる（今回は `C:/rfmdev/lib`）。
+- `src/rust`（ワークスペースの外）の `cargo clippy` は、もとから 13 件のエラーが出る（引数の多さ、不要な型変換など）。今回の追加分ではない。プロジェクトの検査は、ルートの `cargo clippy --all-targets -- -D warnings`。
 - 1 日の OIS が QuantLib で縮退して失敗するケース（年末年始）は、`compute_ois_swap_dates` は日付を返し、`create_ois_swap` が同じく失敗する（テストで確認済み）。
 
 **決定（2026-11-18、ユーザー）：Windows で Rust を不要にする入れ方は、`install.packages(repos = "https://besuke.github.io/RiemannQL")` に一本化する**（Rtools も要らない。すでに動く）。`remotes::install_github()` は常にソースからビルドするので Rust と Rtools が要り、これは変えない（今の `main` で動作確認済み。Rust がなければ `configure.win` が上の入れ方を案内して止まる）。
@@ -153,14 +153,14 @@ Rust の金融計算ライブラリー。利用の主体は R（extendr）で、
   - P10：スマイルの下での経路依存の条項、相関の推定、FX と金利の同時校正は未対応（`spec_prdc.md`）。
   - P14：DRC は関係を整理しただけで、基準本文の確認と実装は未了。
   - P1：一致は QuantLib とのもので、実際の市場休日は検証していない。
-- QuantLib Guide と公式 Examples：`quantlib_guide_inventory.md` 4 章の優先順位 1〜6 は実装済み。残りは「後回し」の項目、公式 Examples のサンプル追加、比較資料の全体の再描画。サンプルは `crates/rmql-r/inst/examples/quantlib_guide/` と `quantlib_examples/`。
+- QuantLib Guide と公式 Examples：`quantlib_guide_inventory.md` 4 章の優先順位 1〜6 は実装済み。残りは「後回し」の項目、公式 Examples のサンプル追加、比較資料の全体の再描画。サンプルは `inst/examples/quantlib_guide/` と `quantlib_examples/`。
 - L1〜L3（TypeScript の Node 版、ブラウザー版、Excel）は未着手。
 
 **配布（`docs/spec_r.md` 8 章）**：
 
 - 最新は 0.3.4（2026-11-18）。
   - **Windows の入れ方（Rust なし）**：`install.packages("rmql", repos = c("https://besuke.github.io/RiemannQL", "https://cloud.r-project.org"))`。公開した URL から、Rust を外した PATH で導入と smoke test 34 項目を確認済み（`dist/smoke_from_pages_0.3.4.log`）。
-  - `remotes::install_github("besuke/RiemannQL", subdir = "crates/rmql-r")` は、`configure` が `RemoteSha` のコミットの中核を GitHub から取る（`e12a68a`）。Rust と Rtools が要る。2026-11-18 に今の `main` で再確認済み（34 項目成功）。`subdir` なしは 404。Rust がなければ `configure.win` が上の入れ方を示して止まる。
+  - `remotes::install_github("besuke/RiemannQL")`（`subdir` なし）：`DESCRIPTION` をリポジトリの直下に置いた（2026-11-19、`docs/spec_r.md` 8.9）。remotes はリポジトリ全体を取るので、中核の `crates/rmql` が隣にあり、`configure` はそれを確かめるだけである。Rust と Rtools が要る。Rust がなければ `configure.win` が上の入れ方を示して止まる。旧構成（`crates/rmql-r` に `DESCRIPTION`、`subdir` が必要、`RemoteSha` で中核を取る）は廃止した。
   - Windows zip と tar.gz は GitHub Releases の `v0.3.4` にもある。
 - **`gh-pages` ブランチ**は R リポジトリ（zip、tar.gz、`PACKAGES` 索引）だけを持つ配布専用で、`main` とは別。GitHub Pages が https://besuke.github.io/RiemannQL/ で公開する。rmql の作業フォルダーには取り込まず、一時フォルダーから push する。
   - **版を上げるとき**：(1) `DESCRIPTION` の版を変える。(2) zip を `R CMD INSTALL --build -l <別ライブラリー>`、tar.gz を `tools/package/build_source_package.R` で作る。(3) `Rscript tools/package/build_binary_repo.R <zip> <tar.gz> <フォルダー>` で索引を更新する（古い版は残り、`install.packages` は新しい版を選ぶ）。(4) そのフォルダーを `gh-pages` に push する（Pages の設定は済み）。(5) 公開 URL から導入して smoke test を実行する。(6) Releases に `vX.Y.Z` を作る。
@@ -205,8 +205,8 @@ Coral Book の入力と計算例で、rmql を基準と比べる英語の資料�
 - **R** は PATH にない：`"C:/Program Files/R/R-4.6.0/bin/Rscript.exe"`。R の中のパスは `C:/...`（`/c/...` は使えない）。`Rscript -e` は引用符で失敗しやすいので、スクリプトファイルに書いて実行する。
 - パッケージの導入は `R CMD INSTALL`（`devtools::install` は pak の DLL がアプリ制御で止められる）。
 - **rmql の入れ方**：
-  - 開発中：ルートで `R CMD INSTALL crates/rmql-r`。Rust の `x86_64-pc-windows-gnu` と Rtools が必要。
-  - 配布版：GitHub Releases の Windows zip（Rust 不要）、または `remotes::install_github("besuke/RiemannQL", subdir = "crates/rmql-r")`（`docs/spec_r.md` 8.7 節）。
+  - 開発中：ルートで `R CMD INSTALL .`。Rust の `x86_64-pc-windows-gnu` と Rtools が必要。
+  - 配布版：GitHub Releases の Windows zip（Rust 不要）、または `remotes::install_github("besuke/RiemannQL")`（`docs/spec_r.md` 8.7 節）。
   - パスが長いとビルドが `LNK1104` で失敗する。短いパスで行う。
 - **Smart App Control** が、新しくビルドした未署名の実行ファイルを止めることがある。
   - 症状：`os error 4551`、`Permission denied`。
@@ -229,9 +229,9 @@ Coral Book の入力と計算例で、rmql を基準と比べる英語の資料�
 - 照合用の値は、ルートから `tools/golden/*.R` を実行して `tests/golden/` に書き出す。仕様が変わらなければ作り直さない。`tests/golden` の CSV は R が CRLF で書き、git で LF になる（`.gitattributes`）。
 - カレンダーの規則は `tools/golden/port_calendars.R` が生成する（`rules/` の `special.rs` 以外）。生成後に rustfmt をかける。C++ のビルドは Rtools の g++ を PATH に入れて、bash から実行する。
 - 検証レポート：`tools/verify/verify_rmql.qmd`。アプリ制御で止まった例だけ、環境変数 `RMQL_VERIFY_SKIP_EXAMPLES`（例：`verify_bonds`）で飛ばす。その経路は「not run」と表示される。
-- R パッケージ：テストは `crates/rmql-r/tests/testthat`。このビルド（windows-gnu）は MSVC の `cargo test` と数学ライブラリーが違い、最下位ビットの差が出る（`docs/spec_ois.md` 10.6 節）。
+- R パッケージ：テストは `tests/testthat`。このビルド（windows-gnu）は MSVC の `cargo test` と数学ライブラリーが違い、最下位ビットの差が出る（`docs/spec_ois.md` 10.6 節）。
 - 配布ファイル：
   - ソースパッケージ：`tools/package/build_source_package.R`
-  - zip：`R CMD INSTALL --build crates/rmql-r`
+  - zip：`R CMD INSTALL --build .`
   - 導入の確認：`tools/package/smoke_test.R <版> <ライブラリー>`。`env -i` で環境変数を全部消すと終了時に落ちるが、`tibble` 側の問題（8.4 節）。PATH から Rust を外すだけで確かめる。
 - QuantLib のソース（v1.42 の確認用）は手元にない。必要なら一時フォルダーに clone し直す。

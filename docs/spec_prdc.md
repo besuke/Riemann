@@ -1,6 +1,6 @@
 # PRDC の仕様（P10）
 
-実装は `crates/rmql/src/prdc.rs`、R の入口は `crates/rmql-r/R/prdc.R` である。定義は GaussQuant の `prdc_coupon_GQL` と LagrangeFinance II-9、III-7 に従う。
+実装は `crates/rmql/src/prdc.rs`、R の入口は `R/prdc.R` である。定義は GaussQuant の `prdc_coupon_GQL` と LagrangeFinance II-9、III-7 に従う。
 
 ## 1. 対象とモデル
 

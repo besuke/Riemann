@@ -2,7 +2,7 @@
 
 > **関数名について**：公開関数の名前は 2026-11-03 に変更した（`docs/naming_migration.md`、方針は `docs/specification.md` 4.4 節）。この文書の使い方と API の説明は新名である。照合結果の節は当時の記録なので、旧名のまま残している場合がある。旧名は対応表で読み替える。Rust のメソッド（`bond.clean_price(...)` など）は改名していない。
 
-R から rmql を直接呼ぶ入口である。場所は `crates/rmql-r`。リポジトリ名と Rust の crate 名（`rmql`、`rmql-r`）は変えていない。金融の計算はすべて Rust の `rmql` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
+R から rmql を直接呼ぶ入口である。場所はリポジトリの直下（`DESCRIPTION`、`R/`、`src/` がある）。リポジトリ名と Rust の crate 名（`rmql`、`rmql-r`）は変えていない。金融の計算はすべて Rust の `rmql` crate にあり、R は日付の変換と結果の表の組み立てだけを行う。
 
 | 区分 | 状態 |
 |---|---|
@@ -19,11 +19,11 @@ R から rmql を直接呼ぶ入口である。場所は `crates/rmql-r`。リ�
 |---|---|
 | `crates/rmql/src/names.rs` | 選択肢の文字列名（全言語で共通。snake_case） |
 | `crates/rmql/src/batch.rs` | 並列バッチ（R に依存しない） |
-| `crates/rmql-r/src/rust/src/lib.rs` | extendr の境界。変換だけを行う |
-| `crates/rmql-r/R/` | 薄い R の関数（`common.R`、`bonds.R`、`ois.R`、`calendars.R`、`batch.R`） |
-| `crates/rmql-r/inst/examples/quickstart.R` | Positron の R コンソールから実行するサンプル |
-| `crates/rmql-r/tests/testthat/` | R の入口のテスト |
-| `crates/rmql-r/man/` | ヘルプ（`R/` のコメントから roxygen2 で生成） |
+| `src/rust/src/lib.rs` | extendr の境界。変換だけを行う |
+| `R/` | 薄い R の関数（`common.R`、`bonds.R`、`ois.R`、`calendars.R`、`batch.R`） |
+| `inst/examples/quickstart.R` | Positron の R コンソールから実行するサンプル |
+| `tests/testthat/` | R の入口のテスト |
+| `man/` | ヘルプ（`R/` のコメントから roxygen2 で生成） |
 | `tools/package/build_source_package.R` | 自己完結したソースパッケージを作る |
 
 既存の R 連携コードはなかったので新しく作った。`rextendr` は入っていないので、R の関数は手で書き、`.Call(wrap__関数名, ...)` で呼ぶ。extendr のモジュール名、DLL の名前、R の登録名は R パッケージ名にそろえる（R がその名前で初期化の関数を探すため）。Rust の crate は、ルートのワークスペースから外している（`R CMD INSTALL` が `windows-gnu` 向けに単独でビルドするため）。
@@ -33,13 +33,13 @@ R から rmql を直接呼ぶ入口である。場所は `crates/rmql-r`。リ�
 Windows では次が必要である：Rtools 4.5、`rustup target add x86_64-pc-windows-gnu`。
 
 ```
-R CMD INSTALL crates/rmql-r
+R CMD INSTALL .
 ```
 
-配布ファイルからの導入は `crates/rmql-r/README.md` と 8 章にある。
+配布ファイルからの導入は `docs/r_package.md` と 8 章にある。
 
 - `Makevars` は毎回 `cargo` を呼び、再ビルドの判断を `cargo` に任せる。依存を書かないと、一度ビルドした後は Rust のソースを変えても古いライブラリーのままになる。実際にこの不具合が起きたので直した。
-- `crates/rmql-r` からの導入（開発用）では、Rust の crate は相対パスで中核に依存する。配布用のソースパッケージは、8 章のとおり中核と依存 crate を同梱し、相対パスに依存しない。
+- リポジトリの直下からの導入（開発用、`R CMD INSTALL .`、`remotes::install_github("besuke/RiemannQL")`）では、Rust の crate は相対パス（`../../crates/rmql`）で中核に依存する。配布用のソースパッケージは、8 章のとおり中核と依存 crate を同梱し、相対パスに依存しない。
 
 ## 3. 公開関数
 
@@ -237,3 +237,16 @@ install.packages("rmql",
 - **配布ファイル**：`dist/` にあり、git には入れない。最新の 0.3.4 は、R リポジトリ（`gh-pages`）と GitHub Releases にある（8.8 節）。
 - **CRAN**：公開申請はしていない。18 crate の同梱など、CRAN の Rust パッケージの方針との照合もしていない。
 - **既定のライブラリーの古い `rmql`**：名前を変える前の版が残る。Positron の R セッションが読み込んでいたので、消していない。
+
+### 8.9 `DESCRIPTION` をリポジトリの直下へ移した（2026-11-19）
+
+R パッケージを `crates/rmql-r/` から**リポジトリの直下**に移した。`DESCRIPTION`、`NAMESPACE`、`R/`、`man/`、`inst/`、`src/`（`src/rust` が extendr の crate）、`configure`、`configure.win`、`tests/testthat/` が直下にある。中核の Rust crate は `crates/rmql` のまま。理由：直下に置けば `remotes::install_github("besuke/RiemannQL")` だけで導入でき（`subdir` が要らない）、remotes がリポジトリ全体を取るので中核が隣にあり、8.7 の `RemoteSha` で中核を GitHub から取る仕組みが要らなくなる。
+
+- `src/rust/Cargo.toml` の中核への相対パスは `../../crates/rmql`。ルートの `Cargo.toml` は `exclude = ["src/rust"]`。
+- `configure` と `configure.win`：相対パスの形が残っていて、`crates/rmql/Cargo.toml` があれば何もしない。ソースパッケージ（中核を `rmql-core` に同梱）も何もしない。どちらでもなければ、導入元を示して止まる。`RemoteSha` を読んで GitHub から取る処理は廃止した。
+- `.Rbuildignore`：`comparison/`、`docs/`、`tools/`、`tests/golden/`、`crates/rmql/tests/`、`crates/rmql/examples/` などを除く。`crates/` と `Cargo.toml`（中核と作業領域の継承元）は含める。
+- `tools/package/build_source_package.R`：直下から必要なものを写して作る。
+- パッケージの README だった `crates/rmql-r/README.md` は `docs/r_package.md` へ移した。
+
+8.7 と 8.8 の記述は、この移動の前の構成（`crates/rmql-r`、`subdir` 付き）の記録である。
+

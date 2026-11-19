@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/rmql"]
-exclude = ["crates/rmql-r"]
+exclude = ["src/rust"]
 
 [workspace.package]
 version = "0.3.0"

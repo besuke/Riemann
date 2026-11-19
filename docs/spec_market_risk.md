@@ -20,7 +20,7 @@
 
 ## 2. 実装【設計案から実装済み】
 
-`crates/rmql/src/market_risk.rs`、R は `crates/rmql-r/R/market_risk.R`。
+`crates/rmql/src/market_risk.rs`、R は `R/market_risk.R`。
 
 | R の関数 | 内容 |
 |---|---|

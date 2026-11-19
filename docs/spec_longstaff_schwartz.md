@@ -1,6 +1,6 @@
 # Longstaff–Schwartz 法と Sobol 列の仕様（P11-4）
 
-実装は `crates/rmql/src/longstaff_schwartz.rs` と `crates/rmql/src/math/sobol.rs`、照合は `tools/golden/p11_longstaff_schwartz.R` と `crates/rmql/tests/golden_longstaff_schwartz.rs` である。LagrangeFinance II-4.6.2 は再現した（6 章）。継続価値の関数を変える比較は 7 章にある。R の入口は `crates/rmql-r/R/longstaff_schwartz.R`、比較文書は `comparison/chapters/ch08_options.qmd` の「Sobol paths and Longstaff-Schwartz」節である（LagrangeFinance の判定 26 行はすべて PASS、QuantLib との照合は REF）。
+実装は `crates/rmql/src/longstaff_schwartz.rs` と `crates/rmql/src/math/sobol.rs`、照合は `tools/golden/p11_longstaff_schwartz.R` と `crates/rmql/tests/golden_longstaff_schwartz.rs` である。LagrangeFinance II-4.6.2 は再現した（6 章）。継続価値の関数を変える比較は 7 章にある。R の入口は `R/longstaff_schwartz.R`、比較文書は `comparison/chapters/ch08_options.qmd` の「Sobol paths and Longstaff-Schwartz」節である（LagrangeFinance の判定 26 行はすべて PASS、QuantLib との照合は REF）。
 
 ## 1. 比較条件【ソース確認】
 

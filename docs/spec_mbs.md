@@ -1,6 +1,6 @@
 # パススルー MBS の仕様（P11-5）
 
-実装は `crates/rmql/src/mbs.rs`、R の入口は `crates/rmql-r/R/mbs.R`、比較文書は `comparison/chapters/ch11_hull_white.qmd` の「Mortgage-backed securities」節である。QuantLib には対応する機能がないので、比較の基準はすべて LagrangeFinance II-8.8 である。
+実装は `crates/rmql/src/mbs.rs`、R の入口は `R/mbs.R`、比較文書は `comparison/chapters/ch11_hull_white.qmd` の「Mortgage-backed securities」節である。QuantLib には対応する機能がないので、比較の基準はすべて LagrangeFinance II-8.8 である。
 
 ## 1. LagrangeFinance II-8.8 の条件【ソース確認】
 

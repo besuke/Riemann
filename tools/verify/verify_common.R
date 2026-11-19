@@ -50,10 +50,10 @@ csv_path_not_run <- function() {
   tibble(compared = 0L, exact = 0L, both_error = 0L, one_sided = 0L, max_abs_diff = NA_real_)
 }
 
-# The R package of rmql, rmql, called directly. Install it with: R CMD INSTALL crates/rmql-r
+# The R package of rmql, rmql, called directly. Install it with: R CMD INSTALL .
 require_rmql_package <- function() {
   if (!requireNamespace("rmql", quietly = TRUE)) {
-    stop("The rmql package is not installed. Run: R CMD INSTALL crates/rmql-r", call. = FALSE)
+    stop("The rmql package is not installed. Run: R CMD INSTALL .", call. = FALSE)
   }
   invisible(TRUE)
 }

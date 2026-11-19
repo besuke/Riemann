@@ -1,6 +1,6 @@
 # CDS の仕様（P8）
 
-実装は `crates/rmql/src/cds.rs`、R の入口は `crates/rmql-r/R/cds.R` である。計算は QuantLib v1.42 に従う。LagrangeFinance II-5 と同じ構成である。
+実装は `crates/rmql/src/cds.rs`、R の入口は `R/cds.R` である。計算は QuantLib v1.42 に従う。LagrangeFinance II-5 と同じ構成である。
 
 ## 1. 対象
 
@@ -58,7 +58,7 @@ LagrangeFinance II-5.6 は、GaussQuant を通してこのビルダーで標準 
 
 **生存確率のカーブ**（`interpolatedsurvivalprobabilitycurve.hpp`、v1.42）：参照日に 1、節点の間は時間について線形に補間する。最後の節点の後は、その節点でのハザード率（最後の区間の傾き ÷ 生存確率）を一定とする。確率は正で、増えてはならない（QuantLib と同じ検査）。ハザード率は −傾き ÷ 生存確率で、節点ではその節点から始まる区間の傾きを使う（QuantLib の `locate`）。区分的に一定のハザードのカーブでは、節点ではその節点で終わる区間の率である（`BackwardFlat`）。ISDA エンジンにも渡せるが、ISDA エンジンは節点の間でハザードが一定と仮定して積分を分けるので、線形の生存確率のカーブでは近似になる。
 
-**照合**（2026-11-04、QuantLib R パッケージ 1.42、`crates/rmql-r/inst/examples/quantlib_guide/cds.R`）：QuantLib Guide「Default-probability curves」の条件で、Upfront の気配から作ったカーブ 4 本（3 つの評価日の MidPoint、ISDA）の 24 節点のハザード率とデフォルト確率は差 2.2e-15 以下（% 表示で）、確認用 CDS の NPV と fair upfront、ハザード率、生存確率のカーブの値は一致した（差 0）。最後の節点より後の生存確率とハザード率も一致した。
+**照合**（2026-11-04、QuantLib R パッケージ 1.42、`inst/examples/quantlib_guide/cds.R`）：QuantLib Guide「Default-probability curves」の条件で、Upfront の気配から作ったカーブ 4 本（3 つの評価日の MidPoint、ISDA）の 24 節点のハザード率とデフォルト確率は差 2.2e-15 以下（% 表示で）、確認用 CDS の NPV と fair upfront、ハザード率、生存確率のカーブの値は一致した（差 0）。最後の節点より後の生存確率とハザード率も一致した。
 
 **Guide の表示との差**（QuantLib の版の差）：Guide の確認用 CDS の NPV は -0.2777、fair upfront は -0.80278% で、気配 -0.8% からプレミアム 1 日分（10,000 × 1% ÷ 360 = 0.2778）ずれている。QuantLib 1.42 で Guide と同じ呼び方をすると、NPV は 0（3.98e-13）、fair upfront は -0.8% で、rmql と一致する。v1.42 のヘルパーの最終期間の日数計算は、指定がなければ通常の日数計算である（ソース確認）。Guide の版で何が違ったかは確かめていない（未確認）。同じ理由と考えられる差として、デフォルト確率が Guide の 2 桁表示より最大 0.009 ポイント大きく、9 月 19 日の最初の節点のハザード率が 1.2309%（Guide は 1.22%）である。生存確率のカーブ（`SurvivalProbabilityCurve`）は Guide の表示と一致した。
 

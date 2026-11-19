@@ -1,6 +1,6 @@
 # トータル・リターン・スワップ（TRS）の両レッグ
 
-QuantLet の C1（TRS 確認書）から、キャッシュフロー・スケジュールを作るために追加した（2026-11-15）。中核は `crates/rmql/src/trs.rs`、R の入口は `crates/rmql-r/R/trs.R`。QuantLib のソースは使っていない（`THIRD_PARTY_NOTICES` の対象外）。
+QuantLet の C1（TRS 確認書）から、キャッシュフロー・スケジュールを作るために追加した（2026-11-15）。中核は `crates/rmql/src/trs.rs`、R の入口は `R/trs.R`。QuantLib のソースは使っていない（`THIRD_PARTY_NOTICES` の対象外）。
 
 ## 1. 範囲【設計】
 
@@ -21,7 +21,7 @@ QuantLet の C1（TRS 確認書）から、キャッシュフロー・スケジ�
 
 ## 2. 照合【実行照合済み】
 
-2026-11-15、`crates/rmql-r/tests/testthat/test-trs.R`（68 項目、すべて合格）と `trs.rs` の単体テスト 3 件。全テスト（`cargo test --release`）274 件合格、`cargo clippy --all-targets -- -D warnings` 警告なし。
+2026-11-15、`tests/testthat/test-trs.R`（68 項目、すべて合格）と `trs.rs` の単体テスト 3 件。全テスト（`cargo test --release`）274 件合格、`cargo clippy --all-targets -- -D warnings` 警告なし。
 
 | 照合 | 相手 | 結果 |
 |---|---|---|
@@ -36,5 +36,5 @@ QuantLet の C1（TRS 確認書）から、キャッシュフロー・スケジ�
 
 ## 3. 未了
 
-- 配布ファイル（`dist/`）は作り直していない。版は 0.3.0 のまま（`R CMD INSTALL crates/rmql-r` で利用者のライブラリーに入れた）
+- 配布ファイル（`dist/`）は作り直していない。版は 0.3.0 のまま（`R CMD INSTALL .` で利用者のライブラリーに入れた）
 - `docs/specification.md` の段階表と比較資料（`comparison/`）への追加

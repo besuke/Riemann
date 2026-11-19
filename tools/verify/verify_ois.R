@@ -2,7 +2,7 @@
 # for log-linear and monotonic log-cubic interpolation of the discount factors. The exact C++
 # commit of the package is unknown, so this is not a comparison with running QuantLib C++ v1.42.
 #
-# rmql is called directly through its R package rmql (crates/rmql-r). The example program
+# rmql is called directly through its R package rmql (the repository root). The example program
 # crates/rmql/examples/verify_ois.rs stays as a second path, to compare the two.
 #
 # Usage from an R session started anywhere in the repository:
